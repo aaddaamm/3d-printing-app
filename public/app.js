@@ -1,0 +1,648 @@
+import { h, render } from 'https://esm.sh/preact@10';
+import { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/preact@10/hooks';
+import htm from 'https://esm.sh/htm@3';
+
+const html = htm.bind(h);
+const AUTH = { Authorization: 'Bearer ' + window.API_KEY };
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+
+function fmtTime(s) {
+  if (!s) return '—';
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60);
+  return h === 0 ? `${m}m` : `${h}h${m > 0 ? ` ${m}m` : ''}`;
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso), now = new Date();
+  const opts = d.getFullYear() === now.getFullYear()
+    ? { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }
+    : { month: 'short', day: 'numeric', year: '2-digit', hour: 'numeric', minute: '2-digit' };
+  return d.toLocaleString(undefined, opts);
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso), now = new Date();
+  const opts = d.getFullYear() === now.getFullYear()
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: '2-digit' };
+  return d.toLocaleDateString(undefined, opts);
+}
+
+function fmtWeight(g) {
+  if (g == null) return '—';
+  return g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g.toFixed(1)} g`;
+}
+
+function fmtWeightTotal(g) {
+  if (!g) return '0 g';
+  return g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${Math.round(g)} g`;
+}
+
+// ── Atoms ────────────────────────────────────────────────────────────────────
+
+const BADGE_CLS = {
+  finish:  'badge badge-finish',
+  running: 'badge badge-running',
+  failed:  'badge badge-failed',
+  cancel:  'badge badge-cancel',
+  pause:   'badge badge-pause',
+};
+
+function Badge({ status }) {
+  const s = (status || '').toLowerCase();
+  return html`<span class=${BADGE_CLS[s] || 'badge badge-default'}>${s || 'unknown'}</span>`;
+}
+
+function RowThumb({ url }) {
+  const [err, setErr] = useState(false);
+  if (!url || err) return html`<div class="row-thumb-ph">🖨</div>`;
+  return html`<img class="row-thumb" src=${url} alt="" loading="lazy" onError=${() => setErr(true)} />`;
+}
+
+function CoverImg({ url, className }) {
+  const [err, setErr] = useState(false);
+  if (!url || err) return html`<div class="cover-placeholder">🖨</div>`;
+  return html`<img class=${className} src=${url} alt="" loading="lazy" onError=${() => setErr(true)} />`;
+}
+
+// ── Header ───────────────────────────────────────────────────────────────────
+
+function Header({ summary, page, setPage }) {
+  const t = summary?.totals;
+  return html`
+    <header>
+      <div class="header-left">
+        <h1>Bambu <span>Print History</span></h1>
+        <nav class="top-nav">
+          <button class=${'nav-btn' + (page === 'jobs' ? ' active' : '')}
+            onClick=${() => setPage('jobs')}>Jobs</button>
+          <button class=${'nav-btn' + (page === 'projects' ? ' active' : '')}
+            onClick=${() => setPage('projects')}>Projects</button>
+        </nav>
+      </div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-val">${t ? t.total_jobs.toLocaleString() : '—'}</div>
+          <div class="stat-lbl">Total Jobs</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">${t ? (t.total_weight_g / 1000).toFixed(2) : '—'}</div>
+          <div class="stat-lbl">Filament kg</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">${t ? (t.total_time_s / 3600).toFixed(1) : '—'}</div>
+          <div class="stat-lbl">Print Hours</div>
+        </div>
+        <div class="stat">
+          <div class="stat-val">${t ? t.total_plates.toLocaleString() : '—'}</div>
+          <div class="stat-lbl">Plates</div>
+        </div>
+      </div>
+    </header>
+  `;
+}
+
+// ── Toolbar ──────────────────────────────────────────────────────────────────
+
+function Toolbar({ q, setQ, statusFilter, setStatusFilter, deviceFilter, setDeviceFilter, devices, view, setView, filteredCount, totalCount }) {
+  return html`
+    <div class="toolbar">
+      <input type="search" placeholder="Search title or customer…"
+        value=${q} onInput=${e => setQ(e.target.value)} />
+      <select value=${statusFilter} onChange=${e => setStatusFilter(e.target.value)}>
+        <option value="">All Statuses</option>
+        <option value="finish">Finished</option>
+        <option value="cancel">Cancelled</option>
+        <option value="running">Running</option>
+        <option value="failed">Failed</option>
+        <option value="pause">Paused</option>
+      </select>
+      <select value=${deviceFilter} onChange=${e => setDeviceFilter(e.target.value)}>
+        <option value="">All Printers</option>
+        ${devices.map(d => html`<option key=${d} value=${d}>${d}</option>`)}
+      </select>
+      <div class="view-toggle">
+        <button class=${'view-btn' + (view === 'table' ? ' active' : '')}
+          onClick=${() => setView('table')}>☰ Table</button>
+        <button class=${'view-btn' + (view === 'grid' ? ' active' : '')}
+          onClick=${() => setView('grid')}>⊞ Grid</button>
+      </div>
+      <div class="toolbar-right">
+        <span class="job-count">${filteredCount} / ${totalCount} jobs</span>
+      </div>
+    </div>
+  `;
+}
+
+// ── Totals bar ───────────────────────────────────────────────────────────────
+
+function TotalsBar({ filtered, isFiltered }) {
+  if (!isFiltered || !filtered.length) return null;
+  const totW = filtered.reduce((s, j) => s + (j.total_weight_g || 0), 0);
+  const totT = filtered.reduce((s, j) => s + (j.total_time_s || 0), 0);
+  return html`
+    <div class="totals-bar">
+      <span class="totals-label">Selection</span>
+      <span>Jobs: <strong>${filtered.length}</strong></span>
+      <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
+      <span>Print time: <strong>${fmtTime(totT)}</strong></span>
+    </div>
+  `;
+}
+
+// ── Table ────────────────────────────────────────────────────────────────────
+
+const TABLE_COLS = [
+  { col: 'designTitle',    label: 'Title',    cls: 'sortable td-title' },
+  { col: 'deviceModel',    label: 'Printer',  cls: 'sortable' },
+  { col: 'startTime',      label: 'Date',     cls: 'sortable' },
+  { col: null,             label: 'Status',   cls: '' },
+  { col: 'total_weight_g', label: 'Filament', cls: 'sortable td-num' },
+  { col: 'total_time_s',   label: 'Time',     cls: 'sortable td-num' },
+  { col: null,             label: 'Plates',   cls: 'td-num' },
+  { col: null,             label: 'Customer', cls: '' },
+];
+
+function JobRow({ job, onJobClick }) {
+  return html`
+    <tr onClick=${() => onJobClick(job)}>
+      <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
+      <td class="td-title">
+        <span class="row-title" title=${job.designTitle || 'Untitled'}>
+          ${job.designTitle || 'Untitled Job'}
+        </span>
+        ${job.print_run > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+      </td>
+      <td>${job.deviceModel || '—'}</td>
+      <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
+      <td><${Badge} status=${job.status} /></td>
+      <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
+      <td class="td-num">${fmtTime(job.total_time_s)}</td>
+      <td class="td-num">${job.plate_count ?? '—'}</td>
+      <td>${job.customer && html`<span class="customer-pill">${job.customer}</span>`}</td>
+    </tr>
+  `;
+}
+
+function TableView({ sorted, sortCol, sortDir, onSort, onJobClick }) {
+  return html`
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="td-thumb"></th>
+            ${TABLE_COLS.map(({ col, label, cls }) => {
+              const active = col && col === sortCol;
+              const thCls = [cls, active ? `sort-${sortDir}` : ''].filter(Boolean).join(' ');
+              return html`
+                <th key=${label} class=${thCls || undefined}
+                  onClick=${col ? () => onSort(col) : undefined}>${label}</th>
+              `;
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map(job => html`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+// ── Grid ─────────────────────────────────────────────────────────────────────
+
+function JobCard({ job, onJobClick }) {
+  return html`
+    <div class="card" onClick=${() => onJobClick(job)}>
+      <${CoverImg} url=${job.cover_url} className="cover" />
+      <div class="card-body">
+        <div class="card-title">${job.designTitle || 'Untitled Job'}</div>
+        <div class="card-meta">
+          <span>🖨 ${job.deviceModel || '—'}</span>
+          <span>📅 ${fmtDateShort(job.startTime)}</span>
+          <span>⏱ ${fmtTime(job.total_time_s)}</span>
+          <span>🧵 ${fmtWeight(job.total_weight_g)}</span>
+        </div>
+        <div class="card-footer">
+          <${Badge} status=${job.status} />
+          ${job.print_run > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+          ${job.customer && html`<span class="customer-pill">${job.customer}</span>`}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function GridView({ sorted, onJobClick }) {
+  return html`
+    <div class="grid-view">
+      ${sorted.map(job => html`<${JobCard} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
+    </div>
+  `;
+}
+
+// ── Modal ────────────────────────────────────────────────────────────────────
+
+const STATUS_OPTIONS = ['finish', 'failed', 'cancel', 'running', 'pause'];
+
+function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange }) {
+  useEffect(() => {
+    const handler = e => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const handleProjectChange = useCallback(e => {
+    const val = e.target.value;
+    onJobProjectChange(job.id, val === '' ? null : Number(val));
+  }, [job.id, onJobProjectChange]);
+
+  const handleStatusChange = useCallback(e => {
+    const val = e.target.value;
+    onJobStatusChange(job.id, val === '' ? null : val);
+  }, [job.id, onJobStatusChange]);
+
+  return html`
+    <div class="overlay" onClick=${e => e.target === e.currentTarget && onClose()}>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>${job.designTitle || 'Untitled Job'}</h2>
+          <button class="modal-close" onClick=${onClose}>✕</button>
+        </div>
+        ${job.cover_url && html`<img class="modal-img" src=${job.cover_url} alt="" />`}
+        <div class="modal-body">
+          <div class="detail-grid">
+            <div class="detail-item">
+              <label>Status</label>
+              <div class="detail-val">
+                <${Badge} status=${job.status} />
+                ${job.status_override && html`<span class="override-tag">override</span>`}
+              </div>
+            </div>
+            <div class="detail-item"><label>Printer</label><div class="detail-val">${job.deviceModel || '—'}</div></div>
+            <div class="detail-item"><label>Started</label><div class="detail-val">${fmtDate(job.startTime)}</div></div>
+            <div class="detail-item"><label>Duration</label><div class="detail-val">${fmtTime(job.total_time_s)}</div></div>
+            <div class="detail-item"><label>Filament</label><div class="detail-val">${fmtWeight(job.total_weight_g)}</div></div>
+            <div class="detail-item"><label>Plates</label><div class="detail-val">${job.plate_count ?? '—'}</div></div>
+            <div class="detail-item"><label>Customer</label><div class="detail-val">${job.customer || '—'}</div></div>
+            <div class="detail-item"><label>Print Run</label><div class="detail-val">
+              ${job.print_run > 1 ? `Run #${job.print_run} of this design` : '1st print of this design'}
+            </div></div>
+          </div>
+          ${job.notes && html`<div class="notes-box">${job.notes}</div>`}
+          <div class="modal-project-row">
+            <label class="modal-project-label">Status override</label>
+            <select class="modal-project-select" value=${job.status_override ?? ''} onChange=${handleStatusChange}>
+              <option value="">Auto (from printer)</option>
+              ${STATUS_OPTIONS.map(s => html`<option key=${s} value=${s}>${s}</option>`)}
+            </select>
+          </div>
+          ${projects && html`
+            <div class="modal-project-row">
+              <label class="modal-project-label">Project</label>
+              <select class="modal-project-select" value=${job.project_id ?? ''} onChange=${handleProjectChange}>
+                <option value="">— None —</option>
+                ${projects.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+              </select>
+            </div>
+          `}
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ── Projects view ─────────────────────────────────────────────────────────────
+
+function NewProjectModal({ onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [customer, setCustomer] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const handler = e => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+
+  const handleSubmit = useCallback(async e => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    setSaving(true);
+    try {
+      const res = await fetch('/projects', {
+        method: 'POST',
+        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: name.trim(), customer: customer || null, notes: notes || null }),
+      });
+      const data = await res.json();
+      if (res.ok) { onCreate(data.project); onClose(); }
+    } finally {
+      setSaving(false);
+    }
+  }, [name, customer, notes, onCreate, onClose]);
+
+  return html`
+    <div class="overlay" onClick=${e => e.target === e.currentTarget && onClose()}>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>New Project</h2>
+          <button class="modal-close" onClick=${onClose}>✕</button>
+        </div>
+        <div class="modal-body">
+          <form class="project-form" onSubmit=${handleSubmit}>
+            <label class="form-label">Name *
+              <input class="form-input" type="text" value=${name}
+                onInput=${e => setName(e.target.value)} placeholder="Project name" required />
+            </label>
+            <label class="form-label">Customer
+              <input class="form-input" type="text" value=${customer}
+                onInput=${e => setCustomer(e.target.value)} placeholder="Optional" />
+            </label>
+            <label class="form-label">Notes
+              <textarea class="form-input form-textarea" value=${notes}
+                onInput=${e => setNotes(e.target.value)} placeholder="Optional" />
+            </label>
+            <div class="form-actions">
+              <button type="button" class="btn-secondary" onClick=${onClose}>Cancel</button>
+              <button type="submit" class="btn-primary" disabled=${saving || !name.trim()}>
+                ${saving ? 'Creating…' : 'Create Project'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function ProjectCard({ project, onClick }) {
+  const totalW = project.total_weight_g;
+  const totalT = project.total_time_s;
+  return html`
+    <div class="proj-card" onClick=${onClick}>
+      <div class="proj-card-name">${project.name}</div>
+      <div class="proj-card-meta">
+        ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
+      </div>
+      <div class="proj-card-stats">
+        <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? 's' : ''}</span>
+        ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
+        ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
+      </div>
+      ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
+    </div>
+  `;
+}
+
+function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
+  const totW = jobs.reduce((s, j) => s + (j.total_weight_g || 0), 0);
+  const totT = jobs.reduce((s, j) => s + (j.total_time_s || 0), 0);
+
+  const handleDelete = useCallback(async () => {
+    if (!confirm(`Delete project "${project.name}"? Jobs will be unassigned but not deleted.`)) return;
+    await fetch(`/projects/${project.id}`, { method: 'DELETE', headers: AUTH });
+    onDelete(project.id);
+  }, [project, onDelete]);
+
+  return html`
+    <div class="proj-detail">
+      <div class="proj-detail-header">
+        <button class="btn-back" onClick=${onBack}>← Projects</button>
+        <div class="proj-detail-title">
+          <h2>${project.name}</h2>
+          ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
+        </div>
+        <button class="btn-danger" onClick=${handleDelete}>Delete</button>
+      </div>
+      ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
+      <div class="totals-bar">
+        <span class="totals-label">Project</span>
+        <span>Jobs: <strong>${jobs.length}</strong></span>
+        <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
+        <span>Print time: <strong>${fmtTime(totT)}</strong></span>
+      </div>
+      ${jobs.length === 0
+        ? html`<div class="empty">No jobs assigned to this project yet.<br/>Open a job and assign it from the job detail modal.</div>`
+        : html`
+          <div class="table-wrap">
+            <table>
+              <thead><tr>
+                <th class="td-thumb"></th>
+                <th>Title</th>
+                <th>Printer</th>
+                <th>Date</th>
+                <th>Status</th>
+                <th class="td-num">Filament</th>
+                <th class="td-num">Time</th>
+              </tr></thead>
+              <tbody>
+                ${jobs.map(job => html`
+                  <tr key=${job.id} onClick=${() => onJobClick(job)}>
+                    <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
+                    <td class="td-title"><span class="row-title">${job.designTitle || 'Untitled Job'}</span></td>
+                    <td>${job.deviceModel || '—'}</td>
+                    <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
+                    <td><${Badge} status=${job.status} /></td>
+                    <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
+                    <td class="td-num">${fmtTime(job.total_time_s)}</td>
+                  </tr>
+                `)}
+              </tbody>
+            </table>
+          </div>
+        `
+      }
+    </div>
+  `;
+}
+
+function ProjectsView({ projects, setProjects, jobs, setJobs, onJobClick }) {
+  const [selectedProject, setSelectedProject] = useState(null);
+  const [showNew, setShowNew] = useState(false);
+
+  const handleCreate = useCallback(project => {
+    setProjects(ps => [project, ...ps]);
+    setSelectedProject(project);
+  }, [setProjects]);
+
+  const handleDelete = useCallback(id => {
+    setProjects(ps => ps.filter(p => p.id !== id));
+    setJobs(js => js.map(j => j.project_id === id ? { ...j, project_id: null } : j));
+    setSelectedProject(null);
+  }, [setProjects, setJobs]);
+
+  // Enrich project jobs with cover_url from the main jobs list
+  const projectJobs = useMemo(() => {
+    if (!selectedProject) return [];
+    return jobs.filter(j => j.project_id === selectedProject.id);
+  }, [selectedProject, jobs]);
+
+  // Keep selectedProject stats in sync (job count may have changed)
+  const selectedProjectFull = useMemo(() =>
+    selectedProject ? projects.find(p => p.id === selectedProject.id) ?? selectedProject : null,
+  [selectedProject, projects]);
+
+  if (selectedProjectFull) {
+    return html`
+      <${ProjectDetail}
+        project=${selectedProjectFull}
+        jobs=${projectJobs}
+        onBack=${() => setSelectedProject(null)}
+        onDelete=${handleDelete}
+        onJobClick=${onJobClick}
+      />
+      ${showNew && html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
+    `;
+  }
+
+  return html`
+    <div class="proj-list-header">
+      <span class="proj-list-count">${projects.length} project${projects.length !== 1 ? 's' : ''}</span>
+      <button class="btn-primary" onClick=${() => setShowNew(true)}>+ New Project</button>
+    </div>
+    ${projects.length === 0
+      ? html`<div class="empty">No projects yet. Create one to group related jobs together.</div>`
+      : html`
+        <div class="proj-grid">
+          ${projects.map(p => html`<${ProjectCard} key=${p.id} project=${p} onClick=${() => setSelectedProject(p)} />`)}
+        </div>
+      `
+    }
+    ${showNew && html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
+  `;
+}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  const [jobs, setJobs]         = useState([]);
+  const [projects, setProjects] = useState([]);
+  const [summary, setSummary]   = useState(null);
+  const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
+
+  const [page, setPage]                 = useState('jobs');
+  const [view, setView]                 = useState('table');
+  const [q, setQ]                       = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+  const [deviceFilter, setDeviceFilter] = useState('');
+  const [sortCol, setSortCol]           = useState('startTime');
+  const [sortDir, setSortDir]           = useState('desc');
+  const [selectedJob, setSelectedJob]   = useState(null);
+
+  useEffect(() => {
+    Promise.all([
+      fetch('/ui/data',   { headers: AUTH }).then(r => r.json()),
+      fetch('/summary',   { headers: AUTH }).then(r => r.json()),
+      fetch('/projects',  { headers: AUTH }).then(r => r.json()),
+    ]).then(([data, sum, proj]) => {
+      setJobs(data.jobs);
+      setSummary(sum);
+      setProjects(proj.projects);
+      setLoading(false);
+    }).catch(err => {
+      setError(err.message);
+      setLoading(false);
+    });
+  }, []);
+
+  const devices = useMemo(() =>
+    [...new Set(jobs.map(j => j.deviceModel).filter(Boolean))].sort(),
+  [jobs]);
+
+  const isFiltered = !!(q || statusFilter || deviceFilter);
+
+  const filtered = useMemo(() => jobs.filter(j => {
+    const text = ((j.designTitle || '') + ' ' + (j.customer || '')).toLowerCase();
+    if (q && !text.includes(q.toLowerCase())) return false;
+    if (statusFilter && (j.status || '').toLowerCase() !== statusFilter) return false;
+    if (deviceFilter && j.deviceModel !== deviceFilter) return false;
+    return true;
+  }), [jobs, q, statusFilter, deviceFilter]);
+
+  const sorted = useMemo(() => [...filtered].sort((a, b) => {
+    let av = a[sortCol], bv = b[sortCol];
+    if (av == null) av = sortDir === 'asc' ? Infinity : -Infinity;
+    if (bv == null) bv = sortDir === 'asc' ? Infinity : -Infinity;
+    if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
+    return sortDir === 'asc' ? av - bv : bv - av;
+  }), [filtered, sortCol, sortDir]);
+
+  const handleSort = useCallback(col => {
+    if (sortCol === col) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortCol(col);
+      setSortDir(col === 'startTime' ? 'desc' : 'asc');
+    }
+  }, [sortCol]);
+
+  const closeModal = useCallback(() => setSelectedJob(null), []);
+
+  // Generic job patch helper — updates local state from the returned job
+  const patchJob = useCallback(async (jobId, fields) => {
+    const res = await fetch(`/jobs/${jobId}`, {
+      method: 'PATCH',
+      headers: { ...AUTH, 'Content-Type': 'application/json' },
+      body: JSON.stringify(fields),
+    });
+    if (!res.ok) return;
+    const { job } = await res.json();
+    setJobs(js => js.map(j => j.id === jobId ? { ...j, ...job } : j));
+    setSelectedJob(j => j && j.id === jobId ? { ...j, ...job } : j);
+    return job;
+  }, []);
+
+  const handleJobProjectChange = useCallback(async (jobId, projectId) => {
+    await patchJob(jobId, { project_id: projectId });
+    // Refresh project stats (job counts / totals changed)
+    fetch('/projects', { headers: AUTH }).then(r => r.json()).then(d => setProjects(d.projects));
+  }, [patchJob]);
+
+  const handleJobStatusChange = useCallback((jobId, statusOverride) => {
+    patchJob(jobId, { status_override: statusOverride });
+  }, [patchJob]);
+
+  if (loading) return html`<div class="loading"><div class="spinner"></div>Loading print jobs…</div>`;
+  if (error)   return html`<div class="loading"><span style="color:var(--red)">Failed to load: ${error}</span></div>`;
+
+  return html`
+    <${Header} summary=${summary} page=${page} setPage=${setPage} />
+    ${page === 'projects'
+      ? html`<${ProjectsView}
+          projects=${projects} setProjects=${setProjects}
+          jobs=${jobs} setJobs=${setJobs}
+          onJobClick=${setSelectedJob}
+        />`
+      : html`
+        <${Toolbar}
+          q=${q} setQ=${setQ}
+          statusFilter=${statusFilter} setStatusFilter=${setStatusFilter}
+          deviceFilter=${deviceFilter} setDeviceFilter=${setDeviceFilter}
+          devices=${devices}
+          view=${view} setView=${setView}
+          filteredCount=${filtered.length} totalCount=${jobs.length}
+        />
+        <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
+        ${sorted.length === 0
+          ? html`<div class="empty">No jobs match your filters.</div>`
+          : view === 'table'
+            ? html`<${TableView} sorted=${sorted} sortCol=${sortCol} sortDir=${sortDir} onSort=${handleSort} onJobClick=${setSelectedJob} />`
+            : html`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`
+        }
+      `
+    }
+    ${selectedJob && html`<${Modal}
+      job=${selectedJob} onClose=${closeModal}
+      projects=${projects} onJobProjectChange=${handleJobProjectChange}
+      onJobStatusChange=${handleJobStatusChange}
+    />`}
+  `;
+}
+
+render(html`<${App} />`, document.getElementById('app'));

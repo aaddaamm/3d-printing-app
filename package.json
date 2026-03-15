@@ -1,0 +1,39 @@
+{
+  "name": "bambu-history-dump",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dump-bambu-history.ts",
+  "scripts": {
+    "sync": "npx tsx dump-bambu-history.ts",
+    "normalize": "npx tsx normalize.ts",
+    "api": "npx tsx api.ts",
+    "dev": "npx tsx watch api.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "format": "prettier --write \"**/*.ts\" \"**/*.json\" --ignore-path .gitignore",
+    "format:check": "prettier --check \"**/*.ts\" \"**/*.json\" --ignore-path .gitignore"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18"
+  },
+  "type": "module",
+  "dependencies": {
+    "@hono/node-server": "^1.19.9",
+    "better-sqlite3": "^12.6.2",
+    "hono": "^4.12.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.3.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  }
+}
