@@ -6,6 +6,7 @@ import { fetchTasks } from "./lib/fetch.js";
 import { normalizeTask } from "./lib/normalize.js";
 import { runNormalize } from "./normalize.js";
 import { downloadCovers, COVERS_DIR } from "./lib/covers.js";
+import { autoGroupProjects } from "./lib/auto-group.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -147,6 +148,11 @@ async function main(): Promise<void> {
 
   console.log("");
   runNormalize();
+
+  const { created, assigned } = autoGroupProjects();
+  if (created > 0 || assigned > 0) {
+    console.log(`  Auto-grouped: ${assigned} job(s) into projects (${created} new project(s) created).`);
+  }
   console.log("");
 
   console.log(`=== cover images ===`);

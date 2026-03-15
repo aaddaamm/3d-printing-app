@@ -96,6 +96,7 @@ export interface Project {
   customer: string | null;
   notes: string | null;
   created_at: string;
+  source_design_id: string | null;  // set when auto-created from a designId; null for manual projects
 }
 
 export interface JobFilament {

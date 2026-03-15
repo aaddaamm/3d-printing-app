@@ -181,6 +181,16 @@ for (const col of [
   }
 }
 
+// Add source_design_id to projects if missing
+try {
+  db.prepare("ALTER TABLE projects ADD COLUMN source_design_id TEXT").run();
+} catch { /* already exists */ }
+try {
+  db.prepare(
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_source_design_id ON projects(source_design_id) WHERE source_design_id IS NOT NULL",
+  ).run();
+} catch { /* already exists */ }
+
 // Add project_id and status_override to jobs if they don't exist yet
 for (const col of [
   "project_id INTEGER REFERENCES projects(id)",
