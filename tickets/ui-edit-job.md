@@ -1,9 +1,13 @@
 # Job Editing in the UI
 
+## Effort: Low
+## Benefit: High
+
 ## Background
 
-The API already supports PATCH /jobs/:id with fields: customer, notes, price_override.
-The UI has no way to set these — you need to use curl or another API client.
+The API already supports PATCH /jobs/:id with fields: customer, notes,
+price_override, status_override. The UI has no way to set customer/notes/price
+— you need to use curl or another API client. Status override is already done.
 
 ## Work
 

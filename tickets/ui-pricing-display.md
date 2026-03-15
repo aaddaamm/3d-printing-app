@@ -1,5 +1,10 @@
 # Show Calculated Price in the UI
 
+## Effort: Low
+## Benefit: High
+
+The whole point of the pricing system is to see prices — currently requires an API call to view them.
+
 ## Background
 
 The API has GET /jobs/:id/price which returns a full price breakdown

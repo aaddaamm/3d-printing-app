@@ -1,5 +1,10 @@
 # Add Specialty PLA Material Rate
 
+## Effort: Very Low
+## Benefit: Medium
+
+One DB insert + confirming the PLA-S mapping. Fixes mispriced Specialty PLA jobs.
+
 ## Background
 
 The spreadsheet defines three material types: PLA, PETG, and Specialty PLA.

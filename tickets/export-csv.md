@@ -1,5 +1,10 @@
 # CSV Export
 
+## Effort: Low
+## Benefit: High
+
+Great for invoicing — export filtered by customer or date range, open in Numbers.
+
 ## Background
 
 For invoicing and bookkeeping it's useful to export the job list (optionally

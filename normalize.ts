@@ -27,13 +27,13 @@ const STATUS_PRIORITY: Record<string, number> = {
   failed: 4,
 };
 
-function deriveJobStatus(statuses: string[]): string {
+export function deriveJobStatus(statuses: string[]): string {
   return statuses.reduce((worst, s) => {
     return (STATUS_PRIORITY[s] ?? 1) > (STATUS_PRIORITY[worst] ?? 1) ? s : worst;
   }, "finish");
 }
 
-interface RawTask {
+export interface RawTask {
   id: string;
   status: string | null;
   startTime: string | null;
@@ -67,7 +67,7 @@ interface SessionAccumulator {
 //
 // Returns a Map<taskId, sessionId> covering every task.
 
-function detectSessions(tasks: RawTask[]): Map<string, string> {
+export function detectSessions(tasks: RawTask[]): Map<string, string> {
   const taskToSession = new Map<string, string>();
 
   // Group by (instanceId, deviceId). Tasks with instanceId null/0 are solo.

@@ -1,5 +1,10 @@
 # Scheduled / Automatic Sync
 
+## Effort: Low
+## Benefit: High
+
+Removes the manual "remember to sync" step — history stays current automatically.
+
 ## Background
 
 Currently sync is manual (npm run sync). For the history to stay current the

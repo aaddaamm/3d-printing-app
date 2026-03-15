@@ -1,5 +1,10 @@
 # Filament Color Swatches in Job View
 
+## Effort: Low
+## Benefit: Medium
+
+Nice visual polish — immediately see what colors were in a print without opening the detail modal.
+
 ## Background
 
 `job_filaments` stores `color` as a hex string (e.g. "#FF6B35") for each AMS slot

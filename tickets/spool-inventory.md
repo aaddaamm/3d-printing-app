@@ -1,5 +1,11 @@
 # Spool Inventory Tracking
 
+## Effort: High
+## Benefit: High (if cost accuracy matters) / Medium (if flat rates are good enough)
+
+Exact per-spool cost tracking vs the current flat rate per material type.
+Most useful when you buy spools at different prices or use specialty filaments.
+
 ## Background
 
 The original "3d Printing Business copy.numbers" spreadsheet has a spool inventory

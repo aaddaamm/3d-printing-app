@@ -1,5 +1,10 @@
 # Rates / Settings Page in the UI
 
+## Effort: Medium
+## Benefit: High
+
+Without this, updating rates requires direct SQL or curl. Blocks non-technical use.
+
 ## Background
 
 Material rates, machine rates, and labor config live in the DB and can only be
