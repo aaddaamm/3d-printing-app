@@ -57,6 +57,17 @@ if (!process.env["BAMBU_TOKEN"] && fs.existsSync(TOKEN_PATH)) {
 
 const DEVICE_ID = process.env["BAMBU_DEVICE_ID"]; // optional
 const LIMIT = Number(process.env["BAMBU_LIMIT"] ?? 1000);
+
+// ── Colors ────────────────────────────────────────────────────────────────────
+
+const tty = process.stdout.isTTY;
+const co = (code: number) => (s: string | number) => tty ? `\x1b[${code}m${s}\x1b[0m` : String(s);
+const bold = co(1);
+const dim = co(2);
+const red = co(31);
+const green = co(32);
+const yellow = co(33);
+const cyan = co(36);
 if (!Number.isFinite(LIMIT) || LIMIT <= 0) {
   console.error("BAMBU_LIMIT must be a positive number");
   process.exit(1);
@@ -67,11 +78,11 @@ const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite"; // fo
 
 async function main(): Promise<void> {
   const tokenSource = process.env["BAMBU_TOKEN"] ? "BAMBU_TOKEN env var" : TOKEN_PATH;
-  console.log("=== bambu-history-dump ===");
-  console.log(`  Token : ${tokenSource}`);
-  console.log(`  API   : ${BASE_URL}`);
-  console.log(`  DB    : ${DB_PATH}`);
-  if (DEVICE_ID) console.log(`  Device: ${DEVICE_ID}`);
+  console.log(bold(cyan("=== bambu-history-dump ===")));
+  console.log(`  ${dim("Token :")} ${tokenSource}`);
+  console.log(`  ${dim("API   :")} ${cyan(BASE_URL)}`);
+  console.log(`  ${dim("DB    :")} ${dim(DB_PATH)}`);
+  if (DEVICE_ID) console.log(`  ${dim("Device:")} ${DEVICE_ID}`);
   console.log("");
 
   let total = 0;
@@ -84,7 +95,7 @@ async function main(): Promise<void> {
   });
 
   process.on("SIGINT", () => {
-    console.log(`\n\nInterrupted. Saved ${total} tasks before exit.`);
+    console.log(`\n\n${yellow("Interrupted.")} Saved ${bold(String(total))} tasks before exit.`);
     db.close();
     process.exit(0);
   });
@@ -112,14 +123,14 @@ async function main(): Promise<void> {
       inserted += counts.inserted;
       updated += counts.updated;
 
-      process.stdout.write(`\r  Fetching tasks: ${total}/${apiTotal} (${inserted} new, ${updated} updated)   `);
+      process.stdout.write(`\r  Fetching tasks: ${bold(String(total))}/${apiTotal} (${green(`${inserted} new`)}, ${yellow(`${updated} updated`)})   `);
 
       if (tasks.length < LIMIT) break;  // last page
       offset += LIMIT;
     }
 
     process.stdout.write("\n");
-    console.log(`  Done. ${total} tasks from API (${apiTotal} lifetime total).`);
+    console.log(`  ${green("Done.")} ${bold(String(total))} tasks from API ${dim(`(${apiTotal} lifetime total)`)}.`);
 
     stmts.updateSyncLog.run({
       id: Number(syncId),
@@ -142,21 +153,21 @@ async function main(): Promise<void> {
   }
 
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-  console.log(`  Elapsed: ${elapsed}s`);
+  console.log(`  ${dim("Elapsed:")} ${elapsed}s`);
   console.log("");
-  console.log(`Saved to: ${DB_PATH}`);
+  console.log(`Saved to: ${dim(DB_PATH)}`);
 
   console.log("");
   runNormalize();
 
   const { created, assigned } = autoGroupProjects();
   if (created > 0 || assigned > 0) {
-    console.log(`  Auto-grouped: ${assigned} job(s) into projects (${created} new project(s) created).`);
+    console.log(`  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`);
   }
   console.log("");
 
-  console.log(`=== cover images ===`);
-  console.log(`  Cache: ${COVERS_DIR}`);
+  console.log(bold(cyan("=== cover images ===")));
+  console.log(`  ${dim("Cache:")} ${dim(COVERS_DIR)}`);
   await downloadCovers();
   console.log("");
 
@@ -166,16 +177,24 @@ async function main(): Promise<void> {
       { status: string | null; n: number }
     >("SELECT status, COUNT(*) AS n FROM print_tasks GROUP BY status ORDER BY n DESC")
     .all();
-  console.log("By status:");
+  console.log(bold("By status:"));
   for (const row of statusSummary) {
-    console.log(`  ${row.status ?? "(null)"}: ${row.n}`);
+    const s = row.status ?? "(null)";
+    const label =
+      s === "finish"  ? green(s) :
+      s === "failed"  ? red(s) :
+      s === "cancel"  ? red(s) :
+      s === "running" ? cyan(s) :
+      s === "pause"   ? yellow(s) :
+      dim(s);
+    console.log(`  ${label}: ${bold(String(row.n))}`);
   }
 
   db.close();
 }
 
 main().catch((e: unknown) => {
-  console.error(`\nError: ${e instanceof Error ? e.message : String(e)}`);
+  console.error(`\n${red("Error:")} ${e instanceof Error ? e.message : String(e)}`);
   db.close();
   process.exit(1);
 });

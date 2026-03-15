@@ -13,10 +13,10 @@ const {
   mockInsertAutoProjectRun,
   mockAssignJobsRun,
 } = vi.hoisted(() => ({
-  mockFindDesignsAll: vi.fn<[], { designId: string; designTitle: string | null }[]>(),
-  mockFindAutoProjectGet: vi.fn<[string], { id: number } | undefined>(),
-  mockInsertAutoProjectRun: vi.fn<[], { lastInsertRowid: number }>(),
-  mockAssignJobsRun: vi.fn<[], { changes: number }>(),
+  mockFindDesignsAll: vi.fn<() => { designId: string; designTitle: string | null }[]>(),
+  mockFindAutoProjectGet: vi.fn<(id: string) => { id: number } | undefined>(),
+  mockInsertAutoProjectRun: vi.fn<() => { lastInsertRowid: number }>(),
+  mockAssignJobsRun: vi.fn<() => { changes: number }>(),
 }));
 
 vi.mock("../lib/db.js", () => ({

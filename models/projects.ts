@@ -28,6 +28,7 @@ export function createProject(data: ProjectCreate): Project {
     customer: data.customer ?? null,
     notes: data.notes ?? null,
     created_at: now,
+    source_design_id: null,
   });
   return stmts.getProjectById.get(result.lastInsertRowid as number)!;
 }
