@@ -295,6 +295,9 @@ function PricingSection({ jobId }) {
       <div class="pricing-row"><span>Material</span><span>${fmtCurrency(price.material_cost)}</span></div>
       <div class="pricing-row"><span>Machine</span><span>${fmtCurrency(price.machine_cost)}</span></div>
       <div class="pricing-row"><span>Labor</span><span>${fmtCurrency(price.labor_cost)}</span></div>
+      ${price.extra_labor_cost > 0 && html`
+        <div class="pricing-row pricing-extra-labor"><span>Extra labor</span><span>${fmtCurrency(price.extra_labor_cost)}</span></div>
+      `}
       <div class="pricing-divider"></div>
       <div class="pricing-row pricing-base"><span>Base</span><span>${fmtCurrency(price.base_price)}</span></div>
       ${markup !== 0 && html`
@@ -313,7 +316,7 @@ function PricingSection({ jobId }) {
 
 const STATUS_OPTIONS = ['finish', 'failed', 'cancel', 'running', 'pause'];
 
-function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange, onNavigateToProject }) {
+function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange, onJobExtraLaborChange, onNavigateToProject }) {
   useEffect(() => {
     const handler = e => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -358,7 +361,17 @@ function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange, 
             </div></div>
           </div>
           ${job.notes && html`<div class="notes-box">${job.notes}</div>`}
-          <${PricingSection} jobId=${job.id} />
+          <${PricingSection} jobId=${job.id} key=${job.extra_labor_minutes} />
+          <div class="modal-project-row">
+            <label class="modal-project-label">Extra labor (min)</label>
+            <input type="number" class="modal-project-select" min="0" step="1"
+              placeholder="0"
+              value=${job.extra_labor_minutes ?? ''}
+              onChange=${e => {
+                const v = e.target.value === '' ? null : Number(e.target.value);
+                onJobExtraLaborChange(job.id, v);
+              }} />
+          </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Status override</label>
             <select class="modal-project-select" value=${job.status_override ?? ''} onChange=${handleStatusChange}>
@@ -673,6 +686,10 @@ function App() {
     patchJob(jobId, { status_override: statusOverride });
   }, [patchJob]);
 
+  const handleJobExtraLaborChange = useCallback((jobId, minutes) => {
+    patchJob(jobId, { extra_labor_minutes: minutes });
+  }, [patchJob]);
+
   const handleNavigateToProject = useCallback(projectId => {
     setSelectedJob(null);
     navigate(`/projects/${projectId}`);
@@ -734,6 +751,7 @@ function App() {
       job=${selectedJob} onClose=${closeModal}
       projects=${projects} onJobProjectChange=${handleJobProjectChange}
       onJobStatusChange=${handleJobStatusChange}
+      onJobExtraLaborChange=${handleJobExtraLaborChange}
       onNavigateToProject=${handleNavigateToProject}
     />`}
   `;

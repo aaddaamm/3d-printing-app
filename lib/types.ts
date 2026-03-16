@@ -88,6 +88,7 @@ export interface Job {
   price_override: number | null;
   status_override: string | null;
   project_id: number | null;
+  extra_labor_minutes: number | null;
 }
 
 export interface Project {
@@ -149,6 +150,7 @@ export interface PriceBreakdown {
   material_cost: number;
   machine_cost: number;
   labor_cost: number;
+  extra_labor_cost: number;
   base_price: number;
   final_price: number;
   is_override: boolean;

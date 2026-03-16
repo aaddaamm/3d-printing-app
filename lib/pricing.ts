@@ -11,6 +11,7 @@ export interface CalcPriceParams {
   total_weight_g: number;
   total_time_s: number;
   labor_minutes?: number;
+  extra_labor_minutes?: number | null;
   price_override?: number | null;
   machineRate: MachineRate;
   materialRate: MaterialRate;
@@ -47,6 +48,7 @@ export function calcPrice({
   total_weight_g,
   total_time_s,
   labor_minutes = 15,
+  extra_labor_minutes = null,
   price_override = null,
   machineRate,
   materialRate,
@@ -55,7 +57,10 @@ export function calcPrice({
   const material_cost = calcMaterialCost(total_weight_g, materialRate);
   const machine_cost = calcMachineCost(total_time_s, machineRate);
   const labor_cost = calcLaborCost(labor_minutes, laborConfig);
-  const base_price = material_cost + machine_cost + labor_cost;
+  const extra_labor_cost = extra_labor_minutes
+    ? (extra_labor_minutes / 60) * laborConfig.hourly_rate
+    : 0;
+  const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
   const calculated_price = Math.ceil(base_price * (1 + laborConfig.profit_markup_pct));
 
   const is_override = price_override != null;
@@ -65,6 +70,7 @@ export function calcPrice({
     material_cost: round2(material_cost),
     machine_cost: round2(machine_cost),
     labor_cost: round2(labor_cost),
+    extra_labor_cost: round2(extra_labor_cost),
     base_price: round2(base_price),
     final_price: round2(final_price),
     is_override,

@@ -34,6 +34,7 @@ export interface JobPatch {
   price_override?: number | null | undefined;
   status_override?: string | null | undefined;
   project_id?: number | null | undefined;
+  extra_labor_minutes?: number | null | undefined;
 }
 
 export function patchJob(id: number, patch: JobPatch): Job | undefined {
@@ -48,6 +49,10 @@ export function patchJob(id: number, patch: JobPatch): Job | undefined {
     status_override:
       "status_override" in patch ? (patch.status_override ?? null) : existing.status_override,
     project_id: "project_id" in patch ? (patch.project_id ?? null) : existing.project_id,
+    extra_labor_minutes:
+      "extra_labor_minutes" in patch
+        ? (patch.extra_labor_minutes ?? null)
+        : existing.extra_labor_minutes,
   });
   return stmts.getJobById.get(id);
 }
@@ -95,6 +100,7 @@ export function getJobPrice(
   const breakdown = calcPrice({
     total_weight_g: job.total_weight_g ?? 0,
     total_time_s: job.total_time_s ?? 0,
+    extra_labor_minutes: job.extra_labor_minutes ?? null,
     price_override: job.price_override ?? null,
     machineRate,
     materialRate,
@@ -142,6 +148,7 @@ export function getAllJobPrices(): Record<number, number> {
       const { final_price } = calcPrice({
         total_weight_g: job.total_weight_g ?? 0,
         total_time_s: job.total_time_s ?? 0,
+        extra_labor_minutes: job.extra_labor_minutes ?? null,
         price_override: job.price_override ?? null,
         machineRate,
         materialRate,

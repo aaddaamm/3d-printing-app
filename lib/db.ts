@@ -195,6 +195,7 @@ try {
 for (const col of [
   "project_id INTEGER REFERENCES projects(id)",
   "status_override TEXT",
+  "extra_labor_minutes REAL",
 ]) {
   try {
     db.prepare(`ALTER TABLE jobs ADD COLUMN ${col}`).run();
@@ -298,7 +299,7 @@ export const stmts = {
 
   getTaskById: db.prepare<[string], PrintTask>("SELECT * FROM print_tasks WHERE id = ?"),
 
-  upsertJob: db.prepare<Omit<Job, "id" | "customer" | "notes" | "price_override" | "status_override" | "project_id">>(`
+  upsertJob: db.prepare<Omit<Job, "id" | "customer" | "notes" | "price_override" | "status_override" | "project_id" | "extra_labor_minutes">>(`
     INSERT INTO jobs (
       session_id, instanceId, print_run, designId, designTitle, deviceId, deviceModel,
       startTime, endTime, total_weight_g, total_time_s, plate_count, status
@@ -317,9 +318,9 @@ export const stmts = {
 
   getJobById: db.prepare<[number], Job>("SELECT * FROM jobs WHERE id = ?"),
 
-  patchJob: db.prepare<Pick<Job, "customer" | "notes" | "price_override" | "status_override" | "project_id" | "id">>(`
+  patchJob: db.prepare<Pick<Job, "customer" | "notes" | "price_override" | "status_override" | "project_id" | "extra_labor_minutes" | "id">>(`
     UPDATE jobs SET customer=@customer, notes=@notes, price_override=@price_override,
-      status_override=@status_override, project_id=@project_id
+      status_override=@status_override, project_id=@project_id, extra_labor_minutes=@extra_labor_minutes
     WHERE id=@id
   `),
 

@@ -5,7 +5,7 @@ import { listJobs, getJobById, patchJob, getJobWithDetails, getJobPrice, getAllJ
 export const jobs = new Hono();
 
 const TEXT_FIELDS = ["customer", "notes", "status_override"] as const;
-const NUMERIC_FIELDS = ["price_override", "project_id"] as const;
+const NUMERIC_FIELDS = ["price_override", "project_id", "extra_labor_minutes"] as const;
 const ALL_FIELDS = [...TEXT_FIELDS, ...NUMERIC_FIELDS] as const;
 
 function parseId(c: Context): number | null {
@@ -66,6 +66,7 @@ jobs.patch("/:id", async (c) => {
     price_override: body["price_override"] as number | null | undefined,
     status_override: body["status_override"] as string | null | undefined,
     project_id: body["project_id"] as number | null | undefined,
+    extra_labor_minutes: body["extra_labor_minutes"] as number | null | undefined,
   });
   return c.json({ job });
 });
