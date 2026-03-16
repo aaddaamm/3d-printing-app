@@ -310,6 +310,22 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
   padding: 6px 10px; border-radius: 6px; font-size: 0.83rem; outline: none;
 }
 .modal-project-select:focus { border-color: var(--accent); }
+.pricing-box {
+  margin: 14px 0 6px;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 5px;
+}
+.pricing-row {
+  display: flex; justify-content: space-between;
+  font-size: 0.82rem; color: var(--subtext);
+}
+.pricing-row span:last-child { font-variant-numeric: tabular-nums; }
+.pricing-divider { border-top: 1px solid var(--border); margin: 3px 0; }
+.pricing-base { color: var(--text); }
+.pricing-final { color: var(--text); font-weight: 700; }
+.pricing-final .override-tag { margin-left: 6px; }
+.pricing-loading, .pricing-na { font-size: 0.78rem; color: var(--subtext); margin: 10px 0 4px; }
 
 /* ── Projects view ── */
 .proj-list-header {

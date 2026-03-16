@@ -51,6 +51,10 @@ function fmtDateShort(iso) {
   return d.toLocaleDateString(undefined, opts);
 }
 
+function fmtCurrency(n) {
+  return '$' + n.toFixed(2);
+}
+
 function fmtWeight(g) {
   if (g == null) return '—';
   return g >= 1000 ? `${(g / 1000).toFixed(2)} kg` : `${g.toFixed(1)} g`;
@@ -267,6 +271,34 @@ function GridView({ sorted, onJobClick }) {
 
 // ── Modal ────────────────────────────────────────────────────────────────────
 
+function PricingSection({ jobId }) {
+  const [price, setPrice] = useState(null);   // null = loading, false = unavailable
+  useEffect(() => {
+    setPrice(null);
+    fetch(`/jobs/${jobId}/price`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => setPrice(d ?? false))
+      .catch(() => setPrice(false));
+  }, [jobId]);
+
+  if (price === null) return html`<div class="pricing-row pricing-loading">Loading price…</div>`;
+  if (price === false) return html`<div class="pricing-row pricing-na">Pricing not configured</div>`;
+
+  return html`
+    <div class="pricing-box">
+      <div class="pricing-row"><span>Material</span><span>${fmtCurrency(price.material_cost)}</span></div>
+      <div class="pricing-row"><span>Machine</span><span>${fmtCurrency(price.machine_cost)}</span></div>
+      <div class="pricing-row"><span>Labor</span><span>${fmtCurrency(price.labor_cost)}</span></div>
+      <div class="pricing-divider"></div>
+      <div class="pricing-row pricing-base"><span>Base</span><span>${fmtCurrency(price.base_price)}</span></div>
+      <div class="pricing-row pricing-final">
+        <span>Final${price.is_override ? html`<span class="override-tag">override</span>` : ''}</span>
+        <span>${fmtCurrency(price.final_price)}</span>
+      </div>
+    </div>
+  `;
+}
+
 const STATUS_OPTIONS = ['finish', 'failed', 'cancel', 'running', 'pause'];
 
 function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange }) {
@@ -314,6 +346,7 @@ function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange }
             </div></div>
           </div>
           ${job.notes && html`<div class="notes-box">${job.notes}</div>`}
+          <${PricingSection} jobId=${job.id} />
           <div class="modal-project-row">
             <label class="modal-project-label">Status override</label>
             <select class="modal-project-select" value=${job.status_override ?? ''} onChange=${handleStatusChange}>
