@@ -304,7 +304,7 @@ function PricingSection({ jobId }) {
 
 const STATUS_OPTIONS = ['finish', 'failed', 'cancel', 'running', 'pause'];
 
-function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange }) {
+function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange, onNavigateToProject }) {
   useEffect(() => {
     const handler = e => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -364,6 +364,9 @@ function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange }
                 <option value="">— None —</option>
                 ${projects.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
               </select>
+              ${job.project_id != null && html`
+                <button class="btn-link" onClick=${() => { onClose(); onNavigateToProject(job.project_id); }}>View →</button>
+              `}
             </div>
           `}
         </div>
@@ -528,6 +531,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
 
 function ProjectsView({ projects, setProjects }) {
   const [showNew, setShowNew] = useState(false);
+  const [q, setQ] = useState('');
   const [, navigate] = useLocation();
 
   const handleCreate = useCallback(project => {
@@ -535,16 +539,29 @@ function ProjectsView({ projects, setProjects }) {
     navigate(`/projects/${project.id}`);
   }, [setProjects, navigate]);
 
+  const filtered = useMemo(() => {
+    if (!q) return projects;
+    const lc = q.toLowerCase();
+    return projects.filter(p =>
+      [p.name, p.customer, p.notes].filter(Boolean).join(' ').toLowerCase().includes(lc)
+    );
+  }, [projects, q]);
+
   return html`
     <div class="proj-list-header">
-      <span class="proj-list-count">${projects.length} project${projects.length !== 1 ? 's' : ''}</span>
+      <input type="search" class="proj-search" placeholder="Search projects…"
+        value=${q} onInput=${e => setQ(e.target.value)} />
+      <span class="proj-list-count">
+        ${q ? `${filtered.length} of ${projects.length}` : projects.length}
+        ${' '}project${projects.length !== 1 ? 's' : ''}
+      </span>
       <button class="btn-primary" onClick=${() => setShowNew(true)}>+ New Project</button>
     </div>
-    ${projects.length === 0
-      ? html`<div class="empty">No projects yet. Create one to group related jobs together.</div>`
+    ${filtered.length === 0
+      ? html`<div class="empty">${q ? 'No projects match your search.' : 'No projects yet. Create one to group related jobs together.'}</div>`
       : html`
         <div class="proj-grid">
-          ${projects.map(p => html`<${ProjectCard} key=${p.id} project=${p} onClick=${() => navigate(`/projects/${p.id}`)} />`)}
+          ${filtered.map(p => html`<${ProjectCard} key=${p.id} project=${p} onClick=${() => navigate(`/projects/${p.id}`)} />`)}
         </div>
       `
     }
@@ -647,6 +664,11 @@ function App() {
     patchJob(jobId, { status_override: statusOverride });
   }, [patchJob]);
 
+  const handleNavigateToProject = useCallback(projectId => {
+    setSelectedJob(null);
+    navigate(`/projects/${projectId}`);
+  }, [navigate]);
+
   const handleDeleteProject = useCallback(id => {
     setProjects(ps => ps.filter(p => p.id !== id));
     setJobs(js => js.map(j => j.project_id === id ? { ...j, project_id: null } : j));
@@ -703,6 +725,7 @@ function App() {
       job=${selectedJob} onClose=${closeModal}
       projects=${projects} onJobProjectChange=${handleJobProjectChange}
       onJobStatusChange=${handleJobStatusChange}
+      onNavigateToProject=${handleNavigateToProject}
     />`}
   `;
 }
