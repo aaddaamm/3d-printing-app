@@ -8,6 +8,7 @@
     "normalize": "npx tsx normalize.ts",
     "api": "npx tsx api.ts",
     "dev": "npx tsx watch api.ts",
+    "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

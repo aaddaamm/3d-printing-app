@@ -1,3 +1,6 @@
+import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
 import { db, stmts } from "./lib/db.js";
@@ -61,7 +64,7 @@ app.use("/*", async (c, next) => {
 // Public: UI shell + static assets + cached cover images
 // Protected: everything else (including /ui/data)
 
-const PUBLIC_UI_PATHS = new Set(["/ui", "/ui/", "/ui/app.js", "/ui/app.css"]);
+const PUBLIC_UI_PATHS = new Set(["/health", "/ui", "/ui/", "/ui/app.js", "/ui/app.css"]);
 
 app.use("/*", async (c, next) => {
   const p = c.req.path;
@@ -95,6 +98,35 @@ app.route("/projects", projects);
 app.route("/summary", summary);
 app.route("/rates", rates);
 
+// ── Sync scheduler ────────────────────────────────────────────────────────────
+//
+// Set SYNC_INTERVAL_HOURS to run the sync script on a recurring schedule.
+// The sync runs as a child process so it opens/closes its own DB connection
+// independently — WAL mode allows concurrent reads from the API while it writes.
+
+const SYNC_INTERVAL_HOURS = Number(process.env["SYNC_INTERVAL_HOURS"] ?? 0);
+
+function spawnSync(): Promise<void> {
+  // Detect compiled (production) vs source (tsx dev) by file extension.
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
+  const isCompiled = __filename.endsWith(".js");
+
+  const [cmd, args]: [string, string[]] = isCompiled
+    ? [process.execPath, [path.join(__dirname, "dump-bambu-history.js")]]
+    : [path.join(__dirname, "node_modules", ".bin", "tsx"),
+       [path.join(__dirname, "dump-bambu-history.ts")]];
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: "inherit", env: process.env });
+    child.on("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`sync exited with code ${code}`));
+    });
+    child.on("error", reject);
+  });
+}
+
 // ── Start ─────────────────────────────────────────────────────────────────────
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {
@@ -102,4 +134,11 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
   console.log(`  Listening on ${cyan(`http://localhost:${info.port}`)}`);
   console.log(`  UI:          ${cyan(`http://localhost:${info.port}/ui`)}`);
   console.log(`  DB: ${dim(DB_PATH)}`);
+  if (SYNC_INTERVAL_HOURS > 0) {
+    console.log(`  ${dim("Sync:")} every ${SYNC_INTERVAL_HOURS}h`);
+    const intervalMs = SYNC_INTERVAL_HOURS * 3_600_000;
+    // First sync 10s after startup, then on the interval
+    setTimeout(() => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)), 10_000);
+    setInterval(() => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)), intervalMs);
+  }
 });
