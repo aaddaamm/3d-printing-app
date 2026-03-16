@@ -85,20 +85,6 @@ describe("downloadCovers", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  // TODO: implement the four download-outcome scenarios below.
-  //
-  // Each test should:
-  //   1. Set mockPrepareAll to return one task: { id: "t1", cover: "https://example.com/t1.png" }
-  //   2. Set fs.existsSync to return false (file not yet cached)
-  //   3. Configure the global fetch mock to simulate the scenario
-  //   4. Assert on the returned counters and any expected side-effects
-  //
-  // Scenarios to cover:
-  //   a) HTTP 200 — file is downloaded and written to disk
-  //   b) HTTP 403 — URL expired, increments `expired` (not `failed`)
-  //   c) HTTP 500 — non-403 error, increments `failed`
-  //   d) Network throw — fetch rejects, increments `failed`
-
   it("HTTP 200 — downloaded increments and file is written to exact path", async () => {
     mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
