@@ -1,9 +1,30 @@
-import { h, render } from 'https://esm.sh/preact@10';
-import { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/preact@10/hooks';
+import { h, render, createContext } from 'https://esm.sh/preact@10';
+import { useState, useEffect, useMemo, useCallback, useContext } from 'https://esm.sh/preact@10/hooks';
 import htm from 'https://esm.sh/htm@3';
 
 const html = htm.bind(h);
 const AUTH = { Authorization: 'Bearer ' + window.API_KEY };
+
+// ── Router ───────────────────────────────────────────────────────────────────
+
+const LocationContext = createContext(null);
+
+function RouterProvider({ base, children }) {
+  const strip = path => path.startsWith(base) ? path.slice(base.length) || '/' : path;
+  const [path, setPath] = useState(() => strip(location.pathname));
+  useEffect(() => {
+    const onPop = () => setPath(strip(location.pathname));
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+  const navigate = useCallback(to => {
+    history.pushState(null, '', base + (to === '/' ? '' : to));
+    setPath(to);
+  }, [base]);
+  return html`<${LocationContext.Provider} value=${[path, navigate]}>${children}</${LocationContext.Provider}>`;
+}
+
+function useLocation() { return useContext(LocationContext); }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,17 +91,18 @@ function CoverImg({ url, className }) {
 
 // ── Header ───────────────────────────────────────────────────────────────────
 
-function Header({ summary, page, setPage }) {
+function Header({ summary }) {
+  const [loc, navigate] = useLocation();
   const t = summary?.totals;
   return html`
     <header>
       <div class="header-left">
         <h1>Bambu <span>Print History</span></h1>
         <nav class="top-nav">
-          <button class=${'nav-btn' + (page === 'jobs' ? ' active' : '')}
-            onClick=${() => setPage('jobs')}>Jobs</button>
-          <button class=${'nav-btn' + (page === 'projects' ? ' active' : '')}
-            onClick=${() => setPage('projects')}>Projects</button>
+          <button class=${'nav-btn' + (!loc.startsWith('/projects') ? ' active' : '')}
+            onClick=${() => navigate('/')}>Jobs</button>
+          <button class=${'nav-btn' + (loc.startsWith('/projects') ? ' active' : '')}
+            onClick=${() => navigate('/projects')}>Projects</button>
         </nav>
       </div>
       <div class="stats">
@@ -385,6 +407,9 @@ function ProjectCard({ project, onClick }) {
   const totalT = project.total_time_s;
   return html`
     <div class="proj-card" onClick=${onClick}>
+      ${project.cover_url
+        ? html`<img class="proj-card-cover" src=${project.cover_url} alt="" />`
+        : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`}
       <div class="proj-card-name">${project.name}</div>
       <div class="proj-card-meta">
         ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
@@ -461,44 +486,14 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
   `;
 }
 
-function ProjectsView({ projects, setProjects, jobs, setJobs, onJobClick }) {
-  const [selectedProject, setSelectedProject] = useState(null);
+function ProjectsView({ projects, setProjects }) {
   const [showNew, setShowNew] = useState(false);
+  const [, navigate] = useLocation();
 
   const handleCreate = useCallback(project => {
     setProjects(ps => [project, ...ps]);
-    setSelectedProject(project);
-  }, [setProjects]);
-
-  const handleDelete = useCallback(id => {
-    setProjects(ps => ps.filter(p => p.id !== id));
-    setJobs(js => js.map(j => j.project_id === id ? { ...j, project_id: null } : j));
-    setSelectedProject(null);
-  }, [setProjects, setJobs]);
-
-  // Enrich project jobs with cover_url from the main jobs list
-  const projectJobs = useMemo(() => {
-    if (!selectedProject) return [];
-    return jobs.filter(j => j.project_id === selectedProject.id);
-  }, [selectedProject, jobs]);
-
-  // Keep selectedProject stats in sync (job count may have changed)
-  const selectedProjectFull = useMemo(() =>
-    selectedProject ? projects.find(p => p.id === selectedProject.id) ?? selectedProject : null,
-  [selectedProject, projects]);
-
-  if (selectedProjectFull) {
-    return html`
-      <${ProjectDetail}
-        project=${selectedProjectFull}
-        jobs=${projectJobs}
-        onBack=${() => setSelectedProject(null)}
-        onDelete=${handleDelete}
-        onJobClick=${onJobClick}
-      />
-      ${showNew && html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
-    `;
-  }
+    navigate(`/projects/${project.id}`);
+  }, [setProjects, navigate]);
 
   return html`
     <div class="proj-list-header">
@@ -509,7 +504,7 @@ function ProjectsView({ projects, setProjects, jobs, setJobs, onJobClick }) {
       ? html`<div class="empty">No projects yet. Create one to group related jobs together.</div>`
       : html`
         <div class="proj-grid">
-          ${projects.map(p => html`<${ProjectCard} key=${p.id} project=${p} onClick=${() => setSelectedProject(p)} />`)}
+          ${projects.map(p => html`<${ProjectCard} key=${p.id} project=${p} onClick=${() => navigate(`/projects/${p.id}`)} />`)}
         </div>
       `
     }
@@ -525,8 +520,8 @@ function App() {
   const [summary, setSummary]   = useState(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState(null);
+  const [, navigate]            = useLocation();
 
-  const [page, setPage]                 = useState('jobs');
   const [view, setView]                 = useState('table');
   const [q, setQ]                       = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -608,35 +603,58 @@ function App() {
     patchJob(jobId, { status_override: statusOverride });
   }, [patchJob]);
 
+  const handleDeleteProject = useCallback(id => {
+    setProjects(ps => ps.filter(p => p.id !== id));
+    setJobs(js => js.map(j => j.project_id === id ? { ...j, project_id: null } : j));
+    navigate('/projects');
+  }, [navigate]);
+
   if (loading) return html`<div class="loading"><div class="spinner"></div>Loading print jobs…</div>`;
   if (error)   return html`<div class="loading"><span style="color:var(--red)">Failed to load: ${error}</span></div>`;
 
-  return html`
-    <${Header} summary=${summary} page=${page} setPage=${setPage} />
-    ${page === 'projects'
-      ? html`<${ProjectsView}
-          projects=${projects} setProjects=${setProjects}
-          jobs=${jobs} setJobs=${setJobs}
-          onJobClick=${setSelectedJob}
-        />`
-      : html`
-        <${Toolbar}
-          q=${q} setQ=${setQ}
-          statusFilter=${statusFilter} setStatusFilter=${setStatusFilter}
-          deviceFilter=${deviceFilter} setDeviceFilter=${setDeviceFilter}
-          devices=${devices}
-          view=${view} setView=${setView}
-          filteredCount=${filtered.length} totalCount=${jobs.length}
-        />
-        <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
-        ${sorted.length === 0
-          ? html`<div class="empty">No jobs match your filters.</div>`
-          : view === 'table'
-            ? html`<${TableView} sorted=${sorted} sortCol=${sortCol} sortDir=${sortDir} onSort=${handleSort} onJobClick=${setSelectedJob} />`
-            : html`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`
-        }
-      `
+  const [loc] = useLocation();
+  const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
+  const isProjects = loc.startsWith('/projects');
+
+  const renderMain = () => {
+    if (projectDetailMatch) {
+      const id = Number(projectDetailMatch[1]);
+      const project = projects.find(p => p.id === id);
+      const projectJobs = jobs.filter(j => j.project_id === id);
+      if (!project) return html`<div class="empty">Project not found.</div>`;
+      return html`<${ProjectDetail}
+        project=${project}
+        jobs=${projectJobs}
+        onBack=${() => navigate('/projects')}
+        onDelete=${handleDeleteProject}
+        onJobClick=${setSelectedJob}
+      />`;
     }
+    if (isProjects) {
+      return html`<${ProjectsView} projects=${projects} setProjects=${setProjects} />`;
+    }
+    return html`
+      <${Toolbar}
+        q=${q} setQ=${setQ}
+        statusFilter=${statusFilter} setStatusFilter=${setStatusFilter}
+        deviceFilter=${deviceFilter} setDeviceFilter=${setDeviceFilter}
+        devices=${devices}
+        view=${view} setView=${setView}
+        filteredCount=${filtered.length} totalCount=${jobs.length}
+      />
+      <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
+      ${sorted.length === 0
+        ? html`<div class="empty">No jobs match your filters.</div>`
+        : view === 'table'
+          ? html`<${TableView} sorted=${sorted} sortCol=${sortCol} sortDir=${sortDir} onSort=${handleSort} onJobClick=${setSelectedJob} />`
+          : html`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`
+      }
+    `;
+  };
+
+  return html`
+    <${Header} summary=${summary} />
+    ${renderMain()}
     ${selectedJob && html`<${Modal}
       job=${selectedJob} onClose=${closeModal}
       projects=${projects} onJobProjectChange=${handleJobProjectChange}
@@ -645,4 +663,4 @@ function App() {
   `;
 }
 
-render(html`<${App} />`, document.getElementById('app'));
+render(html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>`, document.getElementById('app'));

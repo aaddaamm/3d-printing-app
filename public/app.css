@@ -331,6 +331,14 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
   display: flex; flex-direction: column; gap: 8px;
 }
 .proj-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.proj-card-cover {
+  width: 100%; aspect-ratio: 4/3; object-fit: cover;
+  border-radius: calc(var(--radius) - 4px); margin: -4px 0 4px;
+}
+.proj-card-cover--empty {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface2, #1e2130); font-size: 2rem;
+}
 .proj-card-name { font-size: 1rem; font-weight: 700; }
 .proj-card-meta { display: flex; flex-wrap: wrap; gap: 6px; }
 .proj-card-stats { display: flex; gap: 14px; font-size: 0.8rem; color: var(--subtext); flex-wrap: wrap; }

@@ -154,5 +154,8 @@ export function createUiApp(apiKey: string): Hono {
     return c.json({ jobs });
   });
 
+  // SPA catch-all — must be last so static assets and API routes match first
+  ui.get("/*", (c) => serveShell(c));
+
   return ui;
 }

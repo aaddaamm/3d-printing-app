@@ -1,14 +1,22 @@
 import { db, stmts } from "../lib/db.js";
+import { localCoverExists } from "../lib/covers.js";
 import type { Project, Job } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
   job_count: number;
   total_weight_g: number | null;
   total_time_s: number | null;
+  cover_url: string | null;
 };
 
 export function listProjects(): ProjectWithStats[] {
-  return stmts.listProjects.all();
+  return stmts.listProjects.all().map(({ latest_cover_task_id, ...row }) => ({
+    ...row,
+    cover_url:
+      latest_cover_task_id && localCoverExists(String(latest_cover_task_id))
+        ? `/ui/covers/${latest_cover_task_id}`
+        : null,
+  }));
 }
 
 export function getProjectById(id: number): Project | undefined {
