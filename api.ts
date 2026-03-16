@@ -10,6 +10,7 @@ import { summary } from "./routes/summary.js";
 import { rates } from "./routes/rates.js";
 import { projects } from "./routes/projects.js";
 import { createUiApp } from "./routes/ui.js";
+import { getCookie } from "hono/cookie";
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 
@@ -61,16 +62,17 @@ app.use("/*", async (c, next) => {
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
-// Public: UI shell + static assets + cached cover images
-// Protected: everything else (including /ui/data)
+// Public:    /health, /ui/login, static assets (no sensitive data)
+// Protected: everything else — Bearer token (API clients) or session cookie (browser)
 
-const PUBLIC_UI_PATHS = new Set(["/health", "/ui", "/ui/", "/ui/app.js", "/ui/app.css"]);
+const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css"]);
 
 app.use("/*", async (c, next) => {
   const p = c.req.path;
-  if (PUBLIC_UI_PATHS.has(p)) return next();
-  if (p.startsWith("/ui/covers/")) return next();
+  if (PUBLIC_PATHS.has(p)) return next();
   if (c.req.header("Authorization") === `Bearer ${API_KEY}`) return next();
+  if (getCookie(c, "session") === API_KEY) return next();
+  if (p.startsWith("/ui")) return c.redirect("/ui/login");
   return c.json({ error: "Unauthorized" }, 401);
 });
 

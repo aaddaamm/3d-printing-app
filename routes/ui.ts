@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono } from "hono";
+import { setCookie, deleteCookie } from "hono/cookie";
 import { db } from "../lib/db.js";
 import { localCoverPath, localCoverExists } from "../lib/covers.js";
 
@@ -29,8 +30,63 @@ interface JobRow {
   cover_url: string | null;
 }
 
+const LOGIN_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Sign in — Bambu Print History</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { display: flex; align-items: center; justify-content: center;
+           min-height: 100svh; background: #0f0f0f; font-family: system-ui, sans-serif; }
+    form { display: flex; flex-direction: column; gap: 12px; width: 320px; }
+    h1 { color: #e0e0e0; font-size: 1.1rem; font-weight: 600; text-align: center; margin-bottom: 4px; }
+    input { padding: 10px 12px; border-radius: 6px; border: 1px solid #333;
+            background: #1a1a1a; color: #e0e0e0; font-size: 1rem; outline: none; }
+    input:focus { border-color: #555; }
+    button { padding: 10px; border-radius: 6px; border: none; background: #2563eb;
+             color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    button:hover { background: #1d4ed8; }
+    .error { color: #f87171; font-size: 0.85rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <form method="POST" action="/ui/login">
+    <h1>Bambu Print History</h1>
+    __ERROR__
+    <input type="password" name="key" placeholder="API key" autofocus autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+</body>
+</html>`;
+
 export function createUiApp(apiKey: string): Hono {
   const ui = new Hono();
+
+  ui.get("/login", (c) => {
+    const error = c.req.query("error");
+    const page = LOGIN_HTML.replace("__ERROR__", error ? '<p class="error">Incorrect key.</p>' : "");
+    return c.html(page);
+  });
+
+  ui.post("/login", async (c) => {
+    const body = await c.req.parseBody();
+    if (body["key"] !== apiKey) return c.redirect("/ui/login?error=1");
+    setCookie(c, "session", apiKey, {
+      httpOnly: true,
+      path: "/",
+      sameSite: "Lax",
+      secure: process.env["NODE_ENV"] !== "development",
+      maxAge: 60 * 60 * 24 * 90, // 90 days
+    });
+    return c.redirect("/ui/");
+  });
+
+  ui.get("/logout", (c) => {
+    deleteCookie(c, "session", { path: "/" });
+    return c.redirect("/ui/login");
+  });
 
   // HTML shell — injects API key as a global so app.js can auth its requests.
   // Re-read from disk on each request so edits to index.html are live without restart.
