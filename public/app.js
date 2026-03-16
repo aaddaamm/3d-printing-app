@@ -287,6 +287,9 @@ function PricingSection({ jobId }) {
   if (price === null) return html`<div class="pricing-row pricing-loading">Loading price…</div>`;
   if (price === false) return html`<div class="pricing-row pricing-na">Pricing not configured</div>`;
 
+  const markup = price.final_price - price.base_price;
+  const markupPct = price.base_price > 0 ? Math.round(markup / price.base_price * 100) : 0;
+
   return html`
     <div class="pricing-box">
       <div class="pricing-row"><span>Material</span><span>${fmtCurrency(price.material_cost)}</span></div>
@@ -294,6 +297,12 @@ function PricingSection({ jobId }) {
       <div class="pricing-row"><span>Labor</span><span>${fmtCurrency(price.labor_cost)}</span></div>
       <div class="pricing-divider"></div>
       <div class="pricing-row pricing-base"><span>Base</span><span>${fmtCurrency(price.base_price)}</span></div>
+      ${markup !== 0 && html`
+        <div class="pricing-row pricing-markup">
+          <span>Markup</span>
+          <span>${markup > 0 ? '+' : ''}${fmtCurrency(markup)} (${markupPct > 0 ? '+' : ''}${markupPct}%)</span>
+        </div>
+      `}
       <div class="pricing-row pricing-final">
         <span>Final${price.is_override ? html`<span class="override-tag">override</span>` : ''}</span>
         <span>${fmtCurrency(price.final_price)}</span>
