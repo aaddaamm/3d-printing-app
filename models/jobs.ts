@@ -11,32 +11,17 @@ export interface ListJobsFilter {
 }
 
 export function listJobs({ status, device, customer, from, to }: ListJobsFilter = {}): Job[] {
-  const conditions: string[] = [];
-  const params: string[] = [];
-  if (status) {
-    conditions.push("status = ?");
-    params.push(status);
-  }
-  if (device) {
-    conditions.push("deviceId = ?");
-    params.push(device);
-  }
-  if (customer) {
-    conditions.push("customer = ?");
-    params.push(customer);
-  }
-  if (from) {
-    conditions.push("startTime >= ?");
-    params.push(from);
-  }
-  if (to) {
-    conditions.push("startTime <= ?");
-    params.push(to);
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  // Each entry is [sql-fragment, bound-value] — kept together so they can't drift apart.
+  const conds: Array<[string, string]> = [];
+  if (status)   conds.push(["COALESCE(status_override, status) = ?", status]);
+  if (device)   conds.push(["deviceModel = ?", device]);
+  if (customer) conds.push(["customer = ?", customer]);
+  if (from)     conds.push(["startTime >= ?", from]);
+  if (to)       conds.push(["startTime <= ?", to]);
+  const where = conds.length ? `WHERE ${conds.map(([sql]) => sql).join(" AND ")}` : "";
   return db
     .prepare<string[], Job>(`SELECT * FROM jobs ${where} ORDER BY startTime DESC`)
-    .all(...params);
+    .all(...conds.map(([, v]) => v));
 }
 
 export function getJobById(id: number): Job | undefined {

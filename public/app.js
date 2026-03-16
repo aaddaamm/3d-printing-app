@@ -3,7 +3,6 @@ import { useState, useEffect, useMemo, useCallback, useContext } from 'https://e
 import htm from 'https://esm.sh/htm@3';
 
 const html = htm.bind(h);
-const AUTH = { Authorization: 'Bearer ' + window.API_KEY };
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
@@ -358,7 +357,7 @@ function NewProjectModal({ onClose, onCreate }) {
     try {
       const res = await fetch('/projects', {
         method: 'POST',
-        headers: { ...AUTH, 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), customer: customer || null, notes: notes || null }),
       });
       const data = await res.json();
@@ -430,7 +429,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
 
   const handleDelete = useCallback(async () => {
     if (!confirm(`Delete project "${project.name}"? Jobs will be unassigned but not deleted.`)) return;
-    await fetch(`/projects/${project.id}`, { method: 'DELETE', headers: AUTH });
+    await fetch(`/projects/${project.id}`, { method: 'DELETE' });
     onDelete(project.id);
   }, [project, onDelete]);
 
@@ -532,9 +531,9 @@ function App() {
 
   useEffect(() => {
     Promise.all([
-      fetch('/ui/data',   { headers: AUTH }).then(r => r.json()),
-      fetch('/summary',   { headers: AUTH }).then(r => r.json()),
-      fetch('/projects',  { headers: AUTH }).then(r => r.json()),
+      fetch('/ui/data').then(r => r.json()),
+      fetch('/summary').then(r => r.json()),
+      fetch('/projects').then(r => r.json()),
     ]).then(([data, sum, proj]) => {
       setJobs(data.jobs);
       setSummary(sum);
@@ -583,7 +582,7 @@ function App() {
   const patchJob = useCallback(async (jobId, fields) => {
     const res = await fetch(`/jobs/${jobId}`, {
       method: 'PATCH',
-      headers: { ...AUTH, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(fields),
     });
     if (!res.ok) return;
@@ -596,7 +595,7 @@ function App() {
   const handleJobProjectChange = useCallback(async (jobId, projectId) => {
     await patchJob(jobId, { project_id: projectId });
     // Refresh project stats (job counts / totals changed)
-    fetch('/projects', { headers: AUTH }).then(r => r.json()).then(d => setProjects(d.projects));
+    fetch('/projects').then(r => r.json()).then(d => setProjects(d.projects));
   }, [patchJob]);
 
   const handleJobStatusChange = useCallback((jobId, statusOverride) => {

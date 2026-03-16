@@ -425,16 +425,13 @@ export const stmts = {
 
 // ── insertBatch ───────────────────────────────────────────────────────────────
 
-const getLastRowid = db.prepare<[], { rowid: number }>("SELECT last_insert_rowid() AS rowid");
+const countTasks = db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM print_tasks");
 
 export const insertBatch = db.transaction(
   (rows: PrintTask[]): { inserted: number; updated: number } => {
-    let inserted = 0;
-    for (const row of rows) {
-      const before = getLastRowid.get()?.rowid ?? 0;
-      stmts.upsertTask.run(row);
-      if ((getLastRowid.get()?.rowid ?? 0) !== before) inserted++;
-    }
+    const before = countTasks.get()!.n;
+    for (const row of rows) stmts.upsertTask.run(row);
+    const inserted = countTasks.get()!.n - before;
     return { inserted, updated: rows.length - inserted };
   },
 );

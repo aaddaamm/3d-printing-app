@@ -89,15 +89,10 @@ export function createUiApp(apiKey: string): Hono {
     return c.redirect("/ui/login");
   });
 
-  // HTML shell — injects API key as a global so app.js can auth its requests.
-  // Re-read from disk on each request so edits to index.html are live without restart.
+  // HTML shell — re-read from disk on each request so edits are live without restart.
   const serveShell = (c: Context) => {
     const content = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
-    const page = content.replace(
-      "</body>",
-      `<script>window.API_KEY=${JSON.stringify(apiKey)}</script></body>`,
-    );
-    return c.html(page);
+    return c.html(content);
   };
   ui.get("/", (c) => serveShell(c));
   ui.get("", (c) => serveShell(c));
@@ -138,10 +133,13 @@ export function createUiApp(apiKey: string): Hono {
           j.total_weight_g, j.total_time_s, j.plate_count,
           COALESCE(j.status_override, j.status) AS status, j.status_override,
           j.customer, j.notes, j.price_override, j.project_id,
-          (SELECT pt.id FROM print_tasks pt
-           WHERE pt.session_id = j.session_id
-           ORDER BY pt.plateIndex LIMIT 1) AS first_task_id
+          pt_first.id AS first_task_id
         FROM jobs j
+        LEFT JOIN (
+          SELECT id, session_id,
+            ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY plateIndex) AS rn
+          FROM print_tasks
+        ) pt_first ON pt_first.session_id = j.session_id AND pt_first.rn = 1
         ORDER BY j.startTime DESC`,
       )
       .all();
