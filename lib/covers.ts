@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db.js";
+import { fetchWithRetry } from "./fetch.js";
 
 export const COVERS_DIR = path.resolve(
   process.env["BAMBU_COVERS_DIR"] ?? "./covers",
@@ -51,17 +52,13 @@ export async function downloadCovers(): Promise<{ downloaded: number; skipped: n
       skipped++;
     } else {
       try {
-        const resp = await fetch(task.cover);
-        if (!resp.ok) {
-          if (resp.status === 403) expired++;
-          else failed++;
-        } else {
-          const buf = await resp.arrayBuffer();
-          fs.writeFileSync(dest, Buffer.from(buf));
-          downloaded++;
-        }
-      } catch {
-        failed++;
+        const resp = await fetchWithRetry(task.cover, {}, { retries: 2, timeoutMs: 5000 });
+        const buf = await resp.arrayBuffer();
+        fs.writeFileSync(dest, Buffer.from(buf));
+        downloaded++;
+      } catch (e) {
+        if (e instanceof Error && /^HTTP 403\b/.test(e.message)) expired++;
+        else failed++;
       }
     }
     printProgress();

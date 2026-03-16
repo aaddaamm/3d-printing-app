@@ -1,4 +1,5 @@
 import type { BambuApiResponse } from "./types.js";
+import { FETCH_TIMEOUT_MS } from "./constants.js";
 
 interface FetchRetryOptions {
   retries?: number;
@@ -20,7 +21,7 @@ function sleep(ms: number): Promise<void> {
 export async function fetchWithRetry(
   url: URL | string,
   options: RequestInit,
-  { retries = 4, timeoutMs = 10_000 }: FetchRetryOptions = {},
+  { retries = 4, timeoutMs = FETCH_TIMEOUT_MS }: FetchRetryOptions = {},
 ): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     const res = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
@@ -40,7 +41,8 @@ export async function fetchWithRetry(
     );
     await sleep(backoff);
   }
-  // Unreachable — loop always throws or returns, but satisfies TypeScript.
+  // TypeScript requires this — the loop always returns or throws on the final attempt,
+  // but control flow analysis can't prove it when retries is a variable.
   throw new Error("fetchWithRetry: exhausted retries");
 }
 

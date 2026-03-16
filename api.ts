@@ -11,17 +11,9 @@ import { rates } from "./routes/rates.js";
 import { projects } from "./routes/projects.js";
 import { createUiApp } from "./routes/ui.js";
 import { getCookie } from "hono/cookie";
+import { bold, dim, red, green, yellow, cyan } from "./lib/colors.js";
 
 // ── Colors ────────────────────────────────────────────────────────────────────
-
-const tty = process.stdout.isTTY;
-const c = (code: number) => (s: string | number) => tty ? `\x1b[${code}m${s}\x1b[0m` : String(s);
-const bold = c(1);
-const dim = c(2);
-const red = c(31);
-const green = c(32);
-const yellow = c(33);
-const cyan = c(36);
 
 function methodColor(method: string): string {
   switch (method) {

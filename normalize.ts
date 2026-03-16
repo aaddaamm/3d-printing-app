@@ -1,5 +1,6 @@
 import { db, stmts } from "./lib/db.js";
 import type { JobFilament } from "./lib/types.js";
+import { SESSION_GAP_S } from "./lib/constants.js";
 
 // ── normalize.ts ──────────────────────────────────────────────────────────────
 //
@@ -11,11 +12,6 @@ import type { JobFilament } from "./lib/types.js";
 // Safe to re-run — all writes are idempotent upserts.
 
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
-
-// Tasks within the same (instanceId, deviceId) group are part of the same
-// session if the gap between consecutive prints is under this threshold.
-// Gaps >4h almost certainly mean separate print runs of the same design.
-const SESSION_GAP_S = 4 * 3600;
 
 // Status priority for deriving a job-level status from its plates.
 // Higher = worse outcome wins (a failed plate makes the job failed).

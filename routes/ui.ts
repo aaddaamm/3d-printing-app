@@ -5,6 +5,7 @@ import { Hono, type Context } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { db } from "../lib/db.js";
 import { localCoverPath, localCoverExists } from "../lib/covers.js";
+import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
@@ -77,8 +78,8 @@ export function createUiApp(apiKey: string): Hono {
       httpOnly: true,
       path: "/",
       sameSite: "Lax",
-      secure: process.env["NODE_ENV"] !== "development",
-      maxAge: 60 * 60 * 24 * 90, // 90 days
+      secure: process.env["NODE_ENV"] === "production",
+      maxAge: SESSION_COOKIE_MAX_AGE,
     });
     return c.redirect("/ui");
   });

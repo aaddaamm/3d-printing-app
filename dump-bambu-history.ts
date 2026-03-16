@@ -7,6 +7,8 @@ import { normalizeTask } from "./lib/normalize.js";
 import { runNormalize } from "./normalize.js";
 import { downloadCovers, COVERS_DIR } from "./lib/covers.js";
 import { autoGroupProjects } from "./lib/auto-group.js";
+import { API_PAGE_LIMIT } from "./lib/constants.js";
+import { bold, dim, red, green, yellow, cyan } from "./lib/colors.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -56,18 +58,10 @@ if (!process.env["BAMBU_TOKEN"] && fs.existsSync(TOKEN_PATH)) {
 }
 
 const DEVICE_ID = process.env["BAMBU_DEVICE_ID"]; // optional
-const LIMIT = Number(process.env["BAMBU_LIMIT"] ?? 1000);
+const LIMIT = Number(process.env["BAMBU_LIMIT"] ?? API_PAGE_LIMIT);
 
 // ── Colors ────────────────────────────────────────────────────────────────────
 
-const tty = process.stdout.isTTY;
-const co = (code: number) => (s: string | number) => tty ? `\x1b[${code}m${s}\x1b[0m` : String(s);
-const bold = co(1);
-const dim = co(2);
-const red = co(31);
-const green = co(32);
-const yellow = co(33);
-const cyan = co(36);
 if (!Number.isFinite(LIMIT) || LIMIT <= 0) {
   console.error("BAMBU_LIMIT must be a positive number");
   process.exit(1);

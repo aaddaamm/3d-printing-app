@@ -103,9 +103,9 @@ export function getJobPrice(
     stmts.getMachineRate.get(job.deviceModel ?? "") ?? stmts.getMachineRates.all()[0];
   const laborConfig = stmts.getLaborConfig.get();
 
-  if (!materialRate || !machineRate || !laborConfig) {
-    throw new Error("Pricing config incomplete — run normalize first");
-  }
+  if (!materialRate) throw new Error(`No material rate for filament type "${filamentType}"`);
+  if (!machineRate) throw new Error(`No machine rate for device "${job.deviceModel ?? "unknown"}"`);
+  if (!laborConfig) throw new Error("No labor config found — configure rates first");
 
   const breakdown = calcPrice({
     total_weight_g: job.total_weight_g ?? 0,
