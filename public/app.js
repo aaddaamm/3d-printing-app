@@ -187,6 +187,7 @@ const TABLE_COLS = [
   { col: null,             label: 'Status',   cls: '' },
   { col: 'total_weight_g', label: 'Filament', cls: 'sortable td-num' },
   { col: 'total_time_s',   label: 'Time',     cls: 'sortable td-num' },
+  { col: 'final_price',    label: 'Price',    cls: 'sortable td-num' },
   { col: null,             label: 'Plates',   cls: 'td-num' },
   { col: null,             label: 'Customer', cls: '' },
 ];
@@ -206,6 +207,7 @@ function JobRow({ job, onJobClick }) {
       <td><${Badge} status=${job.status} /></td>
       <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
       <td class="td-num">${fmtTime(job.total_time_s)}</td>
+      <td class="td-num">${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : '—'}</td>
       <td class="td-num">${job.plate_count ?? '—'}</td>
       <td>${job.customer && html`<span class="customer-pill">${job.customer}</span>`}</td>
     </tr>
@@ -250,6 +252,7 @@ function JobCard({ job, onJobClick }) {
           <span>📅 ${fmtDateShort(job.startTime)}</span>
           <span>⏱ ${fmtTime(job.total_time_s)}</span>
           <span>🧵 ${fmtWeight(job.total_weight_g)}</span>
+          ${job.final_price != null && html`<span>💰 ${fmtCurrency(job.final_price)}</span>`}
         </div>
         <div class="card-footer">
           <${Badge} status=${job.status} />
@@ -572,6 +575,10 @@ function App() {
       setSummary(sum);
       setProjects(proj.projects);
       setLoading(false);
+      // Prices fetched separately — won't block the UI if pricing isn't configured
+      fetch('/jobs/prices').then(r => r.json()).then(({ prices }) => {
+        setJobs(js => js.map(j => ({ ...j, final_price: prices[j.id] ?? null })));
+      }).catch(() => {});
     }).catch(err => {
       setError(err.message);
       setLoading(false);

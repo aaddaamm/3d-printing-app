@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { listJobs, getJobById, patchJob, getJobWithDetails, getJobPrice } from "../models/jobs.js";
+import { listJobs, getJobById, patchJob, getJobWithDetails, getJobPrice, getAllJobPrices } from "../models/jobs.js";
 
 export const jobs = new Hono();
 
@@ -16,6 +16,10 @@ function parseId(c: Context): number | null {
 jobs.get("/", (c) => {
   const rows = listJobs(c.req.query());
   return c.json({ count: rows.length, jobs: rows });
+});
+
+jobs.get("/prices", (c) => {
+  return c.json({ prices: getAllJobPrices() });
 });
 
 jobs.get("/:id", (c) => {

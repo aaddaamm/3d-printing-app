@@ -103,3 +103,54 @@ export function getJobPrice(
 
   return { id, filament_type: filamentType, ...breakdown };
 }
+
+export function getAllJobPrices(): Record<number, number> {
+  const laborConfig = stmts.getLaborConfig.get();
+  if (!laborConfig) return {};
+
+  const allMachineRates = stmts.getMachineRates.all();
+  if (!allMachineRates.length) return {};
+  const machineRates = new Map(allMachineRates.map(r => [r.device_model, r]));
+  const fallbackMachine = allMachineRates[0]!;
+
+  const allMaterialRates = stmts.getMaterialRates.all();
+  if (!allMaterialRates.length) return {};
+  const materialRates = new Map(allMaterialRates.map(r => [r.filament_type, r]));
+
+  // Dominant filament type per session — one query ordered by weight desc so first-wins is correct
+  const filamentRows = db.prepare<[], { session_id: string; filament_type: string; total_weight: number }>(`
+    SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
+    FROM job_filaments jf
+    JOIN print_tasks pt ON jf.task_id = pt.id
+    WHERE jf.filament_type IS NOT NULL
+    GROUP BY pt.session_id, jf.filament_type
+    ORDER BY pt.session_id, total_weight DESC
+  `).all();
+
+  const sessionFilament = new Map<string, string>();
+  for (const row of filamentRows) {
+    if (!sessionFilament.has(row.session_id)) sessionFilament.set(row.session_id, row.filament_type);
+  }
+
+  const prices: Record<number, number> = {};
+  for (const job of listJobs()) {
+    try {
+      const filamentType = sessionFilament.get(job.session_id) ?? "PLA";
+      const materialRate = materialRates.get(filamentType) ?? materialRates.get("PLA");
+      const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
+      if (!materialRate) continue;
+      const { final_price } = calcPrice({
+        total_weight_g: job.total_weight_g ?? 0,
+        total_time_s: job.total_time_s ?? 0,
+        price_override: job.price_override ?? null,
+        machineRate,
+        materialRate,
+        laborConfig,
+      });
+      prices[job.id] = final_price;
+    } catch {
+      // skip — pricing config incomplete for this job
+    }
+  }
+  return prices;
+}
