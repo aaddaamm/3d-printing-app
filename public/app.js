@@ -462,6 +462,8 @@ function ProjectCard({ project, onClick }) {
 function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
   const totW = jobs.reduce((s, j) => s + (j.total_weight_g || 0), 0);
   const totT = jobs.reduce((s, j) => s + (j.total_time_s || 0), 0);
+  const totP = jobs.every(j => j.final_price != null) && jobs.length
+    ? jobs.reduce((s, j) => s + j.final_price, 0) : null;
 
   const handleDelete = useCallback(async () => {
     if (!confirm(`Delete project "${project.name}"? Jobs will be unassigned but not deleted.`)) return;
@@ -485,6 +487,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
         <span>Jobs: <strong>${jobs.length}</strong></span>
         <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
         <span>Print time: <strong>${fmtTime(totT)}</strong></span>
+        ${totP != null && html`<span>Total: <strong>${fmtCurrency(totP)}</strong></span>`}
       </div>
       ${jobs.length === 0
         ? html`<div class="empty">No jobs assigned to this project yet.<br/>Open a job and assign it from the job detail modal.</div>`
@@ -499,6 +502,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
                 <th>Status</th>
                 <th class="td-num">Filament</th>
                 <th class="td-num">Time</th>
+                <th class="td-num">Price</th>
               </tr></thead>
               <tbody>
                 ${jobs.map(job => html`
@@ -510,6 +514,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
                     <td><${Badge} status=${job.status} /></td>
                     <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
                     <td class="td-num">${fmtTime(job.total_time_s)}</td>
+                    <td class="td-num">${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : '—'}</td>
                   </tr>
                 `)}
               </tbody>
