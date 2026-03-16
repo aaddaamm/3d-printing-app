@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
 import { db } from "../lib/db.js";
 import { localCoverPath, localCoverExists } from "../lib/covers.js";
@@ -80,7 +80,7 @@ export function createUiApp(apiKey: string): Hono {
       secure: process.env["NODE_ENV"] !== "development",
       maxAge: 60 * 60 * 24 * 90, // 90 days
     });
-    return c.redirect("/ui/");
+    return c.redirect("/ui");
   });
 
   ui.get("/logout", (c) => {
@@ -90,14 +90,16 @@ export function createUiApp(apiKey: string): Hono {
 
   // HTML shell — injects API key as a global so app.js can auth its requests.
   // Re-read from disk on each request so edits to index.html are live without restart.
-  ui.get("/", (c) => {
-    const html = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
-    const page = html.replace(
+  const serveShell = (c: Context) => {
+    const content = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
+    const page = content.replace(
       "</body>",
       `<script>window.API_KEY=${JSON.stringify(apiKey)}</script></body>`,
     );
     return c.html(page);
-  });
+  };
+  ui.get("/", (c) => serveShell(c));
+  ui.get("", (c) => serveShell(c));
 
   // Static assets — served without auth (no sensitive data).
   ui.get("/app.js", (c) => {
