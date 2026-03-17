@@ -535,7 +535,53 @@ function ProjectCard({ project, onClick }) {
   `;
 }
 
-function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
+function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
+  const [q, setQ] = useState('');
+  useEffect(() => {
+    const handler = e => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
+  const filtered = useMemo(() => {
+    if (!q) return unassignedJobs;
+    const lc = q.toLowerCase();
+    return unassignedJobs.filter(j =>
+      ((j.designTitle || '') + ' ' + (j.customer || '')).toLowerCase().includes(lc)
+    );
+  }, [unassignedJobs, q]);
+  return html`
+    <div class="overlay" onClick=${e => e.target === e.currentTarget && onClose()}>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>Add Jobs to Project</h2>
+          <button class="modal-close" onClick=${onClose}>✕</button>
+        </div>
+        <div class="modal-body">
+          <input type="search" class="add-jobs-search" placeholder="Search…"
+            value=${q} onInput=${e => setQ(e.target.value)} />
+          ${filtered.length === 0
+            ? html`<div class="empty" style="padding:16px 0">${q ? 'No matches.' : 'All jobs are already assigned to projects.'}</div>`
+            : html`<div class="add-jobs-list">
+              ${filtered.map(job => html`
+                <div class="add-jobs-row" key=${job.id} onClick=${() => onAdd(job.id)}>
+                  <${RowThumb} url=${job.cover_url} />
+                  <div class="add-jobs-info">
+                    <div class="add-jobs-title">${job.designTitle || 'Untitled Job'}</div>
+                    <div class="add-jobs-meta">${fmtDateShort(job.startTime)} · ${job.deviceModel || '—'}</div>
+                  </div>
+                  <button class="btn-primary add-jobs-btn">Add</button>
+                </div>
+              `)}
+            </div>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function ProjectDetail({ project, jobs, unassignedJobs, onBack, onDelete, onJobClick, onAddJob, onRemoveJob }) {
+  const [showAddJobs, setShowAddJobs] = useState(false);
   const totW = jobs.reduce((s, j) => s + (j.total_weight_g || 0), 0);
   const totT = jobs.reduce((s, j) => s + (j.total_time_s || 0), 0);
   const totP = jobs.every(j => j.final_price != null) && jobs.length
@@ -547,6 +593,10 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
     onDelete(project.id);
   }, [project, onDelete]);
 
+  const handleAdd = useCallback(jobId => {
+    onAddJob(jobId);
+  }, [onAddJob]);
+
   return html`
     <div class="proj-detail">
       <div class="proj-detail-header">
@@ -555,6 +605,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
           <h2>${project.name}</h2>
           ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
         </div>
+        <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
         <button class="btn-danger" onClick=${handleDelete}>Delete</button>
       </div>
       ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
@@ -566,7 +617,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
         ${totP != null && html`<span>Total: <strong>${fmtCurrency(totP)}</strong></span>`}
       </div>
       ${jobs.length === 0
-        ? html`<div class="empty">No jobs assigned to this project yet.<br/>Open a job and assign it from the job detail modal.</div>`
+        ? html`<div class="empty">No jobs assigned yet. Use "+ Add Jobs" to assign them.</div>`
         : html`
           <div class="table-wrap">
             <table>
@@ -579,6 +630,7 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
                 <th class="td-num">Filament</th>
                 <th class="td-num">Time</th>
                 <th class="td-num">Price</th>
+                <th></th>
               </tr></thead>
               <tbody>
                 ${jobs.map(job => html`
@@ -591,6 +643,8 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
                     <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
                     <td class="td-num">${fmtTime(job.total_time_s)}</td>
                     <td class="td-num">${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : '—'}</td>
+                    <td><button class="btn-remove-job" title="Remove from project"
+                      onClick=${e => { e.stopPropagation(); onRemoveJob(job.id); }}>×</button></td>
                   </tr>
                 `)}
               </tbody>
@@ -598,14 +652,36 @@ function ProjectDetail({ project, jobs, onBack, onDelete, onJobClick }) {
           </div>
         `
       }
+      ${showAddJobs && html`<${AddJobsModal}
+        unassignedJobs=${unassignedJobs}
+        onClose=${() => setShowAddJobs(false)}
+        onAdd=${handleAdd}
+      />`}
     </div>
   `;
 }
 
-function ProjectsView({ projects, setProjects }) {
+function ProjectsView({ projects, setProjects, onAutoGroup }) {
   const [showNew, setShowNew] = useState(false);
+  const [grouping, setGrouping] = useState(false);
   const [q, setQ] = useState('');
   const [, navigate] = useLocation();
+
+  const handleAutoGroup = useCallback(async () => {
+    setGrouping(true);
+    try {
+      const res = await fetch('/projects/auto-group', { method: 'POST' });
+      const { projects_created, jobs_assigned } = await res.json();
+      await onAutoGroup();
+      if (projects_created === 0) {
+        alert('No ungrouped jobs found — everything is already assigned to a project.');
+      } else {
+        alert(`Created ${projects_created} project${projects_created !== 1 ? 's' : ''}, assigned ${jobs_assigned} job${jobs_assigned !== 1 ? 's' : ''}.`);
+      }
+    } finally {
+      setGrouping(false);
+    }
+  }, [onAutoGroup]);
 
   const handleCreate = useCallback(project => {
     setProjects(ps => [project, ...ps]);
@@ -628,6 +704,9 @@ function ProjectsView({ projects, setProjects }) {
         ${q ? `${filtered.length} of ${projects.length}` : projects.length}
         ${' '}project${projects.length !== 1 ? 's' : ''}
       </span>
+      <button class="btn-secondary" onClick=${handleAutoGroup} disabled=${grouping}>
+        ${grouping ? 'Grouping…' : '⚡ Auto-group by design'}
+      </button>
       <button class="btn-primary" onClick=${() => setShowNew(true)}>+ New Project</button>
     </div>
     ${filtered.length === 0
@@ -752,6 +831,18 @@ function App() {
     navigate('/projects');
   }, [navigate]);
 
+  const handleAutoGroup = useCallback(async () => {
+    const [jobsData, projData] = await Promise.all([
+      fetch('/ui/data').then(r => r.json()),
+      fetch('/projects').then(r => r.json()),
+    ]);
+    setJobs(jobsData.jobs);
+    setProjects(projData.projects);
+    fetch('/jobs/prices').then(r => r.json()).then(({ prices }) => {
+      setJobs(js => js.map(j => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })));
+    }).catch(() => {});
+  }, []);
+
   if (loading) return html`<div class="loading"><div class="spinner"></div>Loading print jobs…</div>`;
   if (error)   return html`<div class="loading"><span style="color:var(--red)">Failed to load: ${error}</span></div>`;
 
@@ -765,16 +856,20 @@ function App() {
       const project = projects.find(p => p.id === id);
       const projectJobs = jobs.filter(j => j.project_id === id);
       if (!project) return html`<div class="empty">Project not found.</div>`;
+      const unassignedJobs = jobs.filter(j => j.project_id == null);
       return html`<${ProjectDetail}
         project=${project}
         jobs=${projectJobs}
+        unassignedJobs=${unassignedJobs}
         onBack=${() => navigate('/projects')}
         onDelete=${handleDeleteProject}
         onJobClick=${setSelectedJob}
+        onAddJob=${(jobId) => handleJobProjectChange(jobId, id)}
+        onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}
       />`;
     }
     if (isProjects) {
-      return html`<${ProjectsView} projects=${projects} setProjects=${setProjects} />`;
+      return html`<${ProjectsView} projects=${projects} setProjects=${setProjects} onAutoGroup=${handleAutoGroup} />`;
     }
     return html`
       <${Toolbar}

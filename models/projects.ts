@@ -70,3 +70,36 @@ export function deleteProject(id: number): boolean {
 export function getProjectJobs(id: number): Job[] {
   return stmts.getProjectJobs.all(id);
 }
+
+export function autoGroupByDesign(): { projects_created: number; jobs_assigned: number } {
+  const groups = db
+    .prepare<[], { instanceId: number; designTitle: string | null; job_ids: string }>(
+      `SELECT instanceId, designTitle, GROUP_CONCAT(id) AS job_ids
+       FROM jobs
+       WHERE project_id IS NULL AND instanceId IS NOT NULL
+       GROUP BY instanceId
+       ORDER BY MIN(startTime) DESC`,
+    )
+    .all();
+
+  let projects_created = 0;
+  let jobs_assigned = 0;
+
+  db.transaction(() => {
+    for (const group of groups) {
+      const now = new Date().toISOString();
+      const result = db
+        .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
+        .run(group.designTitle ?? `Design #${group.instanceId}`, now, String(group.instanceId));
+      const projectId = result.lastInsertRowid as number;
+      const ids = group.job_ids.split(",").map(Number);
+      db.prepare(
+        `UPDATE jobs SET project_id = ? WHERE id IN (${ids.map(() => "?").join(",")})`,
+      ).run(projectId, ...ids);
+      projects_created++;
+      jobs_assigned += ids.length;
+    }
+  })();
+
+  return { projects_created, jobs_assigned };
+}

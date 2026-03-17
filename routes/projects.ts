@@ -7,6 +7,7 @@ import {
   patchProject,
   deleteProject,
   getProjectJobs,
+  autoGroupByDesign,
 } from "../models/projects.js";
 
 export const projects = new Hono();
@@ -18,6 +19,12 @@ function parseId(c: Context): number | null {
 
 projects.get("/", (c) => {
   return c.json({ projects: listProjects() });
+});
+
+// Must be before /:id to avoid param capture
+projects.post("/auto-group", (c) => {
+  const result = autoGroupByDesign();
+  return c.json(result);
 });
 
 projects.post("/", async (c) => {
