@@ -92,6 +92,14 @@ function CoverImg({ url, className }) {
   return html`<img class=${className} src=${url} alt="" loading="lazy" onError=${() => setErr(true)} />`;
 }
 
+function FilamentSwatches({ colors }) {
+  if (!colors?.length) return null;
+  // Colors are stored as RRGGBBAA — take first 6 chars for CSS; filter pure white (default/unset)
+  const hexes = [...new Set(colors.map(c => c.slice(0, 6).toUpperCase()))].filter(c => c !== 'FFFFFF');
+  if (!hexes.length) return null;
+  return html`<span class="swatches">${hexes.map(h => html`<span class="swatch" style=${'background:#' + h} title=${'#' + h} />`)}</span>`;
+}
+
 // ── Header ───────────────────────────────────────────────────────────────────
 
 function Header({ summary }) {
@@ -133,6 +141,14 @@ function Header({ summary }) {
 // ── Toolbar ──────────────────────────────────────────────────────────────────
 
 function Toolbar({ q, setQ, statusFilter, setStatusFilter, deviceFilter, setDeviceFilter, devices, view, setView, filteredCount, totalCount }) {
+  const csvUrl = useMemo(() => {
+    const p = new URLSearchParams();
+    if (statusFilter) p.set('status', statusFilter);
+    if (deviceFilter) p.set('device', deviceFilter);
+    const qs = p.toString();
+    return '/jobs/export.csv' + (qs ? '?' + qs : '');
+  }, [statusFilter, deviceFilter]);
+
   return html`
     <div class="toolbar">
       <input type="search" placeholder="Search title or customer…"
@@ -156,6 +172,7 @@ function Toolbar({ q, setQ, statusFilter, setStatusFilter, deviceFilter, setDevi
           onClick=${() => setView('grid')}>⊞ Grid</button>
       </div>
       <div class="toolbar-right">
+        <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
         <span class="job-count">${filteredCount} / ${totalCount} jobs</span>
       </div>
     </div>
@@ -201,6 +218,7 @@ function JobRow({ job, onJobClick }) {
           ${job.designTitle || 'Untitled Job'}
         </span>
         ${job.print_run > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+        <${FilamentSwatches} colors=${job.filament_colors} />
       </td>
       <td>${job.deviceModel || '—'}</td>
       <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
@@ -258,6 +276,7 @@ function JobCard({ job, onJobClick }) {
           <${Badge} status=${job.status} />
           ${job.print_run > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
           ${job.customer && html`<span class="customer-pill">${job.customer}</span>`}
+          <${FilamentSwatches} colors=${job.filament_colors} />
         </div>
       </div>
     </div>
@@ -316,7 +335,13 @@ function PricingSection({ jobId }) {
 
 const STATUS_OPTIONS = ['finish', 'failed', 'cancel', 'running', 'pause'];
 
-function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange, onJobExtraLaborChange, onNavigateToProject }) {
+function Modal({ job, onClose, onPatch, projects, onJobProjectChange, onJobStatusChange, onJobExtraLaborChange, onNavigateToProject }) {
+  const [localCustomer, setLocalCustomer] = useState(job.customer ?? '');
+  const [localNotes, setLocalNotes] = useState(job.notes ?? '');
+  const [localPriceOverride, setLocalPriceOverride] = useState(
+    job.price_override != null ? String(job.price_override) : ''
+  );
+
   useEffect(() => {
     const handler = e => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -353,15 +378,41 @@ function Modal({ job, onClose, projects, onJobProjectChange, onJobStatusChange, 
             <div class="detail-item"><label>Printer</label><div class="detail-val">${job.deviceModel || '—'}</div></div>
             <div class="detail-item"><label>Started</label><div class="detail-val">${fmtDate(job.startTime)}</div></div>
             <div class="detail-item"><label>Duration</label><div class="detail-val">${fmtTime(job.total_time_s)}</div></div>
-            <div class="detail-item"><label>Filament</label><div class="detail-val">${fmtWeight(job.total_weight_g)}</div></div>
+            <div class="detail-item"><label>Filament</label>
+              <div class="detail-val">${fmtWeight(job.total_weight_g)} <${FilamentSwatches} colors=${job.filament_colors} /></div>
+            </div>
             <div class="detail-item"><label>Plates</label><div class="detail-val">${job.plate_count ?? '—'}</div></div>
-            <div class="detail-item"><label>Customer</label><div class="detail-val">${job.customer || '—'}</div></div>
             <div class="detail-item"><label>Print Run</label><div class="detail-val">
               ${job.print_run > 1 ? `Run #${job.print_run} of this design` : '1st print of this design'}
             </div></div>
           </div>
-          ${job.notes && html`<div class="notes-box">${job.notes}</div>`}
-          <${PricingSection} jobId=${job.id} key=${job.extra_labor_minutes} />
+          <${PricingSection} jobId=${job.id} key=${job.id + '-' + job.extra_labor_minutes} />
+          <div class="modal-project-row">
+            <label class="modal-project-label">Customer</label>
+            <input class="modal-project-select" type="text" placeholder="—"
+              value=${localCustomer}
+              onInput=${e => setLocalCustomer(e.target.value)}
+              onBlur=${() => onPatch(job.id, { customer: localCustomer.trim() || null })}
+              onKeyDown=${e => e.key === 'Enter' && e.target.blur()} />
+          </div>
+          <div class="modal-project-row">
+            <label class="modal-project-label">Notes</label>
+            <textarea class="modal-project-select modal-notes" placeholder="—"
+              value=${localNotes}
+              onInput=${e => setLocalNotes(e.target.value)}
+              onBlur=${() => onPatch(job.id, { notes: localNotes.trim() || null })} />
+          </div>
+          <div class="modal-project-row">
+            <label class="modal-project-label">Price override</label>
+            <input class="modal-project-select" type="number" min="0" step="0.01" placeholder="Calculated"
+              value=${localPriceOverride}
+              onInput=${e => setLocalPriceOverride(e.target.value)}
+              onBlur=${() => {
+                const v = localPriceOverride === '' ? null : Number(localPriceOverride);
+                onPatch(job.id, { price_override: v });
+              }}
+              onKeyDown=${e => e.key === 'Enter' && e.target.blur()} />
+          </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Extra labor (min)</label>
             <input type="number" class="modal-project-select" min="0" step="1"
@@ -748,7 +799,9 @@ function App() {
     <${Header} summary=${summary} />
     ${renderMain()}
     ${selectedJob && html`<${Modal}
+      key=${selectedJob.id}
       job=${selectedJob} onClose=${closeModal}
+      onPatch=${patchJob}
       projects=${projects} onJobProjectChange=${handleJobProjectChange}
       onJobStatusChange=${handleJobStatusChange}
       onJobExtraLaborChange=${handleJobExtraLaborChange}

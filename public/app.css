@@ -94,6 +94,12 @@ header h1 span { color: var(--accent); }
 
 .toolbar-right { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 .job-count { font-size: 0.78rem; color: var(--subtext); white-space: nowrap; }
+.btn-csv {
+  font-size: 0.75rem; color: var(--subtext); text-decoration: none;
+  padding: 3px 8px; border: 1px solid var(--border); border-radius: 5px;
+  white-space: nowrap;
+}
+.btn-csv:hover { color: var(--text); border-color: var(--accent); }
 
 /* ── Totals bar ── */
 .totals-bar {
@@ -181,6 +187,8 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
   vertical-align: middle;
   white-space: nowrap;
 }
+.swatches { display: inline-flex; gap: 3px; margin-left: 6px; vertical-align: middle; }
+.swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(255,255,255,.15); flex-shrink: 0; }
 
 .td-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--subtext); }
 .td-num strong { color: var(--text); }
@@ -310,6 +318,7 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
   padding: 6px 10px; border-radius: 6px; font-size: 0.83rem; outline: none;
 }
 .modal-project-select:focus { border-color: var(--accent); }
+.modal-notes { resize: vertical; min-height: 52px; font-family: inherit; line-height: 1.4; }
 .btn-link {
   background: none; border: none; color: var(--accent);
   cursor: pointer; font-size: 0.82rem; padding: 0 2px; white-space: nowrap;
