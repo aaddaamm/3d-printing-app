@@ -378,7 +378,8 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
   background: var(--surface2, #1e2130); font-size: 2rem;
 }
 .proj-card-name { font-size: 1rem; font-weight: 700; }
-.proj-card-meta { display: flex; flex-wrap: wrap; gap: 6px; }
+.proj-card-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.proj-card-price { margin-left: auto; font-size: 0.9rem; font-weight: 700; color: var(--accent); }
 .proj-card-stats { display: flex; gap: 14px; font-size: 0.8rem; color: var(--subtext); flex-wrap: wrap; }
 .proj-card-stats strong { color: var(--text); }
 .proj-card-notes {

@@ -513,7 +513,7 @@ function NewProjectModal({ onClose, onCreate }) {
   `;
 }
 
-function ProjectCard({ project, onClick }) {
+function ProjectCard({ project, totalPrice, onClick }) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
   return html`
@@ -524,6 +524,7 @@ function ProjectCard({ project, onClick }) {
       <div class="proj-card-name">${project.name}</div>
       <div class="proj-card-meta">
         ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
+        ${totalPrice != null && html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
       </div>
       <div class="proj-card-stats">
         <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? 's' : ''}</span>
@@ -661,7 +662,7 @@ function ProjectDetail({ project, jobs, unassignedJobs, onBack, onDelete, onJobC
   `;
 }
 
-function ProjectsView({ projects, setProjects, onAutoGroup }) {
+function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices }) {
   const [showNew, setShowNew] = useState(false);
   const [grouping, setGrouping] = useState(false);
   const [q, setQ] = useState('');
@@ -713,7 +714,7 @@ function ProjectsView({ projects, setProjects, onAutoGroup }) {
       ? html`<div class="empty">${q ? 'No projects match your search.' : 'No projects yet. Create one to group related jobs together.'}</div>`
       : html`
         <div class="proj-grid">
-          ${filtered.map(p => html`<${ProjectCard} key=${p.id} project=${p} onClick=${() => navigate(`/projects/${p.id}`)} />`)}
+          ${filtered.map(p => html`<${ProjectCard} key=${p.id} project=${p} totalPrice=${projectPrices[p.id] ?? null} onClick=${() => navigate(`/projects/${p.id}`)} />`)}
         </div>
       `
     }
@@ -762,6 +763,15 @@ function App() {
   const devices = useMemo(() =>
     [...new Set(jobs.map(j => j.deviceModel).filter(Boolean))].sort(),
   [jobs]);
+
+  const projectPrices = useMemo(() => {
+    const map = {};
+    for (const j of jobs) {
+      if (j.project_id != null && j.final_price != null)
+        map[j.project_id] = (map[j.project_id] ?? 0) + j.final_price;
+    }
+    return map;
+  }, [jobs]);
 
   const isFiltered = !!(q || statusFilter || deviceFilter);
 
@@ -869,7 +879,7 @@ function App() {
       />`;
     }
     if (isProjects) {
-      return html`<${ProjectsView} projects=${projects} setProjects=${setProjects} onAutoGroup=${handleAutoGroup} />`;
+      return html`<${ProjectsView} projects=${projects} setProjects=${setProjects} onAutoGroup=${handleAutoGroup} projectPrices=${projectPrices} />`;
     }
     return html`
       <${Toolbar}
