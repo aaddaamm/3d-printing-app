@@ -116,6 +116,8 @@ header h1 span { color: var(--accent); }
 .totals-bar strong { color: var(--text); margin-left: 4px; }
 .totals-label { color: var(--accent); font-weight: 600; font-size: 0.72rem;
   text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+.totals-total { margin-left: auto; }
+.totals-total strong { color: var(--accent) !important; }
 
 /* ── Table ── */
 .table-wrap {

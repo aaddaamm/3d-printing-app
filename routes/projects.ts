@@ -8,6 +8,8 @@ import {
   deleteProject,
   getProjectJobs,
   autoGroupByDesign,
+  getProjectPrice,
+  getAllProjectPrices,
 } from "../models/projects.js";
 
 export const projects = new Hono();
@@ -22,6 +24,10 @@ projects.get("/", (c) => {
 });
 
 // Must be before /:id to avoid param capture
+projects.get("/prices", (c) => {
+  return c.json({ prices: getAllProjectPrices() });
+});
+
 projects.post("/auto-group", (c) => {
   const result = autoGroupByDesign();
   return c.json(result);
@@ -48,6 +54,15 @@ projects.post("/", async (c) => {
     notes: (body["notes"] ?? null) as string | null,
   });
   return c.json({ project }, 201);
+});
+
+projects.get("/:id/price", (c) => {
+  const id = parseId(c);
+  if (id === null) return c.json({ error: "Invalid id" }, 400);
+  if (!getProjectById(id)) return c.json({ error: "Not found" }, 404);
+  const breakdown = getProjectPrice(id);
+  if (!breakdown) return c.json({ error: "Pricing config unavailable" }, 422);
+  return c.json(breakdown);
 });
 
 projects.get("/:id", (c) => {

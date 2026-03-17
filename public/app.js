@@ -583,10 +583,15 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
 
 function ProjectDetail({ project, jobs, unassignedJobs, onBack, onDelete, onJobClick, onAddJob, onRemoveJob }) {
   const [showAddJobs, setShowAddJobs] = useState(false);
+  const [price, setPrice] = useState(null);
   const totW = jobs.reduce((s, j) => s + (j.total_weight_g || 0), 0);
   const totT = jobs.reduce((s, j) => s + (j.total_time_s || 0), 0);
-  const totP = jobs.every(j => j.final_price != null) && jobs.length
-    ? jobs.reduce((s, j) => s + j.final_price, 0) : null;
+
+  useEffect(() => {
+    setPrice(null);
+    if (!jobs.length) return;
+    fetch(`/projects/${project.id}/price`).then(r => r.json()).then(setPrice).catch(() => {});
+  }, [project.id, jobs.length]);
 
   const handleDelete = useCallback(async () => {
     if (!confirm(`Delete project "${project.name}"? Jobs will be unassigned but not deleted.`)) return;
@@ -615,7 +620,13 @@ function ProjectDetail({ project, jobs, unassignedJobs, onBack, onDelete, onJobC
         <span>Jobs: <strong>${jobs.length}</strong></span>
         <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
         <span>Print time: <strong>${fmtTime(totT)}</strong></span>
-        ${totP != null && html`<span>Total: <strong>${fmtCurrency(totP)}</strong></span>`}
+        ${price && html`
+          <span>Material: <strong>${fmtCurrency(price.material_cost)}</strong></span>
+          <span>Machine: <strong>${fmtCurrency(price.machine_cost)}</strong></span>
+          <span>Labor: <strong>${fmtCurrency(price.labor_cost)}</strong></span>
+          ${price.extra_labor_cost > 0 && html`<span>Extra labor: <strong>${fmtCurrency(price.extra_labor_cost)}</strong></span>`}
+          <span class="totals-total">Total: <strong>${fmtCurrency(price.final_price)}</strong></span>
+        `}
       </div>
       ${jobs.length === 0
         ? html`<div class="empty">No jobs assigned yet. Use "+ Add Jobs" to assign them.</div>`
@@ -725,11 +736,12 @@ function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices }) {
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [jobs, setJobs]         = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [summary, setSummary]   = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState(null);
+  const [jobs, setJobs]                 = useState([]);
+  const [projects, setProjects]         = useState([]);
+  const [projectPrices, setProjectPrices] = useState({});
+  const [summary, setSummary]           = useState(null);
+  const [loading, setLoading]           = useState(true);
+  const [error, setError]               = useState(null);
   const [, navigate]            = useLocation();
 
   const [view, setView]                 = useState('table');
@@ -754,6 +766,9 @@ function App() {
       fetch('/jobs/prices').then(r => r.json()).then(({ prices }) => {
         setJobs(js => js.map(j => ({ ...j, final_price: prices[j.id] ?? null })));
       }).catch(() => {});
+      fetch('/projects/prices').then(r => r.json()).then(({ prices }) => {
+        setProjectPrices(prices);
+      }).catch(() => {});
     }).catch(err => {
       setError(err.message);
       setLoading(false);
@@ -763,15 +778,6 @@ function App() {
   const devices = useMemo(() =>
     [...new Set(jobs.map(j => j.deviceModel).filter(Boolean))].sort(),
   [jobs]);
-
-  const projectPrices = useMemo(() => {
-    const map = {};
-    for (const j of jobs) {
-      if (j.project_id != null && j.final_price != null)
-        map[j.project_id] = (map[j.project_id] ?? 0) + j.final_price;
-    }
-    return map;
-  }, [jobs]);
 
   const isFiltered = !!(q || statusFilter || deviceFilter);
 
@@ -818,8 +824,9 @@ function App() {
 
   const handleJobProjectChange = useCallback(async (jobId, projectId) => {
     await patchJob(jobId, { project_id: projectId });
-    // Refresh project stats (job counts / totals changed)
+    // Refresh project stats and prices (job counts / totals changed)
     fetch('/projects').then(r => r.json()).then(d => setProjects(d.projects));
+    fetch('/projects/prices').then(r => r.json()).then(({ prices }) => setProjectPrices(prices)).catch(() => {});
   }, [patchJob]);
 
   const handleJobStatusChange = useCallback((jobId, statusOverride) => {
@@ -851,6 +858,7 @@ function App() {
     fetch('/jobs/prices').then(r => r.json()).then(({ prices }) => {
       setJobs(js => js.map(j => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })));
     }).catch(() => {});
+    fetch('/projects/prices').then(r => r.json()).then(({ prices }) => setProjectPrices(prices)).catch(() => {});
   }, []);
 
   if (loading) return html`<div class="loading"><div class="spinner"></div>Loading print jobs…</div>`;
