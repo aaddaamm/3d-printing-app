@@ -489,6 +489,23 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .empty { padding: 60px 28px; text-align: center; color: var(--subtext); }
 
+/* ── Admin / Rates page ── */
+.admin-page { max-width: 720px; margin: 0 auto; padding: 28px; display: flex; flex-direction: column; gap: 32px; }
+.admin-title { font-size: 1.2rem; font-weight: 700; margin: 0; }
+.admin-section { display: flex; flex-direction: column; gap: 12px; }
+.admin-section-title { font-size: 0.95rem; font-weight: 700; margin: 0; color: var(--text); }
+.admin-section-desc { font-size: 0.78rem; color: var(--subtext); margin: 0; }
+.admin-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.admin-card-name { font-size: 0.8rem; font-weight: 600; color: var(--accent);
+  text-transform: uppercase; letter-spacing: .05em; }
+.admin-card-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+.admin-card-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 4px; }
+.admin-derived { font-size: 0.8rem; color: var(--subtext); }
+
 @media (max-width: 600px) {
   header, .toolbar, .totals-bar { padding-left: 14px; padding-right: 14px; }
   .grid-view { grid-template-columns: 1fr 1fr; gap: 10px; padding: 14px; }
