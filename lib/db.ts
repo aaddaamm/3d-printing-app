@@ -191,6 +191,14 @@ try {
   ).run();
 } catch { /* already exists */ }
 
+// Add PLA-S (Bambu Specialty PLA) material rate if missing
+try {
+  db.prepare(
+    `INSERT OR IGNORE INTO material_rates (filament_type, cost_per_g, waste_buffer_pct, rate_per_g)
+     VALUES ('PLA-S', 0.034, 0.10, ?)`,
+  ).run(Number((0.034 * 1.1).toFixed(4)));
+} catch { /* table may not exist yet on first run — seed below handles it */ }
+
 // Add project_id and status_override to jobs if they don't exist yet
 for (const col of [
   "project_id INTEGER REFERENCES projects(id)",
