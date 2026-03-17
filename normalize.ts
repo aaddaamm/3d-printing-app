@@ -226,8 +226,12 @@ export function runNormalize(): void {
       const acc = sessionAccumulators.get(sessionId)!;
       if (typeof t["startTime"] === "string") acc.startTimes.push(t["startTime"]);
       if (typeof t["endTime"] === "string") acc.endTimes.push(t["endTime"]);
-      acc.total_weight_g += typeof t["weight"] === "number" ? t["weight"] : 0;
-      acc.total_time_s += typeof t["costTime"] === "number" ? t["costTime"] : 0;
+      // Only charge for plates that finished — failed/cancelled plates are a
+      // production loss and should not be billed to the customer.
+      if (status === "finish") {
+        acc.total_weight_g += typeof t["weight"] === "number" ? t["weight"] : 0;
+        acc.total_time_s += typeof t["costTime"] === "number" ? t["costTime"] : 0;
+      }
       acc.plate_count += 1;
       if (status) acc.statuses.push(status);
 
