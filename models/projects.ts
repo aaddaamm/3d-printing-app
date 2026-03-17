@@ -129,8 +129,10 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
     total_time_s += job.total_time_s ?? 0;
   }
 
-  // Single labor charge for the whole project
-  const labor_cost = calcLaborCost(total_time_s / 60, laborConfig);
+  // Single labor charge for the whole project — one setup, not proportional to
+  // machine run time (that's already in machine_cost). Passes 0 so the minimum
+  // kicks in, same as a single job would bill.
+  const labor_cost = calcLaborCost(0, laborConfig);
   const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
   const final_price = Math.ceil(base_price * (1 + laborConfig.profit_markup_pct));
 
