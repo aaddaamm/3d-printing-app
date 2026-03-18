@@ -1,6 +1,7 @@
 import { db, stmts } from "../lib/db.js";
 import { localCoverExists } from "../lib/covers.js";
-import { calcPrice, calcMaterialCost, calcMachineCost, calcLaborCost, round2 } from "../lib/pricing.js";
+import { calcMaterialCost, calcMachineCost, calcLaborCost, round2 } from "../lib/pricing.js";
+import { loadRatesConfig } from "./rates.js";
 import type { Project, Job, PriceBreakdown } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
@@ -80,17 +81,9 @@ export function getProjectJobs(id: number): Job[] {
 // minimum when the user just pressed print once and walked away.
 
 function buildProjectPrice(projectId: number): PriceBreakdown | null {
-  const laborConfig = stmts.getLaborConfig.get();
-  if (!laborConfig) return null;
-
-  const allMachineRates = stmts.getMachineRates.all();
-  if (!allMachineRates.length) return null;
-  const machineRates = new Map(allMachineRates.map(r => [r.device_model, r]));
-  const fallbackMachine = allMachineRates[0]!;
-
-  const allMaterialRates = stmts.getMaterialRates.all();
-  if (!allMaterialRates.length) return null;
-  const materialRates = new Map(allMaterialRates.map(r => [r.filament_type, r]));
+  const config = loadRatesConfig();
+  if (!config) return null;
+  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
   const jobs = stmts.getProjectJobs.all(projectId);
   if (!jobs.length) return null;

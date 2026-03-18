@@ -1,5 +1,6 @@
 import { db, stmts } from "../lib/db.js";
 import { calcPrice } from "../lib/pricing.js";
+import { loadRatesConfig } from "./rates.js";
 import type { Job, PrintTask, JobFilament, PriceBreakdown } from "../lib/types.js";
 
 export interface ListJobsFilter {
@@ -88,14 +89,14 @@ export function getJobPrice(
     .get(job.session_id);
 
   const filamentType = filamentTotals?.filament_type ?? "PLA";
-  const materialRate = stmts.getMaterialRate.get(filamentType) ?? stmts.getMaterialRate.get("PLA");
-  const machineRate =
-    stmts.getMachineRate.get(job.deviceModel ?? "") ?? stmts.getMachineRates.all()[0];
-  const laborConfig = stmts.getLaborConfig.get();
+  const config = loadRatesConfig();
+  if (!config) throw new Error("No labor config found — configure rates first");
+  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
+
+  const materialRate = materialRates.get(filamentType) ?? materialRates.get("PLA");
+  const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
 
   if (!materialRate) throw new Error(`No material rate for filament type "${filamentType}"`);
-  if (!machineRate) throw new Error(`No machine rate for device "${job.deviceModel ?? "unknown"}"`);
-  if (!laborConfig) throw new Error("No labor config found — configure rates first");
 
   const breakdown = calcPrice({
     total_weight_g: job.total_weight_g ?? 0,
@@ -111,17 +112,9 @@ export function getJobPrice(
 }
 
 export function getAllJobPrices(): Record<number, number> {
-  const laborConfig = stmts.getLaborConfig.get();
-  if (!laborConfig) return {};
-
-  const allMachineRates = stmts.getMachineRates.all();
-  if (!allMachineRates.length) return {};
-  const machineRates = new Map(allMachineRates.map(r => [r.device_model, r]));
-  const fallbackMachine = allMachineRates[0]!;
-
-  const allMaterialRates = stmts.getMaterialRates.all();
-  if (!allMaterialRates.length) return {};
-  const materialRates = new Map(allMaterialRates.map(r => [r.filament_type, r]));
+  const config = loadRatesConfig();
+  if (!config) return {};
+  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
   // Dominant filament type per session — one query ordered by weight desc so first-wins is correct
   const filamentRows = db.prepare<[], { session_id: string; filament_type: string; total_weight: number }>(`

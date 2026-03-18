@@ -1,6 +1,32 @@
 import { stmts } from "../lib/db.js";
 import type { MachineRate, MaterialRate, LaborConfig } from "../lib/types.js";
 
+export interface RatesConfig {
+  laborConfig: LaborConfig;
+  machineRates: Map<string, MachineRate>;
+  materialRates: Map<string, MaterialRate>;
+  fallbackMachine: MachineRate;
+}
+
+/**
+ * Loads all rate config from the DB into lookup Maps.
+ * Returns null if any required table is empty (pricing not yet configured).
+ */
+export function loadRatesConfig(): RatesConfig | null {
+  const laborConfig = stmts.getLaborConfig.get();
+  if (!laborConfig) return null;
+  const allMachineRates = stmts.getMachineRates.all();
+  if (!allMachineRates.length) return null;
+  const allMaterialRates = stmts.getMaterialRates.all();
+  if (!allMaterialRates.length) return null;
+  return {
+    laborConfig,
+    machineRates: new Map(allMachineRates.map(r => [r.device_model, r])),
+    materialRates: new Map(allMaterialRates.map(r => [r.filament_type, r])),
+    fallbackMachine: allMachineRates[0]!,
+  };
+}
+
 export function getRates(): {
   machine_rates: MachineRate[];
   material_rates: MaterialRate[];
