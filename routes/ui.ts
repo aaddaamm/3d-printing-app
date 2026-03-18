@@ -10,6 +10,18 @@ import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
 
+// In production, static text assets are cached in memory on first read.
+// In dev, files are read fresh each request so edits are live without restart.
+const isProd = process.env["NODE_ENV"] === "production";
+const fileCache = new Map<string, string>();
+function readTextFile(filePath: string): string {
+  if (isProd) {
+    if (!fileCache.has(filePath)) fileCache.set(filePath, fs.readFileSync(filePath, "utf8"));
+    return fileCache.get(filePath)!;
+  }
+  return fs.readFileSync(filePath, "utf8");
+}
+
 interface JobRow {
   id: number;
   session_id: string;
@@ -91,9 +103,8 @@ export function createUiApp(apiKey: string): Hono {
     return c.redirect("/ui/login");
   });
 
-  // HTML shell — re-read from disk on each request so edits are live without restart.
   const serveShell = (c: Context) => {
-    const content = fs.readFileSync(path.join(PUBLIC_DIR, "index.html"), "utf8");
+    const content = readTextFile(path.join(PUBLIC_DIR, "index.html"));
     return c.html(content);
   };
   ui.get("/", (c) => serveShell(c));
@@ -101,12 +112,12 @@ export function createUiApp(apiKey: string): Hono {
 
   // Static assets — served without auth (no sensitive data).
   ui.get("/app.js", (c) => {
-    const js = fs.readFileSync(path.join(PUBLIC_DIR, "app.js"), "utf8");
+    const js = readTextFile(path.join(PUBLIC_DIR, "app.js"));
     return new Response(js, { headers: { "Content-Type": "application/javascript" } });
   });
 
   ui.get("/app.css", (c) => {
-    const css = fs.readFileSync(path.join(PUBLIC_DIR, "app.css"), "utf8");
+    const css = readTextFile(path.join(PUBLIC_DIR, "app.css"));
     return new Response(css, { headers: { "Content-Type": "text/css" } });
   });
 
@@ -116,8 +127,7 @@ export function createUiApp(apiKey: string): Hono {
     if (!/^[\w-]+\.js$/.test(file)) return c.json({ error: "Not found" }, 404);
     const filePath = path.join(PUBLIC_DIR, "components", file);
     if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
-    const js = fs.readFileSync(filePath, "utf8");
-    return new Response(js, { headers: { "Content-Type": "application/javascript" } });
+    return new Response(readTextFile(filePath), { headers: { "Content-Type": "application/javascript" } });
   });
 
   // Locally cached cover images — no auth (non-sensitive thumbnails).
