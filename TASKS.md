@@ -3,7 +3,7 @@
 ## Open
 
 
-- [ ] **Scheduled sync** — Set up a cron job or launchd plist to run `npm run sync` on a regular cadence (every 15 min?) so the DB stays current without manual runs.
+- [x] **Scheduled sync** — Set `SYNC_INTERVAL_HOURS` env var; `api.ts` spawns sync as a child process on startup (10s delay) and on the interval.
 
 - [ ] **API key rotation** — Currently a single static `API_KEY` env var. No mechanism to rotate without downtime. Low priority for internal use but worth noting.
 
