@@ -89,15 +89,16 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
   if (!jobs.length) return null;
 
   // Dominant filament per session across all jobs in the project
-  const sessionIds = jobs.map(j => `'${j.session_id}'`).join(",");
-  const filamentRows = db.prepare<[], { session_id: string; filament_type: string; total_weight: number }>(`
+  const sessionIds = jobs.map(j => j.session_id);
+  const placeholders = sessionIds.map(() => "?").join(",");
+  const filamentRows = db.prepare<string[], { session_id: string; filament_type: string; total_weight: number }>(`
     SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
     FROM job_filaments jf
     JOIN print_tasks pt ON jf.task_id = pt.id
-    WHERE pt.session_id IN (${sessionIds}) AND jf.filament_type IS NOT NULL
+    WHERE pt.session_id IN (${placeholders}) AND jf.filament_type IS NOT NULL
     GROUP BY pt.session_id, jf.filament_type
     ORDER BY pt.session_id, total_weight DESC
-  `).all();
+  `).all(...sessionIds);
   const sessionFilament = new Map<string, string>();
   for (const row of filamentRows) {
     if (!sessionFilament.has(row.session_id)) sessionFilament.set(row.session_id, row.filament_type);
