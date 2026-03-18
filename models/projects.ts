@@ -1,6 +1,6 @@
 import { db, stmts } from "../lib/db.js";
 import { localCoverExists } from "../lib/covers.js";
-import { calcPrice, calcMaterialCost, calcMachineCost, calcLaborCost } from "../lib/pricing.js";
+import { calcPrice, calcMaterialCost, calcMachineCost, calcLaborCost, round2 } from "../lib/pricing.js";
 import type { Project, Job, PriceBreakdown } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
@@ -145,10 +145,6 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
     final_price: round2(final_price),
     is_override: false,
   };
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
 }
 
 export function getProjectPrice(id: number): PriceBreakdown | null {
