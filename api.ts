@@ -61,7 +61,7 @@ const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css
 
 app.use("/*", async (c, next) => {
   const p = c.req.path;
-  if (PUBLIC_PATHS.has(p)) return next();
+  if (PUBLIC_PATHS.has(p) || p.startsWith("/ui/components/")) return next();
   if (c.req.header("Authorization") === `Bearer ${API_KEY}`) return next();
   if (getCookie(c, "session") === API_KEY) return next();
   if (p.startsWith("/ui")) return c.redirect("/ui/login");

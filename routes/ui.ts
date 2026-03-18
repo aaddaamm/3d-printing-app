@@ -110,6 +110,16 @@ export function createUiApp(apiKey: string): Hono {
     return new Response(css, { headers: { "Content-Type": "text/css" } });
   });
 
+  // Component JS modules — served without auth (no sensitive data, imported by app.js).
+  ui.get("/components/:file", (c) => {
+    const file = c.req.param("file");
+    if (!/^[\w-]+\.js$/.test(file)) return c.json({ error: "Not found" }, 404);
+    const filePath = path.join(PUBLIC_DIR, "components", file);
+    if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
+    const js = fs.readFileSync(filePath, "utf8");
+    return new Response(js, { headers: { "Content-Type": "application/javascript" } });
+  });
+
   // Locally cached cover images — no auth (non-sensitive thumbnails).
   ui.get("/covers/:taskId", (c) => {
     const taskId = c.req.param("taskId");
