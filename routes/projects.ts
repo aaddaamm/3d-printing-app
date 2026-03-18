@@ -1,5 +1,4 @@
 import { Hono } from "hono";
-import type { Context } from "hono";
 import {
   listProjects,
   getProjectById,
@@ -11,13 +10,9 @@ import {
   getProjectPrice,
   getAllProjectPrices,
 } from "../models/projects.js";
+import { parseId } from "../lib/util.js";
 
 export const projects = new Hono();
-
-function parseId(c: Context): number | null {
-  const id = Number(c.req.param("id"));
-  return Number.isFinite(id) ? id : null;
-}
 
 projects.get("/", (c) => {
   return c.json({ projects: listProjects() });

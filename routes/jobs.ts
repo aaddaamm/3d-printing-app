@@ -1,17 +1,12 @@
 import { Hono } from "hono";
-import type { Context } from "hono";
 import { listJobs, getJobById, patchJob, getJobWithDetails, getJobPrice, getAllJobPrices } from "../models/jobs.js";
+import { parseId } from "../lib/util.js";
 
 export const jobs = new Hono();
 
 const TEXT_FIELDS = ["customer", "notes", "status_override"] as const;
 const NUMERIC_FIELDS = ["price_override", "project_id", "extra_labor_minutes"] as const;
 const ALL_FIELDS = [...TEXT_FIELDS, ...NUMERIC_FIELDS] as const;
-
-function parseId(c: Context): number | null {
-  const id = Number(c.req.param("id"));
-  return Number.isFinite(id) ? id : null;
-}
 
 jobs.get("/", (c) => {
   const rows = listJobs(c.req.query());
