@@ -7,6 +7,7 @@ import { Header, Toolbar, TotalsBar, TableView, GridView } from './components/jo
 import { Modal } from './components/modal.js';
 import { ProjectsView, ProjectDetail } from './components/projects-view.js';
 import { AdminView } from './components/admin-view.js';
+import { ToastContainer } from './components/toast.js';
 
 const html = htm.bind(h);
 
@@ -198,6 +199,7 @@ function App() {
       onJobExtraLaborChange=${handleJobExtraLaborChange}
       onNavigateToProject=${handleNavigateToProject}
     />`}
+    <${ToastContainer} />
   `;
 }
 

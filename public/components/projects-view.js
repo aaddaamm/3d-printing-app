@@ -6,6 +6,7 @@ import htm from 'https://esm.sh/htm@3';
 
 import { fmtCurrency, fmtTime, fmtWeightTotal, fmtDateShort, fmtDate, fmtWeight } from './helpers.js';
 import { Badge, RowThumb } from './atoms.js';
+import { toast } from './toast.js';
 import { useLocation } from './router.js';
 
 const html = htm.bind(h);
@@ -246,9 +247,9 @@ export function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices
       const { projects_created, jobs_assigned } = await res.json();
       await onAutoGroup();
       if (projects_created === 0) {
-        alert('No ungrouped jobs found — everything is already assigned to a project.');
+        toast('No ungrouped jobs found — everything is already assigned to a project.', 'info');
       } else {
-        alert(`Created ${projects_created} project${projects_created !== 1 ? 's' : ''}, assigned ${jobs_assigned} job${jobs_assigned !== 1 ? 's' : ''}.`);
+        toast(`Created ${projects_created} project${projects_created !== 1 ? 's' : ''}, assigned ${jobs_assigned} job${jobs_assigned !== 1 ? 's' : ''}.`, 'success');
       }
     } finally {
       setGrouping(false);
