@@ -7,6 +7,7 @@ import {
   deleteProject,
   getProjectJobs,
   autoGroupByDesign,
+  cleanupJunkProjects,
   getProjectPrice,
   getAllProjectPrices,
 } from "../models/projects.js";
@@ -25,6 +26,11 @@ projects.get("/prices", (c) => {
 
 projects.post("/auto-group", (c) => {
   const result = autoGroupByDesign();
+  return c.json(result);
+});
+
+projects.post("/cleanup-junk", (c) => {
+  const result = cleanupJunkProjects();
   return c.json(result);
 });
 

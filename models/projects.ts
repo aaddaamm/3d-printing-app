@@ -298,3 +298,38 @@ export function autoGroupByDesign(): { projects_created: number; jobs_assigned: 
 
   return { projects_created, jobs_assigned };
 }
+
+/**
+ * Disband junk catch-all projects created by an old auto-group bug that grouped
+ * all designId='0' jobs into a single project. Unassigns their jobs, deletes
+ * the junk projects, then re-runs autoGroupByDesign to properly re-assign them.
+ */
+export function cleanupJunkProjects(): {
+  junk_projects_deleted: number;
+  jobs_unassigned: number;
+  projects_created: number;
+  jobs_assigned: number;
+} {
+  let junk_projects_deleted = 0;
+  let jobs_unassigned = 0;
+
+  db.transaction(() => {
+    // Find projects with source_design_id = '0' (the old catch-all bug)
+    const junkProjects = db
+      .prepare<[], { id: number }>(`SELECT id FROM projects WHERE source_design_id = '0'`)
+      .all();
+
+    for (const { id } of junkProjects) {
+      const { changes } = db
+        .prepare(`UPDATE jobs SET project_id = NULL WHERE project_id = ?`)
+        .run(id);
+      jobs_unassigned += changes;
+      db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
+      junk_projects_deleted++;
+    }
+  })();
+
+  const { projects_created, jobs_assigned } = autoGroupByDesign();
+
+  return { junk_projects_deleted, jobs_unassigned, projects_created, jobs_assigned };
+}
