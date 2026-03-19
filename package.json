@@ -13,6 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.ts\" \"**/*.json\" --ignore-path .gitignore",
     "format:check": "prettier --check \"**/*.ts\" \"**/*.json\" --ignore-path .gitignore"
   },
@@ -29,12 +31,16 @@
     "hono": "^4.12.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.0",
     "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^10.0.3",
+    "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.57.1",
     "vitest": "^4.0.18"
   }
 }
