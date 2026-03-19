@@ -1,5 +1,12 @@
 import { Hono } from "hono";
-import { listJobs, getJobById, patchJob, getJobWithDetails, getJobPrice, getAllJobPrices } from "../models/jobs.js";
+import {
+  listJobs,
+  getJobById,
+  patchJob,
+  getJobWithDetails,
+  getJobPrice,
+  getAllJobPrices,
+} from "../models/jobs.js";
 import { parseId } from "../lib/util.js";
 
 export const jobs = new Hono();
@@ -22,13 +29,24 @@ jobs.get("/export.csv", (c) => {
   const rows = listJobs({ status, device, customer, from, to });
   const prices = getAllJobPrices();
 
-  const headers = ["date", "title", "printer", "customer", "status", "filament_g", "time_hrs", "plates", "final_price", "notes"];
-  const csvRows = rows.map(j => [
+  const headers = [
+    "date",
+    "title",
+    "printer",
+    "customer",
+    "status",
+    "filament_g",
+    "time_hrs",
+    "plates",
+    "final_price",
+    "notes",
+  ];
+  const csvRows = rows.map((j) => [
     j.startTime ? j.startTime.slice(0, 10) : "",
     j.designTitle ?? "",
     j.deviceModel ?? "",
     j.customer ?? "",
-    (j.status_override ?? j.status) ?? "",
+    j.status_override ?? j.status ?? "",
     j.total_weight_g?.toFixed(1) ?? "",
     j.total_time_s != null ? (j.total_time_s / 3600).toFixed(2) : "",
     j.plate_count ?? "",
@@ -37,7 +55,7 @@ jobs.get("/export.csv", (c) => {
   ]);
 
   const escape = (v: unknown) => `"${String(v).replace(/"/g, '""')}"`;
-  const csv = [headers, ...csvRows].map(row => row.map(escape).join(",")).join("\n");
+  const csv = [headers, ...csvRows].map((row) => row.map(escape).join(",")).join("\n");
   const date = new Date().toISOString().slice(0, 10);
 
   return new Response(csv, {

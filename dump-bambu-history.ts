@@ -117,14 +117,18 @@ async function main(): Promise<void> {
       inserted += counts.inserted;
       updated += counts.updated;
 
-      process.stdout.write(`\r  Fetching tasks: ${bold(String(total))}/${apiTotal} (${green(`${inserted} new`)}, ${yellow(`${updated} updated`)})   `);
+      process.stdout.write(
+        `\r  Fetching tasks: ${bold(String(total))}/${apiTotal} (${green(`${inserted} new`)}, ${yellow(`${updated} updated`)})   `,
+      );
 
-      if (tasks.length < LIMIT) break;  // last page
+      if (tasks.length < LIMIT) break; // last page
       offset += LIMIT;
     }
 
     process.stdout.write("\n");
-    console.log(`  ${green("Done.")} ${bold(String(total))} tasks from API ${dim(`(${apiTotal} lifetime total)`)}.`);
+    console.log(
+      `  ${green("Done.")} ${bold(String(total))} tasks from API ${dim(`(${apiTotal} lifetime total)`)}.`,
+    );
 
     stmts.updateSyncLog.run({
       id: Number(syncId),
@@ -156,7 +160,9 @@ async function main(): Promise<void> {
 
   const { created, assigned } = autoGroupProjects();
   if (created > 0 || assigned > 0) {
-    console.log(`  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`);
+    console.log(
+      `  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`,
+    );
   }
   console.log("");
 
@@ -175,12 +181,17 @@ async function main(): Promise<void> {
   for (const row of statusSummary) {
     const s = row.status ?? "(null)";
     const label =
-      s === "finish"  ? green(s) :
-      s === "failed"  ? red(s) :
-      s === "cancel"  ? red(s) :
-      s === "running" ? cyan(s) :
-      s === "pause"   ? yellow(s) :
-      dim(s);
+      s === "finish"
+        ? green(s)
+        : s === "failed"
+          ? red(s)
+          : s === "cancel"
+            ? red(s)
+            : s === "running"
+              ? cyan(s)
+              : s === "pause"
+                ? yellow(s)
+                : dim(s);
     console.log(`  ${label}: ${bold(String(row.n))}`);
   }
 

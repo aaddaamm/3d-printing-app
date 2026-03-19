@@ -29,7 +29,11 @@ const findAutoProject = db.prepare<[string], { id: number }>(`
   SELECT id FROM projects WHERE source_design_id = ?
 `);
 
-const insertAutoProject = db.prepare<{ name: string; source_design_id: string; created_at: string }>(`
+const insertAutoProject = db.prepare<{
+  name: string;
+  source_design_id: string;
+  created_at: string;
+}>(`
   INSERT INTO projects (name, source_design_id, created_at)
   VALUES (@name, @source_design_id, @created_at)
 `);
@@ -55,10 +59,7 @@ const findUserJobs = db.prepare<[], { id: number; title: string | null }>(`
 // First pass: strip "_plate_N" suffixes to build a set of known project names.
 // Second pass: for titles without "_plate_", check if stripping the last
 // underscore-segment yields a known project name (named plate like "Leg Lower - Right").
-export function deriveBaseTitle(
-  title: string,
-  knownBases: ReadonlySet<string>,
-): string {
+export function deriveBaseTitle(title: string, knownBases: ReadonlySet<string>): string {
   const plateMatch = title.match(/^(.+)_plate_\d+$/);
   if (plateMatch) return plateMatch[1]!;
 
@@ -135,7 +136,9 @@ export function autoGroupProjects(): { created: number; assigned: number } {
 
       const placeholders = ids.map(() => "?").join(",");
       const { changes } = db
-        .prepare(`UPDATE jobs SET project_id = ? WHERE id IN (${placeholders}) AND project_id IS NULL`)
+        .prepare(
+          `UPDATE jobs SET project_id = ? WHERE id IN (${placeholders}) AND project_id IS NULL`,
+        )
         .run(project.id, ...ids);
       assigned += changes;
     }

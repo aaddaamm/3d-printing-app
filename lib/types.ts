@@ -69,10 +69,10 @@ export interface PrintTask {
 }
 
 export interface Job {
-  id: number;           // auto-increment PK, used in API URLs
-  session_id: string;   // first task id in the session — stable upsert key
-  instanceId: number | null;  // Bambu design id (repeats when same design printed multiple times)
-  print_run: number;    // 1st, 2nd, 3rd time this design was printed on this device
+  id: number; // auto-increment PK, used in API URLs
+  session_id: string; // first task id in the session — stable upsert key
+  instanceId: number | null; // Bambu design id (repeats when same design printed multiple times)
+  print_run: number; // 1st, 2nd, 3rd time this design was printed on this device
   designId: string | null;
   designTitle: string | null;
   modelId: string | null;
@@ -98,7 +98,7 @@ export interface Project {
   customer: string | null;
   notes: string | null;
   created_at: string;
-  source_design_id: string | null;  // set when auto-created from a designId; null for manual projects
+  source_design_id: string | null; // set when auto-created from a designId; null for manual projects
 }
 
 export interface JobFilament {

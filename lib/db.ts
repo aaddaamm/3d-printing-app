@@ -132,7 +132,8 @@ const jobsCols = (db.prepare("PRAGMA table_info(jobs)").all() as { name: string 
 );
 if (!jobsCols.includes("session_id")) {
   db.prepare("DROP TABLE IF EXISTS jobs").run();
-  db.prepare(`CREATE TABLE jobs (
+  db.prepare(
+    `CREATE TABLE jobs (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id     TEXT UNIQUE NOT NULL,
     instanceId     INTEGER,
@@ -150,7 +151,8 @@ if (!jobsCols.includes("session_id")) {
     customer       TEXT,
     notes          TEXT,
     price_override REAL
-  )`).run();
+  )`,
+  ).run();
 }
 
 const hasOldTable = !!db
@@ -184,17 +186,23 @@ for (const col of [
 // Add source_design_id to projects if missing
 try {
   db.prepare("ALTER TABLE projects ADD COLUMN source_design_id TEXT").run();
-} catch { /* already exists */ }
+} catch {
+  /* already exists */
+}
 try {
   db.prepare(
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_source_design_id ON projects(source_design_id) WHERE source_design_id IS NOT NULL",
   ).run();
-} catch { /* already exists */ }
+} catch {
+  /* already exists */
+}
 
 // Add modelId to jobs if missing
 try {
   db.prepare("ALTER TABLE jobs ADD COLUMN modelId TEXT").run();
-} catch { /* already exists */ }
+} catch {
+  /* already exists */
+}
 
 // Add PLA-S (Bambu Specialty PLA) material rate if missing
 try {
@@ -202,7 +210,9 @@ try {
     `INSERT OR IGNORE INTO material_rates (filament_type, cost_per_g, waste_buffer_pct, rate_per_g)
      VALUES ('PLA-S', 0.034, 0.10, ?)`,
   ).run(Number((0.034 * 1.1).toFixed(4)));
-} catch { /* table may not exist yet on first run — seed below handles it */ }
+} catch {
+  /* table may not exist yet on first run — seed below handles it */
+}
 
 // Add project_id and status_override to jobs if they don't exist yet
 for (const col of [
@@ -312,7 +322,18 @@ export const stmts = {
 
   getTaskById: db.prepare<[string], PrintTask>("SELECT * FROM print_tasks WHERE id = ?"),
 
-  upsertJob: db.prepare<Omit<Job, "id" | "customer" | "notes" | "price_override" | "status_override" | "project_id" | "extra_labor_minutes">>(`
+  upsertJob: db.prepare<
+    Omit<
+      Job,
+      | "id"
+      | "customer"
+      | "notes"
+      | "price_override"
+      | "status_override"
+      | "project_id"
+      | "extra_labor_minutes"
+    >
+  >(`
     INSERT INTO jobs (
       session_id, instanceId, print_run, designId, designTitle, modelId, deviceId, deviceModel,
       startTime, endTime, total_weight_g, total_time_s, plate_count, status
@@ -332,7 +353,18 @@ export const stmts = {
 
   getJobById: db.prepare<[number], Job>("SELECT * FROM jobs WHERE id = ?"),
 
-  patchJob: db.prepare<Pick<Job, "customer" | "notes" | "price_override" | "status_override" | "project_id" | "extra_labor_minutes" | "id">>(`
+  patchJob: db.prepare<
+    Pick<
+      Job,
+      | "customer"
+      | "notes"
+      | "price_override"
+      | "status_override"
+      | "project_id"
+      | "extra_labor_minutes"
+      | "id"
+    >
+  >(`
     UPDATE jobs SET customer=@customer, notes=@notes, price_override=@price_override,
       status_override=@status_override, project_id=@project_id, extra_labor_minutes=@extra_labor_minutes
     WHERE id=@id
@@ -387,7 +419,15 @@ export const stmts = {
     WHERE id=1
   `),
 
-  listProjects: db.prepare<[], Project & { job_count: number; total_weight_g: number | null; total_time_s: number | null; latest_cover_task_id: string | null }>(`
+  listProjects: db.prepare<
+    [],
+    Project & {
+      job_count: number;
+      total_weight_g: number | null;
+      total_time_s: number | null;
+      latest_cover_task_id: string | null;
+    }
+  >(`
     SELECT p.*,
       COUNT(j.id)          AS job_count,
       SUM(j.total_weight_g) AS total_weight_g,
@@ -418,9 +458,13 @@ export const stmts = {
 
   deleteProject: db.prepare<[number]>("DELETE FROM projects WHERE id = ?"),
 
-  unassignProjectJobs: db.prepare<[number]>("UPDATE jobs SET project_id = NULL WHERE project_id = ?"),
+  unassignProjectJobs: db.prepare<[number]>(
+    "UPDATE jobs SET project_id = NULL WHERE project_id = ?",
+  ),
 
-  getProjectJobs: db.prepare<[number], Job>("SELECT * FROM jobs WHERE project_id = ? ORDER BY startTime DESC"),
+  getProjectJobs: db.prepare<[number], Job>(
+    "SELECT * FROM jobs WHERE project_id = ? ORDER BY startTime DESC",
+  ),
 
   getLastSync: db.prepare<[], SyncLog>("SELECT * FROM sync_log ORDER BY id DESC LIMIT 1"),
   insertSyncLog: db.prepare<{ started_at: string }>(

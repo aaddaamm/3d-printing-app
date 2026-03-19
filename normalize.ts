@@ -40,7 +40,7 @@ export interface RawTask {
 }
 
 interface SessionAccumulator {
-  session_id: string;        // first task id in the session
+  session_id: string; // first task id in the session
   instanceId: number | null;
   print_run: number;
   designId: string | null;
@@ -127,9 +127,10 @@ export function detectSessions(tasks: RawTask[]): Map<string, string> {
 
 export function runNormalize(): void {
   const allTasks = db
-    .prepare<[], RawTask>(
-      "SELECT id, status, startTime, endTime, instanceId, deviceId, raw_json FROM print_tasks",
-    )
+    .prepare<
+      [],
+      RawTask
+    >("SELECT id, status, startTime, endTime, instanceId, deviceId, raw_json FROM print_tasks")
     .all();
   console.log(`  Processing ${allTasks.length} tasks...`);
 
@@ -140,17 +141,30 @@ export function runNormalize(): void {
   // We want: first session = run 1, second = run 2, etc.
   const sessionOrder = new Map<string, number>(); // sessionId → print_run
   {
-    type SessionInfo = { sessionId: string; instanceId: number | null; deviceId: string | null; startTime: string | null };
+    type SessionInfo = {
+      sessionId: string;
+      instanceId: number | null;
+      deviceId: string | null;
+      startTime: string | null;
+    };
     const seen = new Map<string, SessionInfo[]>(); // groupKey → sessions in order
 
     for (const task of allTasks) {
       const sessionId = taskToSession.get(task.id)!;
       if (sessionOrder.has(sessionId)) continue; // already registered
-      const key = task.instanceId && task.instanceId !== 0
-        ? `${task.instanceId}:${task.deviceId ?? ""}`
-        : `solo:${task.id}`;
+      const key =
+        task.instanceId && task.instanceId !== 0
+          ? `${task.instanceId}:${task.deviceId ?? ""}`
+          : `solo:${task.id}`;
       if (!seen.has(key)) seen.set(key, []);
-      seen.get(key)!.push({ sessionId, instanceId: task.instanceId, deviceId: task.deviceId, startTime: task.startTime });
+      seen
+        .get(key)!
+        .push({
+          sessionId,
+          instanceId: task.instanceId,
+          deviceId: task.deviceId,
+          startTime: task.startTime,
+        });
     }
 
     for (const sessions of seen.values()) {

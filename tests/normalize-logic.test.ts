@@ -153,9 +153,27 @@ describe("detectSessions", () => {
 
   it("three tasks in same session all map to the first task's id", () => {
     const tasks = [
-      makeTask({ id: "50", instanceId: 3, deviceId: "d", startTime: ts("2024-01-01T10:00:00Z"), endTime: ts("2024-01-01T11:00:00Z") }),
-      makeTask({ id: "51", instanceId: 3, deviceId: "d", startTime: ts("2024-01-01T11:15:00Z"), endTime: ts("2024-01-01T12:00:00Z") }),
-      makeTask({ id: "52", instanceId: 3, deviceId: "d", startTime: ts("2024-01-01T12:20:00Z"), endTime: ts("2024-01-01T13:00:00Z") }),
+      makeTask({
+        id: "50",
+        instanceId: 3,
+        deviceId: "d",
+        startTime: ts("2024-01-01T10:00:00Z"),
+        endTime: ts("2024-01-01T11:00:00Z"),
+      }),
+      makeTask({
+        id: "51",
+        instanceId: 3,
+        deviceId: "d",
+        startTime: ts("2024-01-01T11:15:00Z"),
+        endTime: ts("2024-01-01T12:00:00Z"),
+      }),
+      makeTask({
+        id: "52",
+        instanceId: 3,
+        deviceId: "d",
+        startTime: ts("2024-01-01T12:20:00Z"),
+        endTime: ts("2024-01-01T13:00:00Z"),
+      }),
     ];
     const map = detectSessions(tasks);
     expect(map.get("50")).toBe("50");
@@ -164,7 +182,13 @@ describe("detectSessions", () => {
   });
 
   it("task with no startTime is attached to current session (not split)", () => {
-    const t1 = makeTask({ id: "60", instanceId: 8, deviceId: "d", startTime: ts("2024-01-01T10:00:00Z"), endTime: ts("2024-01-01T11:00:00Z") });
+    const t1 = makeTask({
+      id: "60",
+      instanceId: 8,
+      deviceId: "d",
+      startTime: ts("2024-01-01T10:00:00Z"),
+      endTime: ts("2024-01-01T11:00:00Z"),
+    });
     const t2 = makeTask({ id: "61", instanceId: 8, deviceId: "d", startTime: null, endTime: null });
     const map = detectSessions([t1, t2]);
     // t2 has no startTime — should attach to t1's session

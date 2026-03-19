@@ -3,9 +3,7 @@ import path from "node:path";
 import { db } from "./db.js";
 import { fetchWithRetry } from "./fetch.js";
 
-export const COVERS_DIR = path.resolve(
-  process.env["BAMBU_COVERS_DIR"] ?? "./covers",
-);
+export const COVERS_DIR = path.resolve(process.env["BAMBU_COVERS_DIR"] ?? "./covers");
 
 export function localCoverPath(taskId: string): string {
   return path.join(COVERS_DIR, `${taskId}.png`);
@@ -20,20 +18,26 @@ export function localCoverExists(taskId: string): boolean {
  * Idempotent — skips already-downloaded files.
  * Prints inline progress to stdout.
  */
-export async function downloadCovers(): Promise<{ downloaded: number; skipped: number; expired: number; failed: number }> {
+export async function downloadCovers(): Promise<{
+  downloaded: number;
+  skipped: number;
+  expired: number;
+  failed: number;
+}> {
   fs.mkdirSync(COVERS_DIR, { recursive: true });
 
   const tasks = db
-    .prepare<[], { id: string; cover: string }>(
-      "SELECT id, cover FROM print_tasks WHERE cover IS NOT NULL",
-    )
+    .prepare<
+      [],
+      { id: string; cover: string }
+    >("SELECT id, cover FROM print_tasks WHERE cover IS NOT NULL")
     .all();
 
   const total = tasks.length;
   let downloaded = 0;
   let skipped = 0;
-  let expired = 0;  // HTTP 403 — pre-signed URL expired (task older than fetch window)
-  let failed = 0;   // other HTTP errors or network failures
+  let expired = 0; // HTTP 403 — pre-signed URL expired (task older than fetch window)
+  let failed = 0; // other HTTP errors or network failures
 
   const printProgress = () => {
     const done = downloaded + skipped + expired + failed;
@@ -66,7 +70,9 @@ export async function downloadCovers(): Promise<{ downloaded: number; skipped: n
 
   process.stdout.write("\n");
   if (expired > 0) {
-    console.log(`  Note: ${expired} URLs expired (tasks older than API fetch window — unavailable).`);
+    console.log(
+      `  Note: ${expired} URLs expired (tasks older than API fetch window — unavailable).`,
+    );
   }
   return { downloaded, skipped, expired, failed };
 }

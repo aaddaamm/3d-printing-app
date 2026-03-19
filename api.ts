@@ -17,12 +17,17 @@ import { bold, dim, red, green, yellow, cyan } from "./lib/colors.js";
 
 function methodColor(method: string): string {
   switch (method) {
-    case "GET":    return cyan(method.padEnd(6));
-    case "POST":   return green(method.padEnd(6));
+    case "GET":
+      return cyan(method.padEnd(6));
+    case "POST":
+      return green(method.padEnd(6));
     case "PUT":
-    case "PATCH":  return yellow(method.padEnd(6));
-    case "DELETE": return red(method.padEnd(6));
-    default:       return method.padEnd(6);
+    case "PATCH":
+      return yellow(method.padEnd(6));
+    case "DELETE":
+      return red(method.padEnd(6));
+    default:
+      return method.padEnd(6);
   }
 }
 
@@ -50,7 +55,9 @@ app.use("/*", async (c, next) => {
   const start = Date.now();
   await next();
   const ms = Date.now() - start;
-  console.log(`  ${methodColor(c.req.method)} ${c.req.path} ${dim("→")} ${statusColor(c.res.status)} ${dim(`${ms}ms`)}`);
+  console.log(
+    `  ${methodColor(c.req.method)} ${c.req.path} ${dim("→")} ${statusColor(c.res.status)} ${dim(`${ms}ms`)}`,
+  );
 });
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -108,8 +115,10 @@ function spawnSync(): Promise<void> {
 
   const [cmd, args]: [string, string[]] = isCompiled
     ? [process.execPath, [path.join(__dirname, "dump-bambu-history.js")]]
-    : [path.join(__dirname, "node_modules", ".bin", "tsx"),
-       [path.join(__dirname, "dump-bambu-history.ts")]];
+    : [
+        path.join(__dirname, "node_modules", ".bin", "tsx"),
+        [path.join(__dirname, "dump-bambu-history.ts")],
+      ];
 
   return new Promise((resolve, reject) => {
     const child = spawn(cmd, args, { stdio: "inherit", env: process.env });
@@ -132,7 +141,13 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`  ${dim("Sync:")} every ${SYNC_INTERVAL_HOURS}h`);
     const intervalMs = SYNC_INTERVAL_HOURS * 3_600_000;
     // First sync 10s after startup, then on the interval
-    setTimeout(() => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)), 10_000);
-    setInterval(() => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)), intervalMs);
+    setTimeout(
+      () => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)),
+      10_000,
+    );
+    setInterval(
+      () => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)),
+      intervalMs,
+    );
   }
 });

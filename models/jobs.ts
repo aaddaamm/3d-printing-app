@@ -14,11 +14,11 @@ export interface ListJobsFilter {
 export function listJobs({ status, device, customer, from, to }: ListJobsFilter = {}): Job[] {
   // Each entry is [sql-fragment, bound-value] — kept together so they can't drift apart.
   const conds: Array<[string, string]> = [];
-  if (status)   conds.push(["COALESCE(status_override, status) = ?", status]);
-  if (device)   conds.push(["deviceModel = ?", device]);
+  if (status) conds.push(["COALESCE(status_override, status) = ?", status]);
+  if (device) conds.push(["deviceModel = ?", device]);
   if (customer) conds.push(["customer = ?", customer]);
-  if (from)     conds.push(["startTime >= ?", from]);
-  if (to)       conds.push(["startTime <= ?", to]);
+  if (from) conds.push(["startTime >= ?", from]);
+  if (to) conds.push(["startTime <= ?", to]);
   const where = conds.length ? `WHERE ${conds.map(([sql]) => sql).join(" AND ")}` : "";
   return db
     .prepare<string[], Job>(`SELECT * FROM jobs ${where} ORDER BY startTime DESC`)
@@ -64,9 +64,10 @@ export function getJobWithDetails(
   const job = stmts.getJobById.get(id);
   if (!job) return null;
   const plates = db
-    .prepare<[string], PrintTask>(
-      "SELECT * FROM print_tasks WHERE session_id = ? ORDER BY plateIndex",
-    )
+    .prepare<
+      [string],
+      PrintTask
+    >("SELECT * FROM print_tasks WHERE session_id = ? ORDER BY plateIndex")
     .all(job.session_id);
   const filaments = stmts.getFilamentsBySession.all(job.session_id);
   return { job, plates, filaments };
@@ -117,18 +118,23 @@ export function getAllJobPrices(): Record<number, number> {
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
   // Dominant filament type per session — one query ordered by weight desc so first-wins is correct
-  const filamentRows = db.prepare<[], { session_id: string; filament_type: string; total_weight: number }>(`
+  const filamentRows = db
+    .prepare<[], { session_id: string; filament_type: string; total_weight: number }>(
+      `
     SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
     FROM job_filaments jf
     JOIN print_tasks pt ON jf.task_id = pt.id
     WHERE jf.filament_type IS NOT NULL
     GROUP BY pt.session_id, jf.filament_type
     ORDER BY pt.session_id, total_weight DESC
-  `).all();
+  `,
+    )
+    .all();
 
   const sessionFilament = new Map<string, string>();
   for (const row of filamentRows) {
-    if (!sessionFilament.has(row.session_id)) sessionFilament.set(row.session_id, row.filament_type);
+    if (!sessionFilament.has(row.session_id))
+      sessionFilament.set(row.session_id, row.filament_type);
   }
 
   const prices: Record<number, number> = {};

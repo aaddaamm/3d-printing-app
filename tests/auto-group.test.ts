@@ -24,9 +24,11 @@ vi.mock("../lib/db.js", () => ({
       if (sql.includes("SELECT DISTINCT designId")) return { all: mockFindDesignsAll };
       if (sql.includes("SELECT id FROM projects")) return { get: mockFindAutoProjectGet };
       if (sql.includes("INSERT INTO projects")) return { run: mockInsertAutoProjectRun };
-      if (sql.includes("UPDATE jobs SET project_id = ? WHERE designId")) return { run: mockAssignJobsRun };
+      if (sql.includes("UPDATE jobs SET project_id = ? WHERE designId"))
+        return { run: mockAssignJobsRun };
       if (sql.includes("SELECT j.id, pt.title")) return { all: mockFindUserJobsAll };
-      if (sql.includes("UPDATE jobs SET project_id = ? WHERE id IN")) return { run: mockAssignByIdsRun };
+      if (sql.includes("UPDATE jobs SET project_id = ? WHERE id IN"))
+        return { run: mockAssignByIdsRun };
       return { all: vi.fn(), get: vi.fn(), run: vi.fn() };
     }),
     transaction: vi.fn((fn: () => void) => fn),
@@ -149,9 +151,7 @@ describe("autoGroupProjects", () => {
   });
 
   it("reuses existing project for user-imported title group", () => {
-    mockFindUserJobsAll.mockReturnValue([
-      { id: 30, title: "Widget_plate_1" },
-    ]);
+    mockFindUserJobsAll.mockReturnValue([{ id: 30, title: "Widget_plate_1" }]);
     mockFindAutoProjectGet.mockReturnValue({ id: 55 });
     mockAssignByIdsRun.mockReturnValue({ changes: 1 });
 

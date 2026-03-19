@@ -21,8 +21,8 @@ export function loadRatesConfig(): RatesConfig | null {
   if (!allMaterialRates.length) return null;
   return {
     laborConfig,
-    machineRates: new Map(allMachineRates.map(r => [r.device_model, r])),
-    materialRates: new Map(allMaterialRates.map(r => [r.filament_type, r])),
+    machineRates: new Map(allMachineRates.map((r) => [r.device_model, r])),
+    materialRates: new Map(allMaterialRates.map((r) => [r.filament_type, r])),
     fallbackMachine: allMachineRates[0]!,
   };
 }
@@ -45,20 +45,14 @@ export function updateLaborConfig(patch: Omit<LaborConfig, "id">): LaborConfig {
 }
 
 /** Recalculates machine_rate_per_hr from component values before upserting. */
-export function upsertMachineRate(
-  data: Omit<MachineRate, "machine_rate_per_hr">,
-): MachineRate {
+export function upsertMachineRate(data: Omit<MachineRate, "machine_rate_per_hr">): MachineRate {
   const machine_rate_per_hr =
-    data.purchase_price / data.lifetime_hrs +
-    data.electricity_rate +
-    data.maintenance_buffer;
+    data.purchase_price / data.lifetime_hrs + data.electricity_rate + data.maintenance_buffer;
   stmts.upsertMachineRate.run({ ...data, machine_rate_per_hr });
   return stmts.getMachineRate.get(data.device_model)!;
 }
 
-export function upsertMaterialRate(
-  data: Omit<MaterialRate, "rate_per_g">,
-): MaterialRate {
+export function upsertMaterialRate(data: Omit<MaterialRate, "rate_per_g">): MaterialRate {
   const rate_per_g = data.cost_per_g * (1 + data.waste_buffer_pct / 100);
   stmts.upsertMaterialRate.run({ ...data, rate_per_g });
   return stmts.getMaterialRate.get(data.filament_type)!;

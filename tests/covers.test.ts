@@ -88,12 +88,18 @@ describe("downloadCovers", () => {
   it("HTTP 200 — downloaded increments and file is written to exact path", async () => {
     mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
-    vi.mocked(fetch).mockResolvedValue({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) } as Response);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as Response);
 
     const result = await downloadCovers();
 
     expect(result).toEqual({ downloaded: 1, skipped: 0, expired: 0, failed: 0 });
-    expect(fs.writeFileSync).toHaveBeenCalledWith(localCoverPath("t1"), Buffer.from(new ArrayBuffer(8)));
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      localCoverPath("t1"),
+      Buffer.from(new ArrayBuffer(8)),
+    );
   });
 
   it("HTTP 403 — expired increments, failed does not", async () => {
