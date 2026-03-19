@@ -7,14 +7,14 @@ const {
   mockFindAutoProjectGet,
   mockInsertAutoProjectRun,
   mockAssignJobsRun,
-  mockFindUserTitleGroupsAll,
+  mockFindUserJobsAll,
   mockAssignByIdsRun,
 } = vi.hoisted(() => ({
   mockFindDesignsAll: vi.fn<() => { designId: string; designTitle: string | null }[]>(),
   mockFindAutoProjectGet: vi.fn<(id: string) => { id: number } | undefined>(),
   mockInsertAutoProjectRun: vi.fn<() => { lastInsertRowid: number }>(),
   mockAssignJobsRun: vi.fn<() => { changes: number }>(),
-  mockFindUserTitleGroupsAll: vi.fn<() => { base_title: string; job_ids: string }[]>(),
+  mockFindUserJobsAll: vi.fn<() => { id: number; title: string | null }[]>(),
   mockAssignByIdsRun: vi.fn<() => { changes: number }>(),
 }));
 
@@ -25,7 +25,7 @@ vi.mock("../lib/db.js", () => ({
       if (sql.includes("SELECT id FROM projects")) return { get: mockFindAutoProjectGet };
       if (sql.includes("INSERT INTO projects")) return { run: mockInsertAutoProjectRun };
       if (sql.includes("UPDATE jobs SET project_id = ? WHERE designId")) return { run: mockAssignJobsRun };
-      if (sql.includes("SELECT base_title")) return { all: mockFindUserTitleGroupsAll };
+      if (sql.includes("SELECT j.id, pt.title")) return { all: mockFindUserJobsAll };
       if (sql.includes("UPDATE jobs SET project_id = ? WHERE id IN")) return { run: mockAssignByIdsRun };
       return { all: vi.fn(), get: vi.fn(), run: vi.fn() };
     }),
@@ -33,7 +33,7 @@ vi.mock("../lib/db.js", () => ({
   },
 }));
 
-import { autoGroupProjects } from "../lib/auto-group.js";
+import { autoGroupProjects, deriveBaseTitle } from "../lib/auto-group.js";
 
 function design(designId: string, designTitle: string | null = "My Design") {
   return { designId, designTitle };
@@ -46,7 +46,7 @@ describe("autoGroupProjects", () => {
     mockAssignJobsRun.mockReturnValue({ changes: 0 });
     mockAssignByIdsRun.mockReturnValue({ changes: 0 });
     mockFindDesignsAll.mockReturnValue([]);
-    mockFindUserTitleGroupsAll.mockReturnValue([]);
+    mockFindUserJobsAll.mockReturnValue([]);
   });
 
   it("returns zeroes when there are no unassigned jobs", () => {
@@ -110,9 +110,11 @@ describe("autoGroupProjects", () => {
 
   // ── user-imported title-based grouping ──────────────────────────────────────
 
-  it("groups user-imported models by title prefix", () => {
-    mockFindUserTitleGroupsAll.mockReturnValue([
-      { base_title: "Gerbil Cage lid 32x62", job_ids: "10,11,12" },
+  it("groups user-imported jobs by title prefix", () => {
+    mockFindUserJobsAll.mockReturnValue([
+      { id: 10, title: "Gerbil Cage_plate_1" },
+      { id: 11, title: "Gerbil Cage_plate_2" },
+      { id: 12, title: "Gerbil Cage_plate_3" },
     ]);
     mockFindAutoProjectGet.mockReturnValue(undefined);
     mockAssignByIdsRun.mockReturnValue({ changes: 3 });
@@ -122,39 +124,62 @@ describe("autoGroupProjects", () => {
     expect(result).toEqual({ created: 1, assigned: 3 });
     expect(mockInsertAutoProjectRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "Gerbil Cage lid 32x62",
-        source_design_id: "title:Gerbil Cage lid 32x62",
+        name: "Gerbil Cage",
+        source_design_id: "title:Gerbil Cage",
       }),
     );
   });
 
-  it("reuses existing project for a seen title prefix", () => {
-    mockFindUserTitleGroupsAll.mockReturnValue([
-      { base_title: "BD-1 - complete", job_ids: "20,21" },
+  it("merges named plates into their parent project", () => {
+    mockFindUserJobsAll.mockReturnValue([
+      { id: 20, title: "BD-1 - complete_plate_10" },
+      { id: 21, title: "BD-1 - complete_plate_11" },
+      { id: 22, title: "BD-1 - complete_Leg Lower - Right" },
     ]);
-    mockFindAutoProjectGet.mockReturnValue({ id: 55 });
-    mockAssignByIdsRun.mockReturnValue({ changes: 2 });
+    mockFindAutoProjectGet.mockReturnValue(undefined);
+    mockAssignByIdsRun.mockReturnValue({ changes: 3 });
 
     const result = autoGroupProjects();
 
-    expect(result).toEqual({ created: 0, assigned: 2 });
-    expect(mockInsertAutoProjectRun).not.toHaveBeenCalled();
+    // All 3 should be in a single "BD-1 - complete" project
+    expect(result).toEqual({ created: 1, assigned: 3 });
+    expect(mockInsertAutoProjectRun).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "BD-1 - complete" }),
+    );
   });
 
-  it("handles both design and title groups in one pass", () => {
-    mockFindDesignsAll.mockReturnValue([design("d6", "MakerWorld Model")]);
-    mockFindUserTitleGroupsAll.mockReturnValue([
-      { base_title: "My Custom Print", job_ids: "30" },
+  it("reuses existing project for user-imported title group", () => {
+    mockFindUserJobsAll.mockReturnValue([
+      { id: 30, title: "Widget_plate_1" },
     ]);
-    mockFindAutoProjectGet.mockReturnValue(undefined);
-    mockInsertAutoProjectRun
-      .mockReturnValueOnce({ lastInsertRowid: 70 })
-      .mockReturnValueOnce({ lastInsertRowid: 71 });
-    mockAssignJobsRun.mockReturnValue({ changes: 1 });
+    mockFindAutoProjectGet.mockReturnValue({ id: 55 });
     mockAssignByIdsRun.mockReturnValue({ changes: 1 });
 
     const result = autoGroupProjects();
 
-    expect(result).toEqual({ created: 2, assigned: 2 });
+    expect(result).toEqual({ created: 0, assigned: 1 });
+    expect(mockInsertAutoProjectRun).not.toHaveBeenCalled();
+  });
+});
+
+describe("deriveBaseTitle", () => {
+  it("strips _plate_N suffix", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("Gerbil Cage_plate_3", bases)).toBe("Gerbil Cage");
+  });
+
+  it("strips named plate when base is in knownBases", () => {
+    const bases = new Set(["BD-1 - complete"]);
+    expect(deriveBaseTitle("BD-1 - complete_Leg Lower - Right", bases)).toBe("BD-1 - complete");
+  });
+
+  it("keeps title intact when no plate suffix and no known base", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("FigmentHeadPNG-cookiecad", bases)).toBe("FigmentHeadPNG-cookiecad");
+  });
+
+  it("keeps title with underscores intact when base is not known", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("Blue_Tetris Magnets", bases)).toBe("Blue_Tetris Magnets");
   });
 });

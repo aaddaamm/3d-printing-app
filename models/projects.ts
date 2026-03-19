@@ -218,29 +218,44 @@ export function autoGroupByDesign(): { projects_created: number; jobs_assigned: 
     )
     .all();
 
-  // 2. User-imported models — group by title prefix when designId is missing/zero
-  const titleGroups = db
-    .prepare<[], { base_title: string; job_ids: string }>(
-      `SELECT base_title, GROUP_CONCAT(sub.id) AS job_ids
-       FROM (
-         SELECT j.id,
-           CASE
-             WHEN pt.title LIKE '%/_plate/_%' ESCAPE '/'
-               THEN SUBSTR(pt.title, 1, INSTR(pt.title, '_plate_') - 1)
-             ELSE pt.title
-           END AS base_title
-         FROM jobs j
-         JOIN print_tasks pt ON pt.session_id = j.session_id AND pt.plateIndex = (
-           SELECT MIN(pt2.plateIndex) FROM print_tasks pt2 WHERE pt2.session_id = j.session_id
-         )
-         WHERE j.project_id IS NULL
-           AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
-       ) sub
-       WHERE base_title IS NOT NULL AND base_title != ''
-       GROUP BY base_title
-       ORDER BY base_title`,
+  // 2. User-imported models — group by title prefix
+  const userJobs = db
+    .prepare<[], { id: number; title: string | null }>(
+      `SELECT j.id, pt.title
+       FROM jobs j
+       JOIN print_tasks pt ON pt.session_id = j.session_id AND pt.plateIndex = (
+         SELECT MIN(pt2.plateIndex) FROM print_tasks pt2 WHERE pt2.session_id = j.session_id
+       )
+       WHERE j.project_id IS NULL
+         AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')`,
     )
     .all();
+
+  // Build _plate_ base set, then derive titles (same logic as auto-group.ts)
+  const plateBases = new Set<string>();
+  for (const { title } of userJobs) {
+    if (!title) continue;
+    const m = title.match(/^(.+)_plate_\d+$/);
+    if (m) plateBases.add(m[1]!);
+  }
+  const titleGroupMap = new Map<string, number[]>();
+  for (const { id, title } of userJobs) {
+    if (!title) continue;
+    const plateMatch = title.match(/^(.+)_plate_\d+$/);
+    let base: string;
+    if (plateMatch) {
+      base = plateMatch[1]!;
+    } else {
+      const lastUnderscore = title.lastIndexOf("_");
+      if (lastUnderscore > 0 && plateBases.has(title.slice(0, lastUnderscore))) {
+        base = title.slice(0, lastUnderscore);
+      } else {
+        base = title;
+      }
+    }
+    if (!titleGroupMap.has(base)) titleGroupMap.set(base, []);
+    titleGroupMap.get(base)!.push(id);
+  }
 
   let projects_created = 0;
   let jobs_assigned = 0;
@@ -260,14 +275,13 @@ export function autoGroupByDesign(): { projects_created: number; jobs_assigned: 
       jobs_assigned += ids.length;
     }
 
-    for (const group of titleGroups) {
+    for (const [baseTitle, ids] of titleGroupMap) {
       const now = new Date().toISOString();
-      const sourceKey = `title:${group.base_title}`;
+      const sourceKey = `title:${baseTitle}`;
       const result = db
         .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
-        .run(group.base_title, now, sourceKey);
+        .run(baseTitle, now, sourceKey);
       const projectId = result.lastInsertRowid as number;
-      const ids = group.job_ids.split(",").map(Number);
       db.prepare(
         `UPDATE jobs SET project_id = ? WHERE id IN (${ids.map(() => "?").join(",")})`,
       ).run(projectId, ...ids);

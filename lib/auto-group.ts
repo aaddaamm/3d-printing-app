@@ -7,8 +7,10 @@ import { db } from "./db.js";
 // it is seen (named after designTitle, falling back to designId).
 //
 // For user-imported models (designId is "0" or empty), falls back to grouping
-// by title prefix. Bambu Studio names tasks as "{project}_{plate}" — we strip
-// the "_plate_N" suffix and group by the base name.
+// by title prefix. Bambu Studio names tasks as "{project}_{plate_N}" for
+// auto-numbered plates and "{project}_{custom name}" for named plates. We
+// strip the plate suffix and merge named plates into their parent project
+// when a matching _plate_ base exists.
 //
 // Override safety: only jobs with project_id IS NULL are touched. Any job
 // that was manually assigned to a project (via PATCH /jobs/:id) keeps its
@@ -36,28 +38,39 @@ const assignJobs = db.prepare<[number, string]>(`
   UPDATE jobs SET project_id = ? WHERE designId = ? AND project_id IS NULL
 `);
 
-// ── User-imported models (designId is "0"/empty/null → group by title prefix) ─
+// ── User-imported models (designId is "0"/empty/null → group by title) ───────
 
-const findUserTitleGroups = db.prepare<[], { base_title: string; job_ids: string }>(`
-  SELECT base_title, GROUP_CONCAT(j.id) AS job_ids
-  FROM (
-    SELECT j.id,
-      CASE
-        WHEN pt.title LIKE '%/_plate/_%' ESCAPE '/'
-          THEN SUBSTR(pt.title, 1, INSTR(pt.title, '_plate_') - 1)
-        ELSE pt.title
-      END AS base_title
-    FROM jobs j
-    JOIN print_tasks pt ON pt.session_id = j.session_id AND pt.plateIndex = (
-      SELECT MIN(pt2.plateIndex) FROM print_tasks pt2 WHERE pt2.session_id = j.session_id
-    )
-    WHERE j.project_id IS NULL
-      AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
-  ) sub
-  JOIN jobs j ON j.id = sub.id
-  WHERE base_title IS NOT NULL AND base_title != ''
-  GROUP BY base_title
+const findUserJobs = db.prepare<[], { id: number; title: string | null }>(`
+  SELECT j.id, pt.title
+  FROM jobs j
+  JOIN print_tasks pt ON pt.session_id = j.session_id AND pt.plateIndex = (
+    SELECT MIN(pt2.plateIndex) FROM print_tasks pt2 WHERE pt2.session_id = j.session_id
+  )
+  WHERE j.project_id IS NULL
+    AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
 `);
+
+// Derive the project base name from a task title.
+// Bambu Studio uses "{project}_{plate_N}" or "{project}_{custom name}".
+// First pass: strip "_plate_N" suffixes to build a set of known project names.
+// Second pass: for titles without "_plate_", check if stripping the last
+// underscore-segment yields a known project name (named plate like "Leg Lower - Right").
+export function deriveBaseTitle(
+  title: string,
+  knownBases: ReadonlySet<string>,
+): string {
+  const plateMatch = title.match(/^(.+)_plate_\d+$/);
+  if (plateMatch) return plateMatch[1]!;
+
+  // Check if removing the last _segment yields a known base
+  const lastUnderscore = title.lastIndexOf("_");
+  if (lastUnderscore > 0) {
+    const candidate = title.slice(0, lastUnderscore);
+    if (knownBases.has(candidate)) return candidate;
+  }
+
+  return title;
+}
 
 export function autoGroupProjects(): { created: number; assigned: number } {
   let created = 0;
@@ -85,14 +98,34 @@ export function autoGroupProjects(): { created: number; assigned: number } {
     }
 
     // 2. Group user-imported models by title prefix
-    const titleGroups = findUserTitleGroups.all();
-    for (const { base_title, job_ids } of titleGroups) {
-      const sourceKey = `title:${base_title}`;
+    const userJobs = findUserJobs.all();
+    if (userJobs.length === 0) return;
+
+    // Pass 1: collect all _plate_N base names
+    const plateBases = new Set<string>();
+    for (const { title } of userJobs) {
+      if (!title) continue;
+      const m = title.match(/^(.+)_plate_\d+$/);
+      if (m) plateBases.add(m[1]!);
+    }
+
+    // Pass 2: derive base title for every job, group by base
+    const groups = new Map<string, number[]>();
+    for (const { id, title } of userJobs) {
+      const base = title ? deriveBaseTitle(title, plateBases) : null;
+      if (!base) continue;
+      if (!groups.has(base)) groups.set(base, []);
+      groups.get(base)!.push(id);
+    }
+
+    // Pass 3: create/find projects and assign
+    for (const [baseTitle, ids] of groups) {
+      const sourceKey = `title:${baseTitle}`;
       let project = findAutoProject.get(sourceKey);
 
       if (!project) {
         const { lastInsertRowid } = insertAutoProject.run({
-          name: base_title,
+          name: baseTitle,
           source_design_id: sourceKey,
           created_at: now,
         });
@@ -100,7 +133,6 @@ export function autoGroupProjects(): { created: number; assigned: number } {
         created++;
       }
 
-      const ids = job_ids.split(",").map(Number);
       const placeholders = ids.map(() => "?").join(",");
       const { changes } = db
         .prepare(`UPDATE jobs SET project_id = ? WHERE id IN (${placeholders}) AND project_id IS NULL`)
