@@ -266,32 +266,48 @@ export function autoGroupByDesign(): { projects_created: number; jobs_assigned: 
   let projects_created = 0;
   let jobs_assigned = 0;
 
+  const findExisting = db.prepare<[string], { id: number }>(
+    `SELECT id FROM projects WHERE source_design_id = ?`,
+  );
+
   db.transaction(() => {
     for (const group of designGroups) {
-      const now = new Date().toISOString();
-      const result = db
-        .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
-        .run(group.designTitle ?? `Design #${group.designId}`, now, group.designId);
-      const projectId = result.lastInsertRowid as number;
+      let projectId: number;
+      const existing = findExisting.get(group.designId);
+      if (existing) {
+        projectId = existing.id;
+      } else {
+        const now = new Date().toISOString();
+        const result = db
+          .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
+          .run(group.designTitle ?? `Design #${group.designId}`, now, group.designId);
+        projectId = result.lastInsertRowid as number;
+        projects_created++;
+      }
       const ids = group.job_ids.split(",").map(Number);
       db.prepare(
         `UPDATE jobs SET project_id = ? WHERE id IN (${ids.map(() => "?").join(",")})`,
       ).run(projectId, ...ids);
-      projects_created++;
       jobs_assigned += ids.length;
     }
 
     for (const [baseTitle, ids] of titleGroupMap) {
-      const now = new Date().toISOString();
       const sourceKey = `title:${baseTitle}`;
-      const result = db
-        .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
-        .run(baseTitle, now, sourceKey);
-      const projectId = result.lastInsertRowid as number;
+      let projectId: number;
+      const existing = findExisting.get(sourceKey);
+      if (existing) {
+        projectId = existing.id;
+      } else {
+        const now = new Date().toISOString();
+        const result = db
+          .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
+          .run(baseTitle, now, sourceKey);
+        projectId = result.lastInsertRowid as number;
+        projects_created++;
+      }
       db.prepare(
         `UPDATE jobs SET project_id = ? WHERE id IN (${ids.map(() => "?").join(",")})`,
       ).run(projectId, ...ids);
-      projects_created++;
       jobs_assigned += ids.length;
     }
   })();
