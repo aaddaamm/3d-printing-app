@@ -207,13 +207,38 @@ export function getAllProjectPrices(): Record<number, number> {
 }
 
 export function autoGroupByDesign(): { projects_created: number; jobs_assigned: number } {
-  const groups = db
-    .prepare<[], { instanceId: number; designTitle: string | null; job_ids: string }>(
-      `SELECT instanceId, designTitle, GROUP_CONCAT(id) AS job_ids
+  // 1. MakerWorld designs — group by designId (skip "0"/empty)
+  const designGroups = db
+    .prepare<[], { designId: string; designTitle: string | null; job_ids: string }>(
+      `SELECT designId, designTitle, GROUP_CONCAT(id) AS job_ids
        FROM jobs
-       WHERE project_id IS NULL AND instanceId IS NOT NULL
-       GROUP BY instanceId
+       WHERE project_id IS NULL AND designId IS NOT NULL AND designId != '0' AND designId != ''
+       GROUP BY designId
        ORDER BY MIN(startTime) DESC`,
+    )
+    .all();
+
+  // 2. User-imported models — group by title prefix when designId is missing/zero
+  const titleGroups = db
+    .prepare<[], { base_title: string; job_ids: string }>(
+      `SELECT base_title, GROUP_CONCAT(sub.id) AS job_ids
+       FROM (
+         SELECT j.id,
+           CASE
+             WHEN pt.title LIKE '%/_plate/_%' ESCAPE '/'
+               THEN SUBSTR(pt.title, 1, INSTR(pt.title, '_plate_') - 1)
+             ELSE pt.title
+           END AS base_title
+         FROM jobs j
+         JOIN print_tasks pt ON pt.session_id = j.session_id AND pt.plateIndex = (
+           SELECT MIN(pt2.plateIndex) FROM print_tasks pt2 WHERE pt2.session_id = j.session_id
+         )
+         WHERE j.project_id IS NULL
+           AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
+       ) sub
+       WHERE base_title IS NOT NULL AND base_title != ''
+       GROUP BY base_title
+       ORDER BY base_title`,
     )
     .all();
 
@@ -221,11 +246,26 @@ export function autoGroupByDesign(): { projects_created: number; jobs_assigned: 
   let jobs_assigned = 0;
 
   db.transaction(() => {
-    for (const group of groups) {
+    for (const group of designGroups) {
       const now = new Date().toISOString();
       const result = db
         .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
-        .run(group.designTitle ?? `Design #${group.instanceId}`, now, String(group.instanceId));
+        .run(group.designTitle ?? `Design #${group.designId}`, now, group.designId);
+      const projectId = result.lastInsertRowid as number;
+      const ids = group.job_ids.split(",").map(Number);
+      db.prepare(
+        `UPDATE jobs SET project_id = ? WHERE id IN (${ids.map(() => "?").join(",")})`,
+      ).run(projectId, ...ids);
+      projects_created++;
+      jobs_assigned += ids.length;
+    }
+
+    for (const group of titleGroups) {
+      const now = new Date().toISOString();
+      const sourceKey = `title:${group.base_title}`;
+      const result = db
+        .prepare(`INSERT INTO projects (name, created_at, source_design_id) VALUES (?, ?, ?)`)
+        .run(group.base_title, now, sourceKey);
       const projectId = result.lastInsertRowid as number;
       const ids = group.job_ids.split(",").map(Number);
       db.prepare(
