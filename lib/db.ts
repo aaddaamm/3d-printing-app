@@ -191,6 +191,11 @@ try {
   ).run();
 } catch { /* already exists */ }
 
+// Add modelId to jobs if missing
+try {
+  db.prepare("ALTER TABLE jobs ADD COLUMN modelId TEXT").run();
+} catch { /* already exists */ }
+
 // Add PLA-S (Bambu Specialty PLA) material rate if missing
 try {
   db.prepare(
@@ -309,15 +314,16 @@ export const stmts = {
 
   upsertJob: db.prepare<Omit<Job, "id" | "customer" | "notes" | "price_override" | "status_override" | "project_id" | "extra_labor_minutes">>(`
     INSERT INTO jobs (
-      session_id, instanceId, print_run, designId, designTitle, deviceId, deviceModel,
+      session_id, instanceId, print_run, designId, designTitle, modelId, deviceId, deviceModel,
       startTime, endTime, total_weight_g, total_time_s, plate_count, status
     ) VALUES (
-      @session_id, @instanceId, @print_run, @designId, @designTitle, @deviceId, @deviceModel,
+      @session_id, @instanceId, @print_run, @designId, @designTitle, @modelId, @deviceId, @deviceModel,
       @startTime, @endTime, @total_weight_g, @total_time_s, @plate_count, @status
     )
     ON CONFLICT(session_id) DO UPDATE SET
       instanceId=excluded.instanceId,     print_run=excluded.print_run,
       designId=excluded.designId,         designTitle=excluded.designTitle,
+      modelId=excluded.modelId,
       deviceId=excluded.deviceId,         deviceModel=excluded.deviceModel,
       startTime=excluded.startTime,       endTime=excluded.endTime,
       total_weight_g=excluded.total_weight_g, total_time_s=excluded.total_time_s,

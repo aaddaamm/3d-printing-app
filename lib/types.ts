@@ -75,6 +75,7 @@ export interface Job {
   print_run: number;    // 1st, 2nd, 3rd time this design was printed on this device
   designId: string | null;
   designTitle: string | null;
+  modelId: string | null;
   deviceId: string | null;
   deviceModel: string | null;
   startTime: string | null;

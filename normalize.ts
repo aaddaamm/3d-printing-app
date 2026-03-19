@@ -45,6 +45,7 @@ interface SessionAccumulator {
   print_run: number;
   designId: string | null;
   designTitle: string | null;
+  modelId: string | null;
   deviceId: string | null;
   deviceModel: string | null;
   startTimes: string[];
@@ -213,6 +214,7 @@ export function runNormalize(): void {
           print_run: sessionOrder.get(sessionId) ?? 1,
           designId: t["designId"] != null ? String(t["designId"]) : null,
           designTitle: typeof t["designTitle"] === "string" ? t["designTitle"] : null,
+          modelId: typeof t["modelId"] === "string" ? t["modelId"] : null,
           deviceId: typeof t["deviceId"] === "string" ? t["deviceId"] : null,
           deviceModel: typeof t["deviceModel"] === "string" ? t["deviceModel"] : null,
           startTimes: [],
@@ -267,6 +269,7 @@ export function runNormalize(): void {
         print_run: acc.print_run,
         designId: acc.designId,
         designTitle: acc.designTitle,
+        modelId: acc.modelId,
         deviceId: acc.deviceId,
         deviceModel: acc.deviceModel,
         startTime: acc.startTimes.length ? acc.startTimes.sort()[0]! : null,
