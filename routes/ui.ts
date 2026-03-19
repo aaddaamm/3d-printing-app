@@ -34,7 +34,7 @@ interface JobRow {
   total_weight_g: number | null;
   total_time_s: number | null;
   plate_count: number;
-  status: string | null;          // effective status: status_override ?? API status
+  status: string | null; // effective status: status_override ?? API status
   status_override: string | null; // null = following API
   customer: string | null;
   notes: string | null;
@@ -81,7 +81,10 @@ export function createUiApp(apiKey: string): Hono {
 
   ui.get("/login", (c) => {
     const error = c.req.query("error");
-    const page = LOGIN_HTML.replace("__ERROR__", error ? '<p class="error">Incorrect key.</p>' : "");
+    const page = LOGIN_HTML.replace(
+      "__ERROR__",
+      error ? '<p class="error">Incorrect key.</p>' : "",
+    );
     return c.html(page);
   });
 
@@ -111,12 +114,12 @@ export function createUiApp(apiKey: string): Hono {
   ui.get("", (c) => serveShell(c));
 
   // Static assets — served without auth (no sensitive data).
-  ui.get("/app.js", (c) => {
+  ui.get("/app.js", (_c) => {
     const js = readTextFile(path.join(PUBLIC_DIR, "app.js"));
     return new Response(js, { headers: { "Content-Type": "application/javascript" } });
   });
 
-  ui.get("/app.css", (c) => {
+  ui.get("/app.css", (_c) => {
     const css = readTextFile(path.join(PUBLIC_DIR, "app.css"));
     return new Response(css, { headers: { "Content-Type": "text/css" } });
   });
@@ -127,7 +130,9 @@ export function createUiApp(apiKey: string): Hono {
     if (!/^[\w-]+\.js$/.test(file)) return c.json({ error: "Not found" }, 404);
     const filePath = path.join(PUBLIC_DIR, "components", file);
     if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
-    return new Response(readTextFile(filePath), { headers: { "Content-Type": "application/javascript" } });
+    return new Response(readTextFile(filePath), {
+      headers: { "Content-Type": "application/javascript" },
+    });
   });
 
   // Locally cached cover images — no auth (non-sensitive thumbnails).
@@ -147,7 +152,13 @@ export function createUiApp(apiKey: string): Hono {
   // Job data — protected by app-level auth middleware.
   ui.get("/data", (c) => {
     const rows = db
-      .prepare<[], Omit<JobRow, "cover_url" | "filament_colors"> & { first_task_id: string; filament_colors_json: string | null }>(
+      .prepare<
+        [],
+        Omit<JobRow, "cover_url" | "filament_colors"> & {
+          first_task_id: string;
+          filament_colors_json: string | null;
+        }
+      >(
         `SELECT
           j.id, j.session_id, j.instanceId, j.print_run,
           j.designTitle, j.deviceModel,
@@ -175,12 +186,8 @@ export function createUiApp(apiKey: string): Hono {
     const jobs: JobRow[] = rows.map(({ first_task_id, filament_colors_json, ...row }) => ({
       ...row,
       cover_url:
-        first_task_id && localCoverExists(first_task_id)
-          ? `/ui/covers/${first_task_id}`
-          : null,
-      filament_colors: filament_colors_json
-        ? (JSON.parse(filament_colors_json) as string[])
-        : [],
+        first_task_id && localCoverExists(first_task_id) ? `/ui/covers/${first_task_id}` : null,
+      filament_colors: filament_colors_json ? (JSON.parse(filament_colors_json) as string[]) : [],
     }));
     return c.json({ jobs });
   });

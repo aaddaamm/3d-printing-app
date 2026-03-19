@@ -89,25 +89,29 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
   if (!jobs.length) return null;
 
   // Dominant filament per session across all jobs in the project
-  const sessionIds = jobs.map(j => j.session_id);
+  const sessionIds = jobs.map((j) => j.session_id);
   const placeholders = sessionIds.map(() => "?").join(",");
-  const filamentRows = db.prepare<string[], { session_id: string; filament_type: string; total_weight: number }>(`
+  const filamentRows = db
+    .prepare<string[], { session_id: string; filament_type: string; total_weight: number }>(
+      `
     SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
     FROM job_filaments jf
     JOIN print_tasks pt ON jf.task_id = pt.id
     WHERE pt.session_id IN (${placeholders}) AND jf.filament_type IS NOT NULL
     GROUP BY pt.session_id, jf.filament_type
     ORDER BY pt.session_id, total_weight DESC
-  `).all(...sessionIds);
+  `,
+    )
+    .all(...sessionIds);
   const sessionFilament = new Map<string, string>();
   for (const row of filamentRows) {
-    if (!sessionFilament.has(row.session_id)) sessionFilament.set(row.session_id, row.filament_type);
+    if (!sessionFilament.has(row.session_id))
+      sessionFilament.set(row.session_id, row.filament_type);
   }
 
   let material_cost = 0;
   let machine_cost = 0;
   let extra_labor_cost = 0;
-  let total_time_s = 0;
 
   for (const job of jobs) {
     const filamentType = sessionFilament.get(job.session_id) ?? "PLA";
@@ -120,7 +124,6 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
     if (job.extra_labor_minutes) {
       extra_labor_cost += (job.extra_labor_minutes / 60) * laborConfig.hourly_rate;
     }
-    total_time_s += job.total_time_s ?? 0;
   }
 
   // Single labor charge for the whole project — one setup, not proportional to
@@ -151,9 +154,7 @@ export function getAllProjectPrices(): Record<number, number> {
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
   // All assigned jobs in one query — avoids N×getProjectJobs + N×loadRatesConfig
-  const allJobs = db
-    .prepare<[], Job>("SELECT * FROM jobs WHERE project_id IS NOT NULL")
-    .all();
+  const allJobs = db.prepare<[], Job>("SELECT * FROM jobs WHERE project_id IS NOT NULL").all();
   if (!allJobs.length) return {};
 
   const jobsByProject = new Map<number, Job[]>();
@@ -164,40 +165,45 @@ export function getAllProjectPrices(): Record<number, number> {
   }
 
   // Dominant filament per session — one query across all sessions
-  const sessionIds = [...new Set(allJobs.map(j => j.session_id))];
+  const sessionIds = [...new Set(allJobs.map((j) => j.session_id))];
   const placeholders = sessionIds.map(() => "?").join(",");
   const filamentRows = db
-    .prepare<string[], { session_id: string; filament_type: string; total_weight: number }>(`
+    .prepare<string[], { session_id: string; filament_type: string; total_weight: number }>(
+      `
       SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
       FROM job_filaments jf
       JOIN print_tasks pt ON jf.task_id = pt.id
       WHERE pt.session_id IN (${placeholders}) AND jf.filament_type IS NOT NULL
       GROUP BY pt.session_id, jf.filament_type
       ORDER BY pt.session_id, total_weight DESC
-    `)
+    `,
+    )
     .all(...sessionIds);
   const sessionFilament = new Map<string, string>();
   for (const row of filamentRows) {
-    if (!sessionFilament.has(row.session_id)) sessionFilament.set(row.session_id, row.filament_type);
+    if (!sessionFilament.has(row.session_id))
+      sessionFilament.set(row.session_id, row.filament_type);
   }
 
   const prices: Record<number, number> = {};
   for (const [projectId, jobs] of jobsByProject) {
     try {
-      let material_cost = 0, machine_cost = 0, extra_labor_cost = 0;
+      let material_cost = 0,
+        machine_cost = 0,
+        extra_labor_cost = 0;
       for (const job of jobs) {
         const filamentType = sessionFilament.get(job.session_id) ?? "PLA";
         const materialRate = materialRates.get(filamentType) ?? materialRates.get("PLA");
         const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
         if (!materialRate) continue;
         material_cost += calcMaterialCost(job.total_weight_g ?? 0, materialRate);
-        machine_cost  += calcMachineCost(job.total_time_s ?? 0, machineRate);
+        machine_cost += calcMachineCost(job.total_time_s ?? 0, machineRate);
         if (job.extra_labor_minutes) {
           extra_labor_cost += (job.extra_labor_minutes / 60) * laborConfig.hourly_rate;
         }
       }
-      const labor_cost  = calcLaborCost(0, laborConfig);
-      const base_price  = material_cost + machine_cost + labor_cost + extra_labor_cost;
+      const labor_cost = calcLaborCost(0, laborConfig);
+      const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
       prices[projectId] = Math.ceil(base_price * (1 + laborConfig.profit_markup_pct));
     } catch {
       // skip — pricing config incomplete for this project
