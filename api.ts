@@ -107,6 +107,23 @@ app.route("/rates", rates);
 
 const SYNC_INTERVAL_HOURS = Number(process.env["SYNC_INTERVAL_HOURS"] ?? 0);
 
+let syncInProgress = false;
+
+async function runScheduledSync(): Promise<void> {
+  if (syncInProgress) {
+    console.log(dim("  Sync skipped — previous run still in progress"));
+    return;
+  }
+  syncInProgress = true;
+  try {
+    await spawnSync();
+  } catch (e: unknown) {
+    console.error(`${red("Sync error:")} ${(e as Error).message}`);
+  } finally {
+    syncInProgress = false;
+  }
+}
+
 function spawnSync(): Promise<void> {
   // Detect compiled (production) vs source (tsx dev) by file extension.
   const __filename = fileURLToPath(import.meta.url);
@@ -141,13 +158,7 @@ serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`  ${dim("Sync:")} every ${SYNC_INTERVAL_HOURS}h`);
     const intervalMs = SYNC_INTERVAL_HOURS * 3_600_000;
     // First sync 10s after startup, then on the interval
-    setTimeout(
-      () => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)),
-      10_000,
-    );
-    setInterval(
-      () => spawnSync().catch((e: Error) => console.error(`${red("Sync error:")} ${e.message}`)),
-      intervalMs,
-    );
+    setTimeout(() => void runScheduledSync(), 10_000);
+    setInterval(() => void runScheduledSync(), intervalMs);
   }
 });
