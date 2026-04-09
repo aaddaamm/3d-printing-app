@@ -160,6 +160,25 @@ describe("autoGroupProjects", () => {
     expect(result).toEqual({ created: 0, assigned: 1 });
     expect(mockInsertAutoProjectRun).not.toHaveBeenCalled();
   });
+
+  // Regression: the HTTP route (POST /projects/auto-group) previously used an
+  // inline implementation without AND project_id IS NULL, which allowed it to
+  // overwrite manually assigned project_ids. Now it calls autoGroupProjects,
+  // which only queries jobs WHERE project_id IS NULL (mockFindDesignsAll and
+  // mockFindUserJobsAll both use that filter). Re-running auto-group against an
+  // already-processed set therefore produces zero changes.
+  it("produces no changes when all jobs are already assigned (manual-assignment safety)", () => {
+    // Both queries return empty — all jobs already have project_id set
+    mockFindDesignsAll.mockReturnValue([]);
+    mockFindUserJobsAll.mockReturnValue([]);
+
+    const result = autoGroupProjects();
+
+    expect(result).toEqual({ created: 0, assigned: 0 });
+    expect(mockInsertAutoProjectRun).not.toHaveBeenCalled();
+    expect(mockAssignJobsRun).not.toHaveBeenCalled();
+    expect(mockAssignByIdsRun).not.toHaveBeenCalled();
+  });
 });
 
 describe("deriveBaseTitle", () => {
