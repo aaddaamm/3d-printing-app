@@ -53,7 +53,8 @@ export function upsertMachineRate(data: Omit<MachineRate, "machine_rate_per_hr">
 }
 
 export function upsertMaterialRate(data: Omit<MaterialRate, "rate_per_g">): MaterialRate {
-  const rate_per_g = data.cost_per_g * (1 + data.waste_buffer_pct / 100);
+  // waste_buffer_pct is a fraction (0.10 = 10%), not a percentage
+  const rate_per_g = data.cost_per_g * (1 + data.waste_buffer_pct);
   stmts.upsertMaterialRate.run({ ...data, rate_per_g });
   return stmts.getMaterialRate.get(data.filament_type)!;
 }
