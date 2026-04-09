@@ -22,19 +22,27 @@ rates.patch("/labor", async (c) => {
 
   const { hourly_rate, minimum_minutes, profit_markup_pct } = body;
   if (
-    typeof hourly_rate !== "number" ||
-    typeof minimum_minutes !== "number" ||
-    typeof profit_markup_pct !== "number"
+    !Number.isFinite(hourly_rate) ||
+    !Number.isFinite(minimum_minutes) ||
+    !Number.isFinite(profit_markup_pct)
   ) {
     return c.json(
-      { error: "hourly_rate, minimum_minutes, profit_markup_pct must be numbers" },
+      { error: "hourly_rate, minimum_minutes, profit_markup_pct must be finite numbers" },
       400,
     );
   }
-  if (hourly_rate < 0 || minimum_minutes < 0 || profit_markup_pct < 0) {
+  if (
+    (hourly_rate as number) < 0 ||
+    (minimum_minutes as number) < 0 ||
+    (profit_markup_pct as number) < 0
+  ) {
     return c.json({ error: "Values must be non-negative" }, 400);
   }
-  const labor_config = updateLaborConfig({ hourly_rate, minimum_minutes, profit_markup_pct });
+  const labor_config = updateLaborConfig({
+    hourly_rate: hourly_rate as number,
+    minimum_minutes: minimum_minutes as number,
+    profit_markup_pct: profit_markup_pct as number,
+  });
   return c.json({ labor_config });
 });
 
@@ -50,7 +58,7 @@ rates.patch("/machines/:device_model", async (c) => {
   const { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = body;
   if (
     [purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer].some(
-      (v) => typeof v !== "number" || v < 0,
+      (v) => !Number.isFinite(v) || (v as number) < 0,
     )
   ) {
     return c.json(
@@ -81,14 +89,16 @@ rates.patch("/materials/:filament_type", async (c) => {
   }
 
   const { cost_per_g, waste_buffer_pct } = body;
-  if (
-    typeof cost_per_g !== "number" ||
-    typeof waste_buffer_pct !== "number" ||
-    cost_per_g < 0 ||
-    waste_buffer_pct < 0
-  ) {
-    return c.json({ error: "cost_per_g and waste_buffer_pct must be non-negative numbers" }, 400);
+  if (!Number.isFinite(cost_per_g) || !Number.isFinite(waste_buffer_pct)) {
+    return c.json({ error: "cost_per_g and waste_buffer_pct must be finite numbers" }, 400);
   }
-  const material_rate = upsertMaterialRate({ filament_type, cost_per_g, waste_buffer_pct });
+  if ((cost_per_g as number) < 0 || (waste_buffer_pct as number) < 0) {
+    return c.json({ error: "cost_per_g and waste_buffer_pct must be non-negative" }, 400);
+  }
+  const material_rate = upsertMaterialRate({
+    filament_type,
+    cost_per_g: cost_per_g as number,
+    waste_buffer_pct: waste_buffer_pct as number,
+  });
   return c.json({ material_rate });
 });
