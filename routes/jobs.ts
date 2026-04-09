@@ -54,7 +54,14 @@ jobs.get("/export.csv", (c) => {
     j.notes ?? "",
   ]);
 
-  const escape = (v: unknown) => `"${String(v).replace(/"/g, '""')}"`;
+  // Prepend ' to cells starting with formula-injection chars (=, +, -, @, tab,
+  // carriage return) so Excel/Sheets treat them as literal strings (OWASP).
+  const INJECTION_PREFIX = /^[=+\-@\t\r]/;
+  const escape = (v: unknown) => {
+    const s = String(v);
+    const safe = INJECTION_PREFIX.test(s) ? `'${s}` : s;
+    return `"${safe.replace(/"/g, '""')}"`;
+  };
   const csv = [headers, ...csvRows].map((row) => row.map(escape).join(",")).join("\n");
   const date = new Date().toISOString().slice(0, 10);
 
