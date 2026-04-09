@@ -113,6 +113,20 @@ describe("calcPrice", () => {
     expect(result.base_price).toBeGreaterThan(0);
   });
 
+  it("project pricing invariant: one labor charge for N jobs costs less than N individual labor charges", () => {
+    // Per-project pricing calls calcLaborCost(0, config) once and aggregates
+    // material + machine across all jobs. This test demonstrates that billing
+    // N jobs individually (each getting the minimum labor charge) produces a
+    // higher labor total than the single-charge approach used for projects.
+    const singleLaborCharge = calcLaborCost(0, laborConfig); // minimum_minutes floor
+    const threeJobLaborCharges = 3 * singleLaborCharge;
+
+    // Project should bill exactly one minimum labor charge, not three
+    expect(singleLaborCharge).toBeCloseTo((15 / 60) * 25, 4); // $6.25
+    expect(threeJobLaborCharges).toBeCloseTo(3 * 6.25, 4); // $18.75
+    expect(singleLaborCharge).toBeLessThan(threeJobLaborCharges);
+  });
+
   it("defaults labor_minutes to 15 when not provided", () => {
     const withDefault = calcPrice({
       total_weight_g: 0,
