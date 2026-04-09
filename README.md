@@ -116,7 +116,7 @@ Returns all tasks, optionally filtered.
 | Param      | Description                              |
 |------------|------------------------------------------|
 | `status`   | Filter by status (e.g. `finish`, `failed`) |
-| `device`   | Filter by `deviceId`                     |
+| `device`   | Filter by `deviceModel` (e.g. `Bambu Lab X1C`) |
 | `customer` | Filter by customer name                  |
 | `from`     | Filter `startTime >=` (ISO 8601)         |
 | `to`       | Filter `startTime <=` (ISO 8601)         |
