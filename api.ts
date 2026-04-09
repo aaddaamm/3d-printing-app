@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
@@ -65,12 +66,19 @@ app.use("/*", async (c, next) => {
 // Protected: everything else — Bearer token (API clients) or session cookie (browser)
 
 const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css"]);
+// Matches the same set as the /components/:file handler (^[\w-]+\.js$)
+const PUBLIC_COMPONENT_RE = /^\/ui\/components\/[\w-]+\.js$/;
+
+function safeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
 
 app.use("/*", async (c, next) => {
   const p = c.req.path;
-  if (PUBLIC_PATHS.has(p) || p.startsWith("/ui/components/")) return next();
-  if (c.req.header("Authorization") === `Bearer ${API_KEY}`) return next();
-  if (getCookie(c, "session") === API_KEY) return next();
+  if (PUBLIC_PATHS.has(p) || PUBLIC_COMPONENT_RE.test(p)) return next();
+  if (safeEqual(c.req.header("Authorization") ?? "", `Bearer ${API_KEY}`)) return next();
+  if (safeEqual(getCookie(c, "session") ?? "", API_KEY)) return next();
   if (p.startsWith("/ui")) return c.redirect("/ui/login");
   return c.json({ error: "Unauthorized" }, 401);
 });
