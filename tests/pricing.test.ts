@@ -1,5 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { calcMaterialCost, calcMachineCost, calcLaborCost, calcPrice } from "../lib/pricing.js";
+import {
+  calcMaterialCost,
+  calcWeightedMaterialCost,
+  calcMachineCost,
+  calcLaborCost,
+  calcPrice,
+} from "../lib/pricing.js";
 import type { MachineRate, MaterialRate, LaborConfig } from "../lib/types.js";
 
 const machineRate: MachineRate = {
@@ -18,6 +24,13 @@ const materialRate: MaterialRate = {
   rate_per_g: 0.028 * 1.1, // 0.0308
 };
 
+const petgRate: MaterialRate = {
+  filament_type: "PETG",
+  cost_per_g: 0.032,
+  waste_buffer_pct: 0.15,
+  rate_per_g: 0.032 * 1.15, // 0.0368
+};
+
 const laborConfig: LaborConfig = {
   id: 1,
   hourly_rate: 25.0,
@@ -32,6 +45,45 @@ describe("calcMaterialCost", () => {
 
   it("returns 0 for zero weight", () => {
     expect(calcMaterialCost(0, materialRate)).toBe(0);
+  });
+});
+
+describe("calcWeightedMaterialCost", () => {
+  const materialRates = new Map([
+    [materialRate.filament_type, materialRate],
+    [petgRate.filament_type, petgRate],
+  ]);
+
+  it("sums per-filament weights with each material's rate", () => {
+    const result = calcWeightedMaterialCost(
+      100,
+      [
+        { filament_type: "PLA", total_weight: 40 },
+        { filament_type: "PETG", total_weight: 60 },
+      ],
+      materialRates,
+      materialRate,
+    );
+
+    expect(result).toBeCloseTo(40 * materialRate.rate_per_g + 60 * petgRate.rate_per_g, 6);
+  });
+
+  it("falls back to PLA for jobs without filament rows", () => {
+    expect(calcWeightedMaterialCost(100, [], materialRates, materialRate)).toBeCloseTo(
+      100 * materialRate.rate_per_g,
+      6,
+    );
+  });
+
+  it("falls back to PLA for unknown filament types", () => {
+    const result = calcWeightedMaterialCost(
+      100,
+      [{ filament_type: "UNKNOWN", total_weight: 25 }],
+      materialRates,
+      materialRate,
+    );
+
+    expect(result).toBeCloseTo(25 * materialRate.rate_per_g, 6);
   });
 });
 

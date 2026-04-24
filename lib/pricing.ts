@@ -18,9 +18,36 @@ export interface CalcPriceParams {
   laborConfig: LaborConfig;
 }
 
+export interface FilamentWeight {
+  filament_type: string;
+  total_weight: number;
+}
+
 /** Filament material cost: weight × rate_per_g (includes waste buffer). */
 export function calcMaterialCost(weight_g: number, materialRate: MaterialRate): number {
   return weight_g * materialRate.rate_per_g;
+}
+
+/**
+ * Material cost for a mixed-filament print.
+ *
+ * Uses per-filament weights when AMS slot data exists. If a material is missing
+ * from the rate table, falls back to the caller-provided default material rate.
+ * If no filament rows exist, prices the job's total weight with the default
+ * material rate to preserve the existing PLA fallback behavior.
+ */
+export function calcWeightedMaterialCost(
+  total_weight_g: number,
+  filamentWeights: FilamentWeight[],
+  materialRates: ReadonlyMap<string, MaterialRate>,
+  fallbackMaterialRate: MaterialRate,
+): number {
+  if (filamentWeights.length === 0) return calcMaterialCost(total_weight_g, fallbackMaterialRate);
+
+  return filamentWeights.reduce((total, row) => {
+    const materialRate = materialRates.get(row.filament_type) ?? fallbackMaterialRate;
+    return total + calcMaterialCost(row.total_weight, materialRate);
+  }, 0);
 }
 
 /** Machine cost: depreciation + electricity + maintenance, prorated by print time. */

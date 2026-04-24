@@ -1,5 +1,10 @@
 import { db, stmts } from "../lib/db.js";
-import { calcPrice } from "../lib/pricing.js";
+import {
+  calcPrice,
+  calcWeightedMaterialCost,
+  round2,
+  type FilamentWeight,
+} from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
 import type { Job, PrintTask, JobFilament, PriceBreakdown } from "../lib/types.js";
 
@@ -80,34 +85,53 @@ export function getJobPrice(
   if (!job) return null;
 
   const filamentTotals = db
-    .prepare<[string], { filament_type: string; total_weight: number }>(
+    .prepare<[string], FilamentWeight>(
       `SELECT jf.filament_type, SUM(jf.weight_g) AS total_weight
        FROM job_filaments jf
        JOIN print_tasks pt ON jf.task_id = pt.id
-       WHERE pt.session_id = ? AND jf.filament_type IS NOT NULL
-       GROUP BY jf.filament_type ORDER BY total_weight DESC LIMIT 1`,
+       WHERE pt.session_id = ? AND jf.filament_type IS NOT NULL AND pt.status = 'finish'
+       GROUP BY jf.filament_type ORDER BY total_weight DESC`,
     )
-    .get(job.session_id);
+    .all(job.session_id);
 
-  const filamentType = filamentTotals?.filament_type ?? "PLA";
+  const filamentType = filamentTotals[0]?.filament_type ?? "PLA";
   const config = loadRatesConfig();
   if (!config) throw new Error("No labor config found — configure rates first");
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
-  const materialRate = materialRates.get(filamentType) ?? materialRates.get("PLA");
+  const fallbackMaterialRate = materialRates.get("PLA");
   const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
 
-  if (!materialRate) throw new Error(`No material rate for filament type "${filamentType}"`);
+  if (!fallbackMaterialRate) throw new Error('No material rate for fallback filament type "PLA"');
 
   const breakdown = calcPrice({
-    total_weight_g: job.total_weight_g ?? 0,
+    total_weight_g: 0,
     total_time_s: job.total_time_s ?? 0,
     extra_labor_minutes: job.extra_labor_minutes ?? null,
     price_override: job.price_override ?? null,
     machineRate,
-    materialRate,
+    materialRate: fallbackMaterialRate,
     laborConfig,
   });
+  breakdown.material_cost = round2(
+    calcWeightedMaterialCost(
+      job.total_weight_g ?? 0,
+      filamentTotals,
+      materialRates,
+      fallbackMaterialRate,
+    ),
+  );
+  breakdown.base_price = round2(
+    breakdown.material_cost +
+      breakdown.machine_cost +
+      breakdown.labor_cost +
+      breakdown.extra_labor_cost,
+  );
+  if (!breakdown.is_override) {
+    breakdown.final_price = round2(
+      Math.ceil(breakdown.base_price * (1 + laborConfig.profit_markup_pct)),
+    );
+  }
 
   return { id, filament_type: filamentType, ...breakdown };
 }
@@ -117,43 +141,51 @@ export function getAllJobPrices(): Record<number, number> {
   if (!config) return {};
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
-  // Dominant filament type per session — one query ordered by weight desc so first-wins is correct
   const filamentRows = db
-    .prepare<[], { session_id: string; filament_type: string; total_weight: number }>(
+    .prepare<[], { session_id: string } & FilamentWeight>(
       `
     SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
     FROM job_filaments jf
     JOIN print_tasks pt ON jf.task_id = pt.id
-    WHERE jf.filament_type IS NOT NULL
+    WHERE jf.filament_type IS NOT NULL AND pt.status = 'finish'
     GROUP BY pt.session_id, jf.filament_type
     ORDER BY pt.session_id, total_weight DESC
   `,
     )
     .all();
 
-  const sessionFilament = new Map<string, string>();
-  for (const row of filamentRows) {
-    if (!sessionFilament.has(row.session_id))
-      sessionFilament.set(row.session_id, row.filament_type);
+  const sessionFilaments = new Map<string, FilamentWeight[]>();
+  for (const { session_id, ...row } of filamentRows) {
+    if (!sessionFilaments.has(session_id)) sessionFilaments.set(session_id, []);
+    sessionFilaments.get(session_id)!.push(row);
   }
 
   const prices: Record<number, number> = {};
   for (const job of listJobs()) {
     try {
-      const filamentType = sessionFilament.get(job.session_id) ?? "PLA";
-      const materialRate = materialRates.get(filamentType) ?? materialRates.get("PLA");
+      const fallbackMaterialRate = materialRates.get("PLA");
       const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-      if (!materialRate) continue;
-      const { final_price } = calcPrice({
-        total_weight_g: job.total_weight_g ?? 0,
+      if (!fallbackMaterialRate) continue;
+      const breakdown = calcPrice({
+        total_weight_g: 0,
         total_time_s: job.total_time_s ?? 0,
         extra_labor_minutes: job.extra_labor_minutes ?? null,
         price_override: job.price_override ?? null,
         machineRate,
-        materialRate,
+        materialRate: fallbackMaterialRate,
         laborConfig,
       });
-      prices[job.id] = final_price;
+      const materialCost = calcWeightedMaterialCost(
+        job.total_weight_g ?? 0,
+        sessionFilaments.get(job.session_id) ?? [],
+        materialRates,
+        fallbackMaterialRate,
+      );
+      const basePrice =
+        materialCost + breakdown.machine_cost + breakdown.labor_cost + breakdown.extra_labor_cost;
+      prices[job.id] = breakdown.is_override
+        ? breakdown.final_price
+        : Math.ceil(basePrice * (1 + laborConfig.profit_markup_pct));
     } catch {
       // skip — pricing config incomplete for this job
     }
