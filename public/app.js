@@ -1,181 +1,260 @@
-import { h, render } from 'https://esm.sh/preact@10';
-import { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/preact@10/hooks';
-import htm from 'https://esm.sh/htm@3';
+import { h, render } from "https://esm.sh/preact@10";
+import { useState, useEffect, useMemo, useCallback } from "https://esm.sh/preact@10/hooks";
+import htm from "https://esm.sh/htm@3";
 
-import { RouterProvider, useLocation } from './components/router.js';
-import { Header, Toolbar, TotalsBar, TableView, GridView } from './components/jobs-view.js';
-import { Modal } from './components/modal.js';
-import { ProjectsView, ProjectDetail } from './components/projects-view.js';
-import { AdminView } from './components/admin-view.js';
-import { ToastContainer } from './components/toast.js';
+import { RouterProvider, useLocation } from "./components/router.js";
+import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";
+import { Modal } from "./components/modal.js";
+import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
+import { AdminView } from "./components/admin-view.js";
+import { ToastContainer } from "./components/toast.js";
 
 const html = htm.bind(h);
 
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [jobs, setJobs]                 = useState([]);
-  const [projects, setProjects]         = useState([]);
+  const [jobs, setJobs] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [projectPrices, setProjectPrices] = useState({});
-  const [summary, setSummary]           = useState(null);
-  const [loading, setLoading]           = useState(true);
-  const [error, setError]               = useState(null);
-  const [, navigate]            = useLocation();
+  const [summary, setSummary] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  const [view, setView]                 = useState('table');
-  const [q, setQ]                       = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [deviceFilter, setDeviceFilter] = useState('');
-  const [sortCol, setSortCol]           = useState('startTime');
-  const [sortDir, setSortDir]           = useState('desc');
-  const [selectedJob, setSelectedJob]   = useState(null);
+  const [view, setView] = useState("table");
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [deviceFilter, setDeviceFilter] = useState("");
+  const [sortCol, setSortCol] = useState("startTime");
+  const [sortDir, setSortDir] = useState("desc");
+  const [selectedJob, setSelectedJob] = useState(null);
+  const [loc, navigate] = useLocation();
 
   useEffect(() => {
     Promise.all([
-      fetch('/ui/data').then(r => r.json()),
-      fetch('/summary').then(r => r.json()),
-      fetch('/projects').then(r => r.json()),
-    ]).then(([data, sum, proj]) => {
-      setJobs(data.jobs);
-      setSummary(sum);
-      setProjects(proj.projects);
-      setLoading(false);
-      // Prices fetched separately — won't block the UI if pricing isn't configured
-      fetch('/jobs/prices').then(r => r.json()).then(({ prices }) => {
-        setJobs(js => js.map(j => ({ ...j, final_price: prices[j.id] ?? null })));
-      }).catch(() => {});
-      fetch('/projects/prices').then(r => r.json()).then(({ prices }) => {
-        setProjectPrices(prices);
-      }).catch(() => {});
-    }).catch(err => {
-      setError(err.message);
-      setLoading(false);
-    });
+      fetch("/ui/data").then((r) => r.json()),
+      fetch("/summary").then((r) => r.json()),
+      fetch("/projects").then((r) => r.json()),
+    ])
+      .then(([data, sum, proj]) => {
+        setJobs(data.jobs);
+        setSummary(sum);
+        setProjects(proj.projects);
+        setLoading(false);
+        // Prices fetched separately — won't block the UI if pricing isn't configured
+        fetch("/jobs/prices")
+          .then((r) => r.json())
+          .then(({ prices }) => {
+            setJobs((js) => js.map((j) => ({ ...j, final_price: prices[j.id] ?? null })));
+          })
+          .catch(() => {});
+        fetch("/projects/prices")
+          .then((r) => r.json())
+          .then(({ prices }) => {
+            setProjectPrices(prices);
+          })
+          .catch(() => {});
+      })
+      .catch((err) => {
+        setError(err.message);
+        setLoading(false);
+      });
   }, []);
 
-  const devices = useMemo(() =>
-    [...new Set(jobs.map(j => j.deviceModel).filter(Boolean))].sort(),
-  [jobs]);
+  const devices = useMemo(
+    () => [...new Set(jobs.map((j) => j.deviceModel).filter(Boolean))].sort(),
+    [jobs],
+  );
 
   const isFiltered = !!(q || statusFilter || deviceFilter);
 
-  const filtered = useMemo(() => jobs.filter(j => {
-    const text = ((j.designTitle || '') + ' ' + (j.customer || '')).toLowerCase();
-    if (q && !text.includes(q.toLowerCase())) return false;
-    if (statusFilter && (j.status || '').toLowerCase() !== statusFilter) return false;
-    if (deviceFilter && j.deviceModel !== deviceFilter) return false;
-    return true;
-  }), [jobs, q, statusFilter, deviceFilter]);
+  const filtered = useMemo(
+    () =>
+      jobs.filter((j) => {
+        const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
+        if (q && !text.includes(q.toLowerCase())) return false;
+        if (statusFilter && (j.status || "").toLowerCase() !== statusFilter) return false;
+        if (deviceFilter && j.deviceModel !== deviceFilter) return false;
+        return true;
+      }),
+    [jobs, q, statusFilter, deviceFilter],
+  );
 
-  const sorted = useMemo(() => [...filtered].sort((a, b) => {
-    let av = a[sortCol], bv = b[sortCol];
-    if (av == null) av = sortDir === 'asc' ? Infinity : -Infinity;
-    if (bv == null) bv = sortDir === 'asc' ? Infinity : -Infinity;
-    if (typeof av === 'string') return sortDir === 'asc' ? av.localeCompare(bv) : bv.localeCompare(av);
-    return sortDir === 'asc' ? av - bv : bv - av;
-  }), [filtered, sortCol, sortDir]);
+  const sorted = useMemo(
+    () =>
+      [...filtered].sort((a, b) => {
+        let av = a[sortCol],
+          bv = b[sortCol];
+        if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
+        if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
+        if (typeof av === "string")
+          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+        return sortDir === "asc" ? av - bv : bv - av;
+      }),
+    [filtered, sortCol, sortDir],
+  );
 
-  const handleSort = useCallback(col => {
-    if (sortCol === col) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortCol(col);
-      setSortDir(col === 'startTime' ? 'desc' : 'asc');
-    }
-  }, [sortCol]);
+  const handleSort = useCallback(
+    (col) => {
+      if (sortCol === col) {
+        setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+      } else {
+        setSortCol(col);
+        setSortDir(col === "startTime" ? "desc" : "asc");
+      }
+    },
+    [sortCol],
+  );
 
   const closeModal = useCallback(() => setSelectedJob(null), []);
 
   // Generic job patch helper — updates local state from the returned job
   const patchJob = useCallback(async (jobId, fields) => {
     const res = await fetch(`/jobs/${jobId}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(fields),
     });
     if (!res.ok) return;
     const { job } = await res.json();
-    setJobs(js => js.map(j => j.id === jobId ? { ...j, ...job } : j));
-    setSelectedJob(j => j && j.id === jobId ? { ...j, ...job } : j);
+    setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...job } : j)));
+    setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...job } : j));
     return job;
   }, []);
 
-  const handleJobProjectChange = useCallback(async (jobId, projectId) => {
-    await patchJob(jobId, { project_id: projectId });
-    // Refresh project stats and prices (job counts / totals changed)
-    fetch('/projects').then(r => r.json()).then(d => setProjects(d.projects));
-    fetch('/projects/prices').then(r => r.json()).then(({ prices }) => setProjectPrices(prices)).catch(() => {});
-  }, [patchJob]);
+  const handleJobProjectChange = useCallback(
+    async (jobId, projectId) => {
+      await patchJob(jobId, { project_id: projectId });
+      // Refresh project stats and prices (job counts / totals changed)
+      fetch("/projects")
+        .then((r) => r.json())
+        .then((d) => setProjects(d.projects));
+      fetch("/projects/prices")
+        .then((r) => r.json())
+        .then(({ prices }) => setProjectPrices(prices))
+        .catch(() => {});
+    },
+    [patchJob],
+  );
 
-  const handleJobStatusChange = useCallback((jobId, statusOverride) => {
-    patchJob(jobId, { status_override: statusOverride });
-  }, [patchJob]);
+  const handleJobStatusChange = useCallback(
+    (jobId, statusOverride) => {
+      patchJob(jobId, { status_override: statusOverride });
+    },
+    [patchJob],
+  );
 
-  const handleJobExtraLaborChange = useCallback((jobId, minutes) => {
-    patchJob(jobId, { extra_labor_minutes: minutes });
-  }, [patchJob]);
+  const handleJobExtraLaborChange = useCallback(
+    (jobId, minutes) => {
+      patchJob(jobId, { extra_labor_minutes: minutes });
+    },
+    [patchJob],
+  );
 
-  const handleNavigateToProject = useCallback(projectId => {
-    setSelectedJob(null);
-    navigate(`/projects/${projectId}`);
-  }, [navigate]);
+  const handleNavigateToProject = useCallback(
+    (projectId) => {
+      setSelectedJob(null);
+      navigate(`/projects/${projectId}`);
+    },
+    [navigate],
+  );
 
-  const handleDeleteProject = useCallback(id => {
-    setProjects(ps => ps.filter(p => p.id !== id));
-    setJobs(js => js.map(j => j.project_id === id ? { ...j, project_id: null } : j));
-    navigate('/projects');
-  }, [navigate]);
+  const handleDeleteProject = useCallback(
+    (id) => {
+      setProjects((ps) => ps.filter((p) => p.id !== id));
+      setJobs((js) => js.map((j) => (j.project_id === id ? { ...j, project_id: null } : j)));
+      navigate("/projects");
+    },
+    [navigate],
+  );
 
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
-      fetch('/ui/data').then(r => r.json()),
-      fetch('/projects').then(r => r.json()),
+      fetch("/ui/data").then((r) => r.json()),
+      fetch("/projects").then((r) => r.json()),
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    fetch('/jobs/prices').then(r => r.json()).then(({ prices }) => {
-      setJobs(js => js.map(j => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })));
-    }).catch(() => {});
-    fetch('/projects/prices').then(r => r.json()).then(({ prices }) => setProjectPrices(prices)).catch(() => {});
+    fetch("/jobs/prices")
+      .then((r) => r.json())
+      .then(({ prices }) => {
+        setJobs((js) =>
+          js.map((j) => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })),
+        );
+      })
+      .catch(() => {});
+    fetch("/projects/prices")
+      .then((r) => r.json())
+      .then(({ prices }) => setProjectPrices(prices))
+      .catch(() => {});
   }, []);
 
-  if (loading) return html`
-    <div class="app-loading" role="status" aria-live="polite">
-      <div class="loader-shell">
-        <div class="loader-header">
-          <div class="loader-wordmark">bambu history</div>
-          <div class="loader-nav" aria-hidden="true">jobs / projects / rates</div>
-        </div>
-        <div class="loader-main">
-          <div class="loader-hero-row">
+  if (loading)
+    return html` <div class="in-app-loading" role="status" aria-live="polite">
+      <section class="dashboard-loader-card">
+        <div class="dashboard-loader-copy">
+          <div class="loader-hero-row dashboard-loader-title-row">
             <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
-            <h1 class="loader-title">loading prints</h1>
+            <div>
+              <p class="dashboard-loader-kicker">INTERNAL PRINT DASHBOARD</p>
+              <h1 class="dashboard-loader-title">loading workspace</h1>
+            </div>
           </div>
-          <p class="loader-kicker">INTERNAL PRINT DASHBOARD</p>
-          <p class="loader-copy">Fetching jobs, projects, rates, and covers…</p>
-          <div class="loader-progress" aria-hidden="true"><span></span></div>
+          <p class="dashboard-loader-copy-text">
+            Fetching jobs, projects, pricing, rates, and cover cache metadata…
+          </p>
+          <div class="dashboard-loader-steps" aria-hidden="true">
+            <span>jobs</span>
+            <span>projects</span>
+            <span>rates</span>
+            <span>covers</span>
+          </div>
+        </div>
+        <div class="dashboard-loader-preview" aria-hidden="true">
+          <div class="dashboard-loader-stat"><span></span><strong></strong></div>
+          <div class="dashboard-loader-stat"><span></span><strong></strong></div>
+          <div class="dashboard-loader-table">
+            ${Array.from(
+              { length: 5 },
+              (_, i) => html`
+                <div class="dashboard-loader-row" key=${i}>
+                  <span></span><span></span><span></span><span></span>
+                </div>
+              `,
+            )}
+          </div>
+        </div>
+      </section>
+    </div>`;
+  if (error)
+    return html`<div class="app-loading">
+      <div class="loader-shell">
+        <div class="loader-main loader-error">
+          <div class="loader-hero-row">
+            <div class="loader-cursor" aria-hidden="true"></div>
+            <h1 class="loader-title">failed to load</h1>
+          </div>
+          <p class="loader-copy">${error}</p>
         </div>
       </div>
     </div>`;
-  if (error)   return html`<div class="app-loading"><div class="loader-shell"><div class="loader-main loader-error"><div class="loader-hero-row"><div class="loader-cursor" aria-hidden="true"></div><h1 class="loader-title">failed to load</h1></div><p class="loader-copy">${error}</p></div></div></div>`;
 
-  const [loc] = useLocation();
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
-  const isProjects = loc.startsWith('/projects');
+  const isProjects = loc.startsWith("/projects");
 
   const renderMain = () => {
-    if (loc.startsWith('/admin')) return html`<${AdminView} />`;
+    if (loc.startsWith("/admin")) return html`<${AdminView} />`;
     if (projectDetailMatch) {
       const id = Number(projectDetailMatch[1]);
-      const project = projects.find(p => p.id === id);
-      const projectJobs = jobs.filter(j => j.project_id === id);
+      const project = projects.find((p) => p.id === id);
+      const projectJobs = jobs.filter((j) => j.project_id === id);
       if (!project) return html`<div class="empty">Project not found.</div>`;
-      const unassignedJobs = jobs.filter(j => j.project_id == null);
+      const unassignedJobs = jobs.filter((j) => j.project_id == null);
       return html`<${ProjectDetail}
         project=${project}
         jobs=${projectJobs}
         unassignedJobs=${unassignedJobs}
-        onBack=${() => navigate('/projects')}
+        onBack=${() => navigate("/projects")}
         onDelete=${handleDeleteProject}
         onJobClick=${setSelectedJob}
         onAddJob=${(jobId) => handleJobProjectChange(jobId, id)}
@@ -183,35 +262,53 @@ function App() {
       />`;
     }
     if (isProjects) {
-      return html`<${ProjectsView} projects=${projects} setProjects=${setProjects} onAutoGroup=${handleAutoGroup} projectPrices=${projectPrices} />`;
+      return html`<${ProjectsView}
+        projects=${projects}
+        setProjects=${setProjects}
+        onAutoGroup=${handleAutoGroup}
+        projectPrices=${projectPrices}
+      />`;
     }
     return html`
       <${Toolbar}
-        q=${q} setQ=${setQ}
-        statusFilter=${statusFilter} setStatusFilter=${setStatusFilter}
-        deviceFilter=${deviceFilter} setDeviceFilter=${setDeviceFilter}
+        q=${q}
+        setQ=${setQ}
+        statusFilter=${statusFilter}
+        setStatusFilter=${setStatusFilter}
+        deviceFilter=${deviceFilter}
+        setDeviceFilter=${setDeviceFilter}
         devices=${devices}
-        view=${view} setView=${setView}
-        filteredCount=${filtered.length} totalCount=${jobs.length}
+        view=${view}
+        setView=${setView}
+        filteredCount=${filtered.length}
+        totalCount=${jobs.length}
       />
       <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
       ${sorted.length === 0
         ? html`<div class="empty">No jobs match your filters.</div>`
-        : view === 'table'
-          ? html`<${TableView} sorted=${sorted} sortCol=${sortCol} sortDir=${sortDir} onSort=${handleSort} onJobClick=${setSelectedJob} />`
-          : html`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`
-      }
+        : view === "table"
+          ? html`<${TableView}
+              sorted=${sorted}
+              sortCol=${sortCol}
+              sortDir=${sortDir}
+              onSort=${handleSort}
+              onJobClick=${setSelectedJob}
+            />`
+          : html`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`}
     `;
   };
 
   return html`
     <${Header} summary=${summary} />
     ${renderMain()}
-    ${selectedJob && html`<${Modal}
+    ${selectedJob &&
+    html`<${Modal}
       key=${selectedJob.id}
-      job=${selectedJob} onClose=${closeModal}
+      job=${selectedJob}
+      onClose=${closeModal}
       onPatch=${patchJob}
-      projects=${projects} onJobProjectChange=${handleJobProjectChange}
+      projects=${projects}
+      onJobProjectChange=${handleJobProjectChange}
       onJobStatusChange=${handleJobStatusChange}
       onJobExtraLaborChange=${handleJobExtraLaborChange}
       onNavigateToProject=${handleNavigateToProject}
@@ -220,4 +317,7 @@ function App() {
   `;
 }
 
-render(html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>`, document.getElementById('app'));
+render(
+  html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>`,
+  document.getElementById("app"),
+);
