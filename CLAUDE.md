@@ -20,7 +20,7 @@ npm run format:check # Prettier check
 
 Run a single test file: `npx vitest run tests/pricing.test.ts`
 
-**Always run `npm run lint` and `npm run typecheck` before committing.**
+**Always run `npm run lint`, `npm run typecheck`, and `npm test` before committing.**
 
 ## Architecture
 
@@ -31,17 +31,20 @@ api.ts                  Hono HTTP server entry point
 routes/                 Hono route handlers (jobs, projects, rates, summary, tasks, ui)
 models/                 Sync DB query functions called by routes (better-sqlite3, no await)
 lib/
-  db.ts                 Schema, migrations, prepared statements
+  db.ts                 Schema, prepared statements, migration registration
+  migrations.ts         Numbered migration helpers and schema_migrations bookkeeping
   normalize.ts          normalizeTask() — maps raw API shape to PrintTask
+  session-detection.ts  Shared session grouping logic
   auto-group.ts         Auto-group unassigned jobs into projects
   pricing.ts            Pure pricing functions (no DB access)
   covers.ts             Local cover image cache (download + serve)
+  colors.ts             ANSI color helpers for CLI/server logs
   types.ts              Shared TypeScript interfaces
   constants.ts          SESSION_GAP_S and other shared constants
+  util.ts               Route/model utility helpers
 public/                 Preact 10 + htm frontend — no build step, ESM from esm.sh
   app.js                Root component, routing, data fetching
   components/           Preact components (atoms, modal, views, toast, router)
-tickets/                Deferred work items (check for relevant tickets at session start)
 ```
 
 ## Key data model
@@ -59,4 +62,5 @@ tickets/                Deferred work items (check for relevant tickets at sessi
 - `public/` is excluded from ESLint (plain JS, no TypeScript).
 - Do not add React/Vue/Svelte/Vite to the frontend.
 - Pricing: per-project applies one labor charge across all jobs; only **finished** plates count toward weight/time.
+- GitHub Issues are the source of truth for deferred work; check relevant open issues before significant changes.
 - Commit with conventional-commit prefixes (`feat:`, `fix:`, `chore:`, `refactor:`, `perf:`). Stage only related files — never `git add -A`.

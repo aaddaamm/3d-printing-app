@@ -1,16 +1,16 @@
 # Agent Guidance — bambu-history-dump
 
-## Ticket hygiene
+## Issue hygiene
 
-`tickets/` contains work that has been identified but deferred. At the start of any
+GitHub Issues are the source of truth for deferred work. At the start of any
 session where significant features or refactoring are discussed:
 
-1. **Check tickets/** — scan the list and mention any that are directly relevant to
-   the current work. If a ticket's work has been completed, delete the file.
-2. **Create tickets** for any clearly useful work that comes up but isn't being
-   done in the current session. Better to write it down than lose it.
-3. Ticket files are plain Markdown. Keep them concise: background, proposed approach,
-   open questions. Don't over-engineer them.
+1. **Check GitHub Issues** — scan open issues and mention any directly relevant to
+   the current work.
+2. **Close completed issues** when the work has already been finished.
+3. **Create issues** for clearly useful work that comes up but isn't being done in
+   the current session. Keep them concise: background, proposed approach, open
+   questions. Don't over-engineer them.
 
 ## Architecture overview
 
@@ -18,23 +18,26 @@ session where significant features or refactoring are discussed:
 dump-bambu-history.ts   — CLI: fetch from Bambu API → insert → normalize → download covers
 normalize.ts            — Session detection & job upsert (also importable)
 api.ts                  — Hono HTTP server entry point
-routes/                 — Hono route handlers (jobs, tasks, rates, summary, ui)
+routes/                 — Hono route handlers (jobs, projects, tasks, rates, summary, ui)
 models/                 — DB query functions called by routes
 lib/
   auto-group.ts         — Auto-group unassigned jobs into projects (by designId or title)
+  colors.ts             — ANSI color helpers for CLI/server logs
   constants.ts          — Shared constants (session gap, API limits, timeouts)
+  covers.ts             — Local cover image cache (download + serve)
   db.ts                 — Schema, migrations, prepared statements (better-sqlite3)
   fetch.ts              — Bambu API fetch with retry + pagination
+  migrations.ts         — Numbered migration helpers and schema_migrations bookkeeping
   normalize.ts          — normalizeTask() — maps raw API shape to PrintTask
-  covers.ts             — Local cover image cache (download + serve)
   pricing.ts            — Pure pricing functions (no DB access)
+  session-detection.ts  — Shared session grouping logic used by normalization
   types.ts              — Shared TypeScript interfaces
+  util.ts               — Route/model utility helpers
 public/                 — Frontend (Preact + htm, no build step)
   index.html            — Shell HTML (API_KEY injected server-side)
   app.js                — Root component, routing, data fetching
   app.css               — All styles
   components/           — Preact components (atoms, modal, views, toast, router)
-tickets/                — Deferred feature work (see above)
 covers/                 — Cached cover PNGs (gitignored, populated by sync)
 ```
 
@@ -89,9 +92,9 @@ npm run typecheck    # tsc --noEmit
 npm test             # vitest run
 ```
 
-**Always run `npm run lint` and `npm run typecheck` before committing.** The ESLint
-config (`eslint.config.js`) uses flat config with `typescript-eslint/recommended` and
-defers formatting to Prettier. The `public/` directory is excluded from ESLint (plain
+**Always run `npm run lint`, `npm run typecheck`, and `npm test` before committing.**
+The ESLint config (`eslint.config.js`) uses flat config with `typescript-eslint/recommended`
+and defers formatting to Prettier. The `public/` directory is excluded from ESLint (plain
 JS, no TypeScript).
 
 Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas,
@@ -100,13 +103,17 @@ Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas
 ## Development workflow
 
 ```bash
-npm run dev     # Hot-reload API server (tsx watch)
-npm run sync    # Fetch from Bambu API + normalize + download covers
+npm run dev       # Hot-reload API server (tsx watch)
+npm run api       # Start API server once
+npm run sync      # Fetch from Bambu API + normalize + download covers
+npm run normalize # Rebuild sessions/jobs from existing print_tasks
 npm run typecheck
+npm run lint
 npm test
 ```
 
 The API requires `API_KEY` env var. Sync requires `BAMBU_TOKEN` (or `~/.bambu_token`).
+Set `SYNC_INTERVAL_HOURS` on the API server to run sync on startup and then periodically.
 
 ## Frontend architecture
 
@@ -120,6 +127,7 @@ no bundler. Browser caches modules after first load; requires internet on first 
   `alert()` or `confirm()`** in the frontend.
 
 **Adding new pages / features:**
+
 - Add new components to `public/components/`
 - Add new API endpoints in `routes/` and `models/` as needed
 - Do NOT add React/Vue/Svelte/Vite — build pipeline overhead isn't worth it
