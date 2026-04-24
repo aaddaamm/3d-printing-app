@@ -139,8 +139,23 @@ function App() {
     fetch('/projects/prices').then(r => r.json()).then(({ prices }) => setProjectPrices(prices)).catch(() => {});
   }, []);
 
-  if (loading) return html`<div class="loading"><div class="spinner"></div>Loading print jobs…</div>`;
-  if (error)   return html`<div class="loading"><span style="color:var(--red)">Failed to load: ${error}</span></div>`;
+  if (loading) return html`
+    <div class="app-loading" role="status" aria-live="polite">
+      <div class="loader-card">
+        <div class="loader-mark" aria-hidden="true">
+          <div class="loader-cube"></div>
+          <div class="loader-ring"></div>
+        </div>
+        <div>
+          <div class="loader-title">Loading print history</div>
+          <div class="loader-subtitle">Fetching jobs, projects, rates, and covers…</div>
+        </div>
+        <div class="loader-skeleton" aria-hidden="true">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>`;
+  if (error)   return html`<div class="app-loading"><div class="loader-card loader-card-error"><div class="loader-title">Failed to load</div><div class="loader-subtitle">${error}</div></div></div>`;
 
   const [loc] = useLocation();
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);

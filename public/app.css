@@ -477,16 +477,76 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
 .add-jobs-btn:hover { opacity: .85; }
 
 /* ── Loading / empty ── */
-.loading {
-  display: flex; align-items: center; justify-content: center;
-  padding: 80px 28px; font-size: 1rem; color: var(--subtext);
+.app-loading {
+  min-height: 100svh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 28px;
+  background:
+    radial-gradient(circle at 50% 30%, rgba(0,174,255,.14), transparent 34rem),
+    linear-gradient(180deg, #121622 0%, var(--bg) 100%);
 }
-.spinner {
-  width: 18px; height: 18px;
-  border: 2px solid var(--border); border-top-color: var(--accent);
-  border-radius: 50%; animation: spin .7s linear infinite; margin-right: 10px;
+.loader-card {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  padding: 34px 30px;
+  text-align: center;
+  background: rgba(26, 29, 39, .86);
+  border: 1px solid rgba(0, 174, 255, .22);
+  border-radius: 22px;
+  box-shadow: 0 24px 80px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
+  backdrop-filter: blur(10px);
 }
+.loader-card-error { border-color: rgba(239,68,68,.38); }
+.loader-mark {
+  position: relative;
+  width: 78px;
+  height: 78px;
+  display: grid;
+  place-items: center;
+}
+.loader-cube {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent), #7dd3fc);
+  box-shadow: 0 0 32px rgba(0,174,255,.42);
+  animation: loader-float 1.5s ease-in-out infinite;
+}
+.loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  border-top-color: var(--accent);
+  border-right-color: rgba(0,174,255,.28);
+  animation: spin .9s linear infinite;
+}
+.loader-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -.02em; }
+.loader-subtitle { margin-top: 5px; color: var(--subtext); font-size: .86rem; }
+.loader-skeleton {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+}
+.loader-skeleton span {
+  height: 9px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #222842 0%, #33405f 45%, #222842 90%);
+  background-size: 220% 100%;
+  animation: loader-shimmer 1.25s ease-in-out infinite;
+}
+.loader-skeleton span:nth-child(2) { width: 78%; align-self: center; animation-delay: .08s; }
+.loader-skeleton span:nth-child(3) { width: 54%; align-self: center; animation-delay: .16s; }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes loader-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-5px) rotate(6deg); } }
+@keyframes loader-shimmer { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
 .empty { padding: 60px 28px; text-align: center; color: var(--subtext); }
 
 /* ── Admin / Rates page ── */
