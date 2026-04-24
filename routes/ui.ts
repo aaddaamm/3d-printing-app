@@ -52,23 +52,28 @@ const LOGIN_HTML = `<!DOCTYPE html>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Sign in — Bambu Print History</title>
   <style>
+    @font-face { font-family: "Inter"; src: url("/ui/fonts/Inter-VariableFont_slnt,wght.woff2") format("woff2"); font-display: swap; }
+    @font-face { font-family: "JetBrains Mono"; src: url("/ui/fonts/JetBrainsMono-VariableFont_wght.ttf") format("truetype"); font-display: swap; }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { display: flex; align-items: center; justify-content: center;
-           min-height: 100svh; background: #0f0f0f; font-family: system-ui, sans-serif; }
-    form { display: flex; flex-direction: column; gap: 12px; width: 320px; }
-    h1 { color: #e0e0e0; font-size: 1.1rem; font-weight: 600; text-align: center; margin-bottom: 4px; }
-    input { padding: 10px 12px; border-radius: 6px; border: 1px solid #333;
-            background: #1a1a1a; color: #e0e0e0; font-size: 1rem; outline: none; }
-    input:focus { border-color: #555; }
-    button { padding: 10px; border-radius: 6px; border: none; background: #2563eb;
-             color: #fff; font-size: 1rem; font-weight: 600; cursor: pointer; }
-    button:hover { background: #1d4ed8; }
-    .error { color: #f87171; font-size: 0.85rem; text-align: center; }
+           min-height: 100svh; background: #0a0a0a; color: #fff; font-family: "Inter", system-ui, sans-serif; }
+    form { display: flex; flex-direction: column; gap: 12px; width: min(320px, calc(100vw - 48px)); }
+    h1 { display: flex; align-items: center; justify-content: center; gap: 10px;
+         color: #fff; font-family: "JetBrains Mono", monospace; font-size: 17px; font-weight: 500;
+         text-transform: lowercase; margin-bottom: 8px; }
+    h1::before { content: ""; width: 8px; height: 28px; border-radius: 1.5px; background: #3aafa9; }
+    input { padding: 10px 12px; border-radius: 8px; border: 1px solid #1a1a1a;
+            background: #111; color: #fff; font-size: 1rem; outline: none; }
+    input:focus { border-color: #3aafa9; }
+    button { padding: 10px; border-radius: 8px; border: none; background: #3aafa9;
+             color: #0a0a0a; font-size: 1rem; font-weight: 600; cursor: pointer; }
+    button:hover { filter: brightness(1.08); }
+    .error { color: #ff6b6b; font-size: 0.85rem; text-align: center; }
   </style>
 </head>
 <body>
   <form method="POST" action="/ui/login">
-    <h1>Bambu Print History</h1>
+    <h1>bambu history</h1>
     __ERROR__
     <input type="password" name="key" placeholder="API key" autofocus autocomplete="current-password">
     <button type="submit">Sign in</button>
@@ -122,6 +127,17 @@ export function createUiApp(apiKey: string): Hono {
   ui.get("/app.css", (_c) => {
     const css = readTextFile(path.join(PUBLIC_DIR, "app.css"));
     return new Response(css, { headers: { "Content-Type": "text/css" } });
+  });
+
+  ui.get("/fonts/:file", (c) => {
+    const file = c.req.param("file");
+    if (!/^[\w,.-]+\.(woff2|ttf)$/.test(file)) return c.json({ error: "Not found" }, 404);
+    const filePath = path.join(PUBLIC_DIR, "fonts", file);
+    if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
+    const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
+    return new Response(fs.readFileSync(filePath), {
+      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000" },
+    });
   });
 
   // Component JS modules — served without auth (no sensitive data, imported by app.js).

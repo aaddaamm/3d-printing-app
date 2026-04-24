@@ -1,7 +1,7 @@
 // ── Jobs view — Header, Toolbar, TotalsBar, Table, Grid ──────────────────────
 
 import { h } from 'https://esm.sh/preact@10';
-import { useState, useMemo, useCallback } from 'https://esm.sh/preact@10/hooks';
+import { useMemo } from 'https://esm.sh/preact@10/hooks';
 import htm from 'https://esm.sh/htm@3';
 
 import { fmtTime, fmtDate, fmtDateShort, fmtCurrency, fmtWeight, fmtWeightTotal } from './helpers.js';
@@ -18,7 +18,7 @@ export function Header({ summary }) {
   return html`
     <header>
       <div class="header-left">
-        <h1>Bambu <span>Print History</span></h1>
+        <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
         <nav class="top-nav">
           <button class=${'nav-btn' + (!loc.startsWith('/projects') && !loc.startsWith('/admin') ? ' active' : '')}
             onClick=${() => navigate('/')}>Jobs</button>
