@@ -179,15 +179,6 @@ function App() {
     [navigate],
   );
 
-  const handleDeleteProject = useCallback(
-    (id) => {
-      setProjects((ps) => ps.filter((p) => p.id !== id));
-      setJobs((js) => js.map((j) => (j.project_id === id ? { ...j, project_id: null } : j)));
-      navigate("/projects");
-    },
-    [navigate],
-  );
-
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
       fetch("/ui/data").then((r) => r.json()),
@@ -279,7 +270,6 @@ function App() {
         jobs=${projectJobs}
         unassignedJobs=${unassignedJobs}
         onBack=${() => navigate("/projects")}
-        onDelete=${handleDeleteProject}
         onJobClick=${setSelectedJob}
         onAddJob=${(jobId) => handleJobProjectChange(jobId, id)}
         onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}

@@ -210,7 +210,6 @@ function ProjectDetail({
   jobs,
   unassignedJobs,
   onBack,
-  onDelete,
   onJobClick,
   onAddJob,
   onRemoveJob,
@@ -229,22 +228,6 @@ function ProjectDetail({
       .catch(() => {});
   }, [project.id, jobs.length]);
 
-  const handleDelete = useCallback(async () => {
-    if (!confirm(`Delete project "${project.name}"? Jobs will be unassigned but not deleted.`))
-      return;
-    try {
-      const res = await fetch(`/projects/${project.id}`, { method: "DELETE" });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Failed to delete project."), "error");
-        return;
-      }
-      onDelete(project.id);
-      toast("Project deleted.", "success");
-    } catch {
-      toast("Network error while deleting project.", "error");
-    }
-  }, [project, onDelete]);
-
   const handleAdd = useCallback(
     (jobId) => {
       onAddJob(jobId);
@@ -261,7 +244,6 @@ function ProjectDetail({
           ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
         </div>
         <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
-        <button class="btn-danger" onClick=${handleDelete}>Delete</button>
       </div>
       ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
       <div class="totals-bar">

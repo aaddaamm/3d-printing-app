@@ -913,20 +913,6 @@ tbody td {
 	color: var(--text);
 	border-color: var(--accent);
 }
-.btn-danger {
-	background: none;
-	border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
-	color: var(--red);
-	padding: 5px 12px;
-	border-radius: var(--radius);
-	font-size: 0.8rem;
-	cursor: pointer;
-	white-space: nowrap;
-}
-.btn-danger:hover {
-	background: var(--red-soft);
-}
-
 /* Project form */
 .project-form {
 	display: flex;
@@ -958,6 +944,16 @@ tbody td {
 .form-input:focus {
 	border-color: var(--accent);
 	box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.form-help {
+	margin: -2px 0 0;
+	color: var(--subtext);
+	font-family: var(--font-sans);
+	font-size: 0.74rem;
+	font-weight: 400;
+	letter-spacing: 0;
+	line-height: 1.4;
+	text-transform: none;
 }
 .form-textarea {
 	resize: vertical;

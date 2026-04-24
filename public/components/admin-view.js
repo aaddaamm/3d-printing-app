@@ -117,7 +117,7 @@ function MachineForm({ machine, saving, saved, onSave }) {
 function MaterialForm({ material, saving, saved, onSave }) {
   const [v, setV] = useState(material);
   useEffect(() => setV(material), [material]);
-  const rate = v.cost_per_g * (1 + v.waste_buffer_pct / 100);
+  const rate = v.cost_per_g * (1 + v.waste_buffer_pct);
   return html`
     <div class="admin-card">
       <div class="admin-card-name">${v.filament_type}</div>
@@ -129,11 +129,12 @@ function MaterialForm({ material, saving, saved, onSave }) {
           onChange=${(val) => setV((x) => ({ ...x, cost_per_g: val }))}
         />
         <${RateField}
-          label="Waste buffer (%)"
+          label="Waste buffer fraction"
           value=${v.waste_buffer_pct}
-          step="1"
+          step="0.01"
           onChange=${(val) => setV((x) => ({ ...x, waste_buffer_pct: val }))}
         />
+        <p class="form-help">Stored as a fraction: 0.10 = 10% waste.</p>
       </div>
       <div class="admin-card-footer">
         <span class="admin-derived">→ ${(rate * 1000).toFixed(2)}¢/g effective</span>
@@ -295,7 +296,9 @@ export function AdminView() {
 
       <section class="admin-section">
         <h3 class="admin-section-title">Material Rates</h3>
-        <p class="admin-section-desc">Cost per gram including waste. Rate = cost × (1 + waste%).</p>
+        <p class="admin-section-desc">
+          Cost per gram including waste. Rate = cost × (1 + waste fraction).
+        </p>
         ${material_rates.map(
           (m) => html`
             <${MaterialForm}
