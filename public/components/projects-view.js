@@ -346,7 +346,13 @@ function ProjectDetail({
   `;
 }
 
-export function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices }) {
+export function ProjectsView({
+  projects,
+  setProjects,
+  onAutoGroup,
+  projectPrices,
+  loading = false,
+}) {
   const [showNew, setShowNew] = useState(false);
   const [grouping, setGrouping] = useState(false);
   const [q, setQ] = useState("");
@@ -411,25 +417,27 @@ export function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices
       </button>
       <button class="btn-primary" onClick=${() => setShowNew(true)}>+ New Project</button>
     </div>
-    ${filtered.length === 0
-      ? html`<div class="empty">
-          ${q
-            ? "No projects match your search."
-            : "No projects yet. Create one to group related jobs together."}
-        </div>`
-      : html`
-          <div class="proj-grid">
-            ${filtered.map(
-              (p) =>
-                html`<${ProjectCard}
-                  key=${p.id}
-                  project=${p}
-                  totalPrice=${projectPrices[p.id] ?? null}
-                  onClick=${() => navigate(`/projects/${p.id}`)}
-                />`,
-            )}
-          </div>
-        `}
+    ${loading
+      ? html`<div class="empty">Loading projects…</div>`
+      : filtered.length === 0
+        ? html`<div class="empty">
+            ${q
+              ? "No projects match your search."
+              : "No projects yet. Create one to group related jobs together."}
+          </div>`
+        : html`
+            <div class="proj-grid">
+              ${filtered.map(
+                (p) =>
+                  html`<${ProjectCard}
+                    key=${p.id}
+                    project=${p}
+                    totalPrice=${projectPrices[p.id] ?? null}
+                    onClick=${() => navigate(`/projects/${p.id}`)}
+                  />`,
+              )}
+            </div>
+          `}
     ${showNew &&
     html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
   `;

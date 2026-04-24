@@ -25,6 +25,7 @@ async function errorMessage(res, fallback) {
 function App() {
   const [jobs, setJobs] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectPrices, setProjectPrices] = useState({});
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -40,23 +41,23 @@ function App() {
   const [loc, navigate] = useLocation();
 
   useEffect(() => {
-    Promise.all([
-      fetch("/ui/data").then((r) => r.json()),
-      fetch("/summary").then((r) => r.json()),
-      fetch("/projects").then((r) => r.json()),
-    ])
-      .then(([data, sum, proj]) => {
+    Promise.all([fetch("/ui/data").then((r) => r.json()), fetch("/summary").then((r) => r.json())])
+      .then(([data, sum]) => {
         setJobs(data.jobs);
         setSummary(sum);
-        setProjects(proj.projects);
         setLoading(false);
-        // Prices fetched separately — won't block the UI if pricing isn't configured
+        // Prices and projects are useful, but should not block the main dashboard.
         fetch("/jobs/prices")
           .then((r) => r.json())
           .then(({ prices }) => {
             setJobs((js) => js.map((j) => ({ ...j, final_price: prices[j.id] ?? null })));
           })
           .catch(() => {});
+        fetch("/projects")
+          .then((r) => r.json())
+          .then(({ projects }) => setProjects(projects))
+          .catch(() => toast("Failed to load projects.", "error"))
+          .finally(() => setProjectsLoading(false));
         fetch("/projects/prices")
           .then((r) => r.json())
           .then(({ prices }) => {
@@ -67,6 +68,7 @@ function App() {
       .catch((err) => {
         setError(err.message);
         setLoading(false);
+        setProjectsLoading(false);
       });
   }, []);
 
@@ -266,7 +268,11 @@ function App() {
       const id = Number(projectDetailMatch[1]);
       const project = projects.find((p) => p.id === id);
       const projectJobs = jobs.filter((j) => j.project_id === id);
-      if (!project) return html`<div class="empty">Project not found.</div>`;
+      if (!project) {
+        return projectsLoading
+          ? html`<div class="empty">Loading projects…</div>`
+          : html`<div class="empty">Project not found.</div>`;
+      }
       const unassignedJobs = jobs.filter((j) => j.project_id == null);
       return html`<${ProjectDetail}
         project=${project}
@@ -285,6 +291,7 @@ function App() {
         setProjects=${setProjects}
         onAutoGroup=${handleAutoGroup}
         projectPrices=${projectPrices}
+        loading=${projectsLoading}
       />`;
     }
     return html`

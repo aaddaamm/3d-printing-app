@@ -58,6 +58,7 @@ for (const sql of [
   `CREATE INDEX IF NOT EXISTS idx_print_tasks_instanceId ON print_tasks(instanceId)`,
   `CREATE INDEX IF NOT EXISTS idx_print_tasks_deviceId   ON print_tasks(deviceId)`,
   `CREATE INDEX IF NOT EXISTS idx_print_tasks_startTime  ON print_tasks(startTime)`,
+  `CREATE INDEX IF NOT EXISTS idx_print_tasks_session_plate ON print_tasks(session_id, plateIndex)`,
   `CREATE TABLE IF NOT EXISTS jobs (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     session_id     TEXT UNIQUE NOT NULL,
@@ -83,6 +84,7 @@ for (const sql of [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_customer  ON jobs(customer)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_startTime ON jobs(startTime)`,
+  `CREATE INDEX IF NOT EXISTS idx_jobs_project_start ON jobs(project_id, startTime DESC)`,
   `CREATE TABLE IF NOT EXISTS job_filaments (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     task_id       TEXT NOT NULL REFERENCES print_tasks(id),
