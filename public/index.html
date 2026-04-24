@@ -9,17 +9,19 @@
 <body>
   <div id="app">
     <div class="app-loading" role="status" aria-live="polite">
-      <div class="loader-card">
-        <div class="loader-mark" aria-hidden="true">
-          <div class="loader-cube"></div>
-          <div class="loader-ring"></div>
+      <div class="loader-shell">
+        <div class="loader-header">
+          <div class="loader-wordmark">bambu history</div>
+          <div class="loader-nav" aria-hidden="true">jobs / projects / rates</div>
         </div>
-        <div>
-          <div class="loader-title">Loading print history</div>
-          <div class="loader-subtitle">Starting the dashboard…</div>
-        </div>
-        <div class="loader-skeleton" aria-hidden="true">
-          <span></span><span></span><span></span>
+        <div class="loader-main">
+          <div class="loader-hero-row">
+            <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
+            <h1 class="loader-title">loading prints</h1>
+          </div>
+          <p class="loader-kicker">INTERNAL PRINT DASHBOARD</p>
+          <p class="loader-copy">Starting the dashboard…</p>
+          <div class="loader-progress" aria-hidden="true"><span></span></div>
         </div>
       </div>
     </div>

@@ -141,21 +141,23 @@ function App() {
 
   if (loading) return html`
     <div class="app-loading" role="status" aria-live="polite">
-      <div class="loader-card">
-        <div class="loader-mark" aria-hidden="true">
-          <div class="loader-cube"></div>
-          <div class="loader-ring"></div>
+      <div class="loader-shell">
+        <div class="loader-header">
+          <div class="loader-wordmark">bambu history</div>
+          <div class="loader-nav" aria-hidden="true">jobs / projects / rates</div>
         </div>
-        <div>
-          <div class="loader-title">Loading print history</div>
-          <div class="loader-subtitle">Fetching jobs, projects, rates, and covers…</div>
-        </div>
-        <div class="loader-skeleton" aria-hidden="true">
-          <span></span><span></span><span></span>
+        <div class="loader-main">
+          <div class="loader-hero-row">
+            <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
+            <h1 class="loader-title">loading prints</h1>
+          </div>
+          <p class="loader-kicker">INTERNAL PRINT DASHBOARD</p>
+          <p class="loader-copy">Fetching jobs, projects, rates, and covers…</p>
+          <div class="loader-progress" aria-hidden="true"><span></span></div>
         </div>
       </div>
     </div>`;
-  if (error)   return html`<div class="app-loading"><div class="loader-card loader-card-error"><div class="loader-title">Failed to load</div><div class="loader-subtitle">${error}</div></div></div>`;
+  if (error)   return html`<div class="app-loading"><div class="loader-shell"><div class="loader-main loader-error"><div class="loader-hero-row"><div class="loader-cursor" aria-hidden="true"></div><h1 class="loader-title">failed to load</h1></div><p class="loader-copy">${error}</p></div></div></div>`;
 
   const [loc] = useLocation();
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);

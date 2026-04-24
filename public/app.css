@@ -478,75 +478,102 @@ tbody td { padding: 9px 14px; vertical-align: middle; }
 
 /* ── Loading / empty ── */
 .app-loading {
+  --loader-bg: #0a0a0a;
+  --loader-text: #fff;
+  --loader-accent: #3aafa9;
+  --loader-muted: #888;
+  --loader-border: #1a1a1a;
   min-height: 100svh;
+  background: var(--loader-bg);
+  color: var(--loader-text);
+  font-family: Inter, system-ui, sans-serif;
+}
+.loader-shell {
+  width: min(48rem, 100%);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  flex-direction: column;
+}
+.loader-header {
+  height: 56px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--loader-border);
+}
+.loader-wordmark {
+  font-size: 0.75rem;
+  color: var(--loader-text);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.loader-nav {
+  font-size: 0.75rem;
+  color: var(--loader-muted);
+}
+.loader-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
   justify-content: center;
-  padding: 28px;
-  background:
-    radial-gradient(circle at 50% 30%, rgba(0,174,255,.14), transparent 34rem),
-    linear-gradient(180deg, #121622 0%, var(--bg) 100%);
+  padding: 80px 0 120px;
 }
-.loader-card {
-  width: min(380px, 100%);
+.loader-hero-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 18px;
-  padding: 34px 30px;
-  text-align: center;
-  background: rgba(26, 29, 39, .86);
-  border: 1px solid rgba(0, 174, 255, .22);
-  border-radius: 22px;
-  box-shadow: 0 24px 80px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.04);
-  backdrop-filter: blur(10px);
+  gap: 16px;
+  margin-bottom: 12px;
 }
-.loader-card-error { border-color: rgba(239,68,68,.38); }
-.loader-mark {
-  position: relative;
-  width: 78px;
-  height: 78px;
-  display: grid;
-  place-items: center;
+.loader-cursor {
+  width: 18px;
+  height: 64px;
+  border-radius: 3px;
+  background: var(--loader-accent);
+  flex-shrink: 0;
 }
-.loader-cube {
-  width: 38px;
-  height: 38px;
-  border-radius: 10px;
-  background: linear-gradient(135deg, var(--accent), #7dd3fc);
-  box-shadow: 0 0 32px rgba(0,174,255,.42);
-  animation: loader-float 1.5s ease-in-out infinite;
+.loader-title {
+  margin: 0;
+  color: var(--loader-text);
+  font-size: clamp(2.4rem, 8vw, 3.25rem);
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -1.5px;
+  text-transform: lowercase;
 }
-.loader-ring {
-  position: absolute;
-  inset: 0;
-  border-radius: 999px;
-  border: 2px solid transparent;
-  border-top-color: var(--accent);
-  border-right-color: rgba(0,174,255,.28);
-  animation: spin .9s linear infinite;
+.loader-kicker {
+  margin: 0 0 24px 34px;
+  color: var(--loader-accent);
+  font-family: "JetBrains Mono", "Fira Mono", "Courier New", monospace;
+  font-size: 0.875rem;
+  font-weight: 500;
+  letter-spacing: 3px;
 }
-.loader-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -.02em; }
-.loader-subtitle { margin-top: 5px; color: var(--subtext); font-size: .86rem; }
-.loader-skeleton {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 4px;
+.loader-copy {
+  max-width: 34rem;
+  margin: 0 0 24px 34px;
+  color: var(--loader-text);
+  font-size: 1rem;
+  line-height: 1.7;
 }
-.loader-skeleton span {
-  height: 9px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, #222842 0%, #33405f 45%, #222842 90%);
-  background-size: 220% 100%;
-  animation: loader-shimmer 1.25s ease-in-out infinite;
+.loader-progress {
+  width: min(28rem, calc(100% - 34px));
+  height: 1px;
+  margin-left: 34px;
+  overflow: hidden;
+  background: var(--loader-border);
 }
-.loader-skeleton span:nth-child(2) { width: 78%; align-self: center; animation-delay: .08s; }
-.loader-skeleton span:nth-child(3) { width: 54%; align-self: center; animation-delay: .16s; }
-@keyframes spin { to { transform: rotate(360deg); } }
-@keyframes loader-float { 0%, 100% { transform: translateY(0) rotate(0deg); } 50% { transform: translateY(-5px) rotate(6deg); } }
-@keyframes loader-shimmer { 0% { background-position: 120% 0; } 100% { background-position: -120% 0; } }
+.loader-progress span {
+  display: block;
+  width: 42%;
+  height: 100%;
+  background: var(--loader-accent);
+  animation: loader-slide 1.25s ease-in-out infinite;
+}
+.loader-error .loader-cursor { background: var(--red); }
+@keyframes loader-slide { 0% { transform: translateX(-110%); } 100% { transform: translateX(250%); } }
 .empty { padding: 60px 28px; text-align: center; color: var(--subtext); }
 
 /* ── Admin / Rates page ── */
