@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { deriveJobStatus, detectSessions } from "../normalize.js";
-import type { RawTask } from "../normalize.js";
+import { deriveJobStatus, detectSessions } from "../lib/session-detection.js";
+import type { RawTask } from "../lib/session-detection.js";
 
 // ── deriveJobStatus ───────────────────────────────────────────────────────────
 
