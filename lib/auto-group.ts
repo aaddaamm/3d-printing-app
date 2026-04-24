@@ -29,6 +29,14 @@ const findAutoProject = db.prepare<[string], { id: number }>(`
   SELECT id FROM projects WHERE source_design_id = ?
 `);
 
+const findManualProjectByName = db.prepare<[string], { id: number }>(`
+  SELECT id FROM projects WHERE source_design_id IS NULL AND name = ?
+`);
+
+const adoptManualProject = db.prepare<[string, number]>(`
+  UPDATE projects SET source_design_id = ? WHERE id = ? AND source_design_id IS NULL
+`);
+
 const insertAutoProject = db.prepare<{
   name: string;
   source_design_id: string;
@@ -123,6 +131,13 @@ export function autoGroupProjects(): { created: number; assigned: number } {
     for (const [baseTitle, ids] of groups) {
       const sourceKey = `title:${baseTitle}`;
       let project = findAutoProject.get(sourceKey);
+
+      if (!project) {
+        project = findManualProjectByName.get(baseTitle);
+        if (project) {
+          adoptManualProject.run(sourceKey, project.id);
+        }
+      }
 
       if (!project) {
         const { lastInsertRowid } = insertAutoProject.run({

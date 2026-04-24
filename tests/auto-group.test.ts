@@ -5,6 +5,8 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const {
   mockFindDesignsAll,
   mockFindAutoProjectGet,
+  mockFindManualProjectByNameGet,
+  mockAdoptManualProjectRun,
   mockInsertAutoProjectRun,
   mockAssignJobsRun,
   mockFindUserJobsAll,
@@ -12,6 +14,8 @@ const {
 } = vi.hoisted(() => ({
   mockFindDesignsAll: vi.fn<() => { designId: string; designTitle: string | null }[]>(),
   mockFindAutoProjectGet: vi.fn<(id: string) => { id: number } | undefined>(),
+  mockFindManualProjectByNameGet: vi.fn<(name: string) => { id: number } | undefined>(),
+  mockAdoptManualProjectRun: vi.fn<() => { changes: number }>(),
   mockInsertAutoProjectRun: vi.fn<() => { lastInsertRowid: number }>(),
   mockAssignJobsRun: vi.fn<() => { changes: number }>(),
   mockFindUserJobsAll: vi.fn<() => { id: number; title: string | null }[]>(),
@@ -22,7 +26,12 @@ vi.mock("../lib/db.js", () => ({
   db: {
     prepare: vi.fn((sql: string) => {
       if (sql.includes("SELECT DISTINCT designId")) return { all: mockFindDesignsAll };
-      if (sql.includes("SELECT id FROM projects")) return { get: mockFindAutoProjectGet };
+      if (sql.includes("SELECT id FROM projects WHERE source_design_id = ?"))
+        return { get: mockFindAutoProjectGet };
+      if (sql.includes("SELECT id FROM projects WHERE source_design_id IS NULL AND name = ?"))
+        return { get: mockFindManualProjectByNameGet };
+      if (sql.includes("UPDATE projects SET source_design_id = ?"))
+        return { run: mockAdoptManualProjectRun };
       if (sql.includes("INSERT INTO projects")) return { run: mockInsertAutoProjectRun };
       if (sql.includes("UPDATE jobs SET project_id = ? WHERE designId"))
         return { run: mockAssignJobsRun };
@@ -45,10 +54,12 @@ describe("autoGroupProjects", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockInsertAutoProjectRun.mockReturnValue({ lastInsertRowid: 99 });
+    mockAdoptManualProjectRun.mockReturnValue({ changes: 1 });
     mockAssignJobsRun.mockReturnValue({ changes: 0 });
     mockAssignByIdsRun.mockReturnValue({ changes: 0 });
     mockFindDesignsAll.mockReturnValue([]);
     mockFindUserJobsAll.mockReturnValue([]);
+    mockFindManualProjectByNameGet.mockReturnValue(undefined);
   });
 
   it("returns zeroes when there are no unassigned jobs", () => {
@@ -158,6 +169,25 @@ describe("autoGroupProjects", () => {
     const result = autoGroupProjects();
 
     expect(result).toEqual({ created: 0, assigned: 1 });
+    expect(mockInsertAutoProjectRun).not.toHaveBeenCalled();
+  });
+
+  it("adopts a matching manual project for a user-imported title group", () => {
+    mockFindUserJobsAll.mockReturnValue([
+      { id: 31, title: "Evenstar - Hair Clip - Arwen_plate_1" },
+    ]);
+    mockFindAutoProjectGet.mockReturnValue(undefined);
+    mockFindManualProjectByNameGet.mockReturnValue({ id: 77 });
+    mockAssignByIdsRun.mockReturnValue({ changes: 1 });
+
+    const result = autoGroupProjects();
+
+    expect(result).toEqual({ created: 0, assigned: 1 });
+    expect(mockFindManualProjectByNameGet).toHaveBeenCalledWith("Evenstar - Hair Clip - Arwen");
+    expect(mockAdoptManualProjectRun).toHaveBeenCalledWith(
+      "title:Evenstar - Hair Clip - Arwen",
+      77,
+    );
     expect(mockInsertAutoProjectRun).not.toHaveBeenCalled();
   });
 
