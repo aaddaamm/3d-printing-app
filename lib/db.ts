@@ -1,4 +1,13 @@
 import Database from "better-sqlite3";
+import {
+  addColumnIfMissing,
+  columnExists,
+  dropColumnIfExists,
+  runMigrations,
+  sqliteVersionAtLeast,
+  tableExists,
+  type Migration,
+} from "./migrations.js";
 import type {
   PrintTask,
   Job,
@@ -56,6 +65,7 @@ for (const sql of [
     print_run      INTEGER NOT NULL DEFAULT 1,
     designId       TEXT,
     designTitle    TEXT,
+    modelId        TEXT,
     deviceId       TEXT,
     deviceModel    TEXT,
     startTime      TEXT,
@@ -66,7 +76,10 @@ for (const sql of [
     status         TEXT,
     customer       TEXT,
     notes          TEXT,
-    price_override REAL
+    price_override REAL,
+    project_id     INTEGER REFERENCES projects(id),
+    status_override TEXT,
+    extra_labor_minutes REAL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_customer  ON jobs(customer)`,
   `CREATE INDEX IF NOT EXISTS idx_jobs_startTime ON jobs(startTime)`,
@@ -116,127 +129,116 @@ for (const sql of [
     name       TEXT NOT NULL,
     customer   TEXT,
     notes      TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    source_design_id TEXT
   )`,
 ]) {
   db.exec(sql);
 }
 
 // ── Migrations ────────────────────────────────────────────────────────────────
-//
-// Rebuild jobs table when schema changes (no user data to preserve yet).
-// Detected by absence of the session_id column on the jobs table.
 
-const jobsCols = (db.prepare("PRAGMA table_info(jobs)").all() as { name: string }[]).map(
-  (c) => c.name,
-);
-if (!jobsCols.includes("session_id")) {
-  db.prepare("DROP TABLE IF EXISTS jobs").run();
-  db.prepare(
-    `CREATE TABLE jobs (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id     TEXT UNIQUE NOT NULL,
-    instanceId     INTEGER,
-    print_run      INTEGER NOT NULL DEFAULT 1,
-    designId       TEXT,
-    designTitle    TEXT,
-    deviceId       TEXT,
-    deviceModel    TEXT,
-    startTime      TEXT,
-    endTime        TEXT,
-    total_weight_g REAL,
-    total_time_s   INTEGER,
-    plate_count    INTEGER,
-    status         TEXT,
-    customer       TEXT,
-    notes          TEXT,
-    price_override REAL
-  )`,
-  ).run();
-}
+const MIGRATIONS: Migration[] = [
+  {
+    id: 1,
+    description: "rename legacy tasks table to print_tasks",
+    up(database) {
+      const hasOldTable = tableExists(database, "tasks");
+      const hasNewTable = tableExists(database, "print_tasks");
+      if (hasOldTable && hasNewTable) database.exec("DROP TABLE tasks");
+      else if (hasOldTable) database.exec("ALTER TABLE tasks RENAME TO print_tasks");
+    },
+  },
+  {
+    id: 2,
+    description: "rebuild very old jobs table without session_id",
+    up(database) {
+      if (!tableExists(database, "jobs") || columnExists(database, "jobs", "session_id")) return;
+      database.exec("DROP TABLE jobs");
+      database.exec(`CREATE TABLE jobs (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id     TEXT UNIQUE NOT NULL,
+        instanceId     INTEGER,
+        print_run      INTEGER NOT NULL DEFAULT 1,
+        designId       TEXT,
+        designTitle    TEXT,
+        modelId        TEXT,
+        deviceId       TEXT,
+        deviceModel    TEXT,
+        startTime      TEXT,
+        endTime        TEXT,
+        total_weight_g REAL,
+        total_time_s   INTEGER,
+        plate_count    INTEGER,
+        status         TEXT,
+        customer       TEXT,
+        notes          TEXT,
+        price_override REAL,
+        project_id     INTEGER REFERENCES projects(id),
+        status_override TEXT,
+        extra_labor_minutes REAL
+      )`);
+    },
+  },
+  {
+    id: 3,
+    description: "add normalized print_tasks columns",
+    up(database) {
+      for (const [columnName, columnDefinition] of [
+        ["session_id", "TEXT"],
+        ["instanceId", "INTEGER"],
+        ["plateIndex", "INTEGER"],
+        ["deviceModel", "TEXT"],
+        ["title", "TEXT"],
+        ["failedType", "INTEGER"],
+        ["bedType", "TEXT"],
+      ] as const) {
+        addColumnIfMissing(database, "print_tasks", columnName, columnDefinition);
+      }
+    },
+  },
+  {
+    id: 4,
+    description: "add auto-project source design id",
+    up(database) {
+      addColumnIfMissing(database, "projects", "source_design_id", "TEXT");
+      database.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_source_design_id ON projects(source_design_id) WHERE source_design_id IS NOT NULL",
+      );
+    },
+  },
+  {
+    id: 5,
+    description: "add model id to jobs",
+    up(database) {
+      addColumnIfMissing(database, "jobs", "modelId", "TEXT");
+    },
+  },
+  {
+    id: 6,
+    description: "add job project and override fields",
+    up(database) {
+      addColumnIfMissing(database, "jobs", "project_id", "INTEGER REFERENCES projects(id)");
+      addColumnIfMissing(database, "jobs", "status_override", "TEXT");
+      addColumnIfMissing(database, "jobs", "extra_labor_minutes", "REAL");
+    },
+  },
+  {
+    id: 7,
+    description: "drop legacy print_tasks pricing columns",
+    up(database) {
+      const sqliteVersion = (
+        database.prepare("SELECT sqlite_version() AS v").get() as { v: string }
+      ).v;
+      if (!sqliteVersionAtLeast(sqliteVersion, "3.35.0")) return;
+      for (const columnName of ["material_cost", "labor_cost", "price", "notes", "customer"]) {
+        dropColumnIfExists(database, "print_tasks", columnName);
+      }
+    },
+  },
+];
 
-const hasOldTable = !!db
-  .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='tasks'")
-  .get();
-const hasNewTable = !!db
-  .prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='print_tasks'")
-  .get();
-if (hasOldTable && hasNewTable) {
-  db.exec("DROP TABLE tasks");
-} else if (hasOldTable) {
-  db.exec("ALTER TABLE tasks RENAME TO print_tasks");
-}
-
-for (const col of [
-  "session_id  TEXT",
-  "instanceId  INTEGER",
-  "plateIndex  INTEGER",
-  "deviceModel TEXT",
-  "title       TEXT",
-  "failedType  INTEGER",
-  "bedType     TEXT",
-]) {
-  try {
-    db.prepare(`ALTER TABLE print_tasks ADD COLUMN ${col}`).run();
-  } catch {
-    /* already exists */
-  }
-}
-
-// Add source_design_id to projects if missing
-try {
-  db.prepare("ALTER TABLE projects ADD COLUMN source_design_id TEXT").run();
-} catch {
-  /* already exists */
-}
-try {
-  db.prepare(
-    "CREATE UNIQUE INDEX IF NOT EXISTS idx_projects_source_design_id ON projects(source_design_id) WHERE source_design_id IS NOT NULL",
-  ).run();
-} catch {
-  /* already exists */
-}
-
-// Add modelId to jobs if missing
-try {
-  db.prepare("ALTER TABLE jobs ADD COLUMN modelId TEXT").run();
-} catch {
-  /* already exists */
-}
-
-// Add PLA-S (Bambu Specialty PLA) material rate if missing
-try {
-  db.prepare(
-    `INSERT OR IGNORE INTO material_rates (filament_type, cost_per_g, waste_buffer_pct, rate_per_g)
-     VALUES ('PLA-S', 0.034, 0.10, ?)`,
-  ).run(Number((0.034 * 1.1).toFixed(4)));
-} catch {
-  /* table may not exist yet on first run — seed below handles it */
-}
-
-// Add project_id and status_override to jobs if they don't exist yet
-for (const col of [
-  "project_id INTEGER REFERENCES projects(id)",
-  "status_override TEXT",
-  "extra_labor_minutes REAL",
-]) {
-  try {
-    db.prepare(`ALTER TABLE jobs ADD COLUMN ${col}`).run();
-  } catch {
-    /* already exists */
-  }
-}
-
-const sqliteVersion = (db.prepare("SELECT sqlite_version() AS v").get() as { v: string }).v;
-if (sqliteVersion >= "3.35.0") {
-  for (const col of ["material_cost", "labor_cost", "price", "notes", "customer"]) {
-    try {
-      db.exec(`ALTER TABLE print_tasks DROP COLUMN ${col}`);
-    } catch {
-      /* already gone */
-    }
-  }
-}
+runMigrations(db, MIGRATIONS);
 
 // ── Seed default rates ────────────────────────────────────────────────────────
 
@@ -281,6 +283,11 @@ if ((db.prepare("SELECT COUNT(*) AS n FROM material_rates").get() as { n: number
     rate_per_g: Number((0.032 * 1.15).toFixed(4)),
   });
 }
+
+db.prepare(
+  `INSERT OR IGNORE INTO material_rates (filament_type, cost_per_g, waste_buffer_pct, rate_per_g)
+   VALUES ('PLA-S', 0.034, 0.10, ?)`,
+).run(Number((0.034 * 1.1).toFixed(4)));
 
 if ((db.prepare("SELECT COUNT(*) AS n FROM labor_config").get() as { n: number }).n === 0) {
   db.prepare(
