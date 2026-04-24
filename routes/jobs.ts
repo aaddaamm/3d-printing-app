@@ -8,6 +8,7 @@ import {
   getAllJobPrices,
 } from "../models/jobs.js";
 import { parseId } from "../lib/util.js";
+import { getProjectById } from "../models/projects.js";
 
 export const jobs = new Hono();
 
@@ -108,6 +109,16 @@ jobs.patch("/:id", async (c) => {
     const v = body[field];
     if (v !== null && typeof v !== "string") {
       return c.json({ error: `${field} must be a string or null` }, 400);
+    }
+  }
+
+  if (body["project_id"] != null) {
+    const projectId = body["project_id"] as number;
+    if (!Number.isInteger(projectId)) {
+      return c.json({ error: "project_id must be an integer or null" }, 400);
+    }
+    if (!getProjectById(projectId)) {
+      return c.json({ error: "project_id does not reference an existing project" }, 400);
     }
   }
 
