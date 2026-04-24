@@ -58,13 +58,27 @@ rates.patch("/machines/:device_model", async (c) => {
   const { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = body;
   if (
     [purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer].some(
-      (v) => !Number.isFinite(v) || (v as number) < 0,
+      (v) => !Number.isFinite(v),
     )
   ) {
     return c.json(
       {
         error:
-          "purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer must be non-negative numbers",
+          "purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer must be finite numbers",
+      },
+      400,
+    );
+  }
+  if (
+    (purchase_price as number) < 0 ||
+    (lifetime_hrs as number) <= 0 ||
+    (electricity_rate as number) < 0 ||
+    (maintenance_buffer as number) < 0
+  ) {
+    return c.json(
+      {
+        error:
+          "purchase_price, electricity_rate, and maintenance_buffer must be non-negative; lifetime_hrs must be greater than 0",
       },
       400,
     );

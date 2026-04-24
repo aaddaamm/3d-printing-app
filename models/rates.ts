@@ -46,6 +46,7 @@ export function updateLaborConfig(patch: Omit<LaborConfig, "id">): LaborConfig {
 
 /** Recalculates machine_rate_per_hr from component values before upserting. */
 export function upsertMachineRate(data: Omit<MachineRate, "machine_rate_per_hr">): MachineRate {
+  if (data.lifetime_hrs <= 0) throw new Error("lifetime_hrs must be greater than 0");
   const machine_rate_per_hr =
     data.purchase_price / data.lifetime_hrs + data.electricity_rate + data.maintenance_buffer;
   stmts.upsertMachineRate.run({ ...data, machine_rate_per_hr });

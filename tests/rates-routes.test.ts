@@ -9,7 +9,9 @@ const { mockUpdateLabor, mockUpsertMachine, mockUpsertMaterial } = vi.hoisted(()
 }));
 
 vi.mock("../models/rates.js", () => ({
-  getRates: vi.fn().mockReturnValue({ machine_rates: [], material_rates: [], labor_config: undefined }),
+  getRates: vi
+    .fn()
+    .mockReturnValue({ machine_rates: [], material_rates: [], labor_config: undefined }),
   updateLaborConfig: mockUpdateLabor,
   upsertMachineRate: mockUpsertMachine,
   upsertMaterialRate: mockUpsertMaterial,
@@ -30,26 +32,47 @@ async function patch(path: string, body: unknown): Promise<Response> {
 describe("PATCH /labor validation", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockUpdateLabor.mockReturnValue({ id: 1, hourly_rate: 25, minimum_minutes: 15, profit_markup_pct: 0.2 });
+    mockUpdateLabor.mockReturnValue({
+      id: 1,
+      hourly_rate: 25,
+      minimum_minutes: 15,
+      profit_markup_pct: 0.2,
+    });
   });
 
   it("accepts valid numeric values", async () => {
-    const res = await patch("/labor", { hourly_rate: 25, minimum_minutes: 15, profit_markup_pct: 0.2 });
+    const res = await patch("/labor", {
+      hourly_rate: 25,
+      minimum_minutes: 15,
+      profit_markup_pct: 0.2,
+    });
     expect(res.status).toBe(200);
   });
 
   it("rejects null (non-finite) for hourly_rate", async () => {
-    const res = await patch("/labor", { hourly_rate: null, minimum_minutes: 15, profit_markup_pct: 0.2 });
+    const res = await patch("/labor", {
+      hourly_rate: null,
+      minimum_minutes: 15,
+      profit_markup_pct: 0.2,
+    });
     expect(res.status).toBe(400);
   });
 
   it("rejects string value for minimum_minutes", async () => {
-    const res = await patch("/labor", { hourly_rate: 25, minimum_minutes: "15", profit_markup_pct: 0.2 });
+    const res = await patch("/labor", {
+      hourly_rate: 25,
+      minimum_minutes: "15",
+      profit_markup_pct: 0.2,
+    });
     expect(res.status).toBe(400);
   });
 
   it("rejects negative hourly_rate", async () => {
-    const res = await patch("/labor", { hourly_rate: -1, minimum_minutes: 15, profit_markup_pct: 0.2 });
+    const res = await patch("/labor", {
+      hourly_rate: -1,
+      minimum_minutes: 15,
+      profit_markup_pct: 0.2,
+    });
     expect(res.status).toBe(400);
   });
 
@@ -112,6 +135,17 @@ describe("PATCH /machines/:device_model validation", () => {
       maintenance_buffer: 0.5,
     });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects zero lifetime_hrs", async () => {
+    const res = await patch("/machines/X1C", {
+      purchase_price: 1000,
+      lifetime_hrs: 0,
+      electricity_rate: 0.1,
+      maintenance_buffer: 0.5,
+    });
+    expect(res.status).toBe(400);
+    expect(mockUpsertMachine).not.toHaveBeenCalled();
   });
 });
 
