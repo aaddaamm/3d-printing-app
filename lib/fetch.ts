@@ -18,24 +18,59 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+export class HttpError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly statusText: string,
+    public readonly body: string,
+  ) {
+    super(`HTTP ${status} ${statusText}\n${body}`);
+    this.name = "HttpError";
+  }
+}
+
+async function readErrorBody(res: Response): Promise<string> {
+  try {
+    return typeof res.text === "function" ? await res.text() : "";
+  } catch {
+    return "";
+  }
+}
+
+function retryBackoffMs(attempt: number, retryAfterHeader?: string | null): number {
+  const retryAfter = Number(retryAfterHeader ?? 0) * 1000;
+  return retryAfter || 2 ** attempt * 500 + Math.random() * 500;
+}
+
 export async function fetchWithRetry(
   url: URL | string,
   options: RequestInit,
   { retries = 4, timeoutMs = FETCH_TIMEOUT_MS }: FetchRetryOptions = {},
 ): Promise<Response> {
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const res = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+    let res: Response;
+    try {
+      res = await fetch(url, { ...options, signal: AbortSignal.timeout(timeoutMs) });
+    } catch (e) {
+      if (attempt === retries) throw e;
+
+      const backoff = retryBackoffMs(attempt);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(
+        `\n  Network error (${msg}) — retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${retries})`,
+      );
+      await sleep(backoff);
+      continue;
+    }
 
     if (res.ok) return res;
 
     const isRetryable = res.status === 429 || res.status >= 500;
     if (!isRetryable || attempt === retries) {
-      const body = await res.text();
-      throw new Error(`HTTP ${res.status} ${res.statusText}\n${body}`);
+      throw new HttpError(res.status, res.statusText, await readErrorBody(res));
     }
 
-    const retryAfter = Number(res.headers.get("retry-after") ?? 0) * 1000;
-    const backoff = retryAfter || 2 ** attempt * 500 + Math.random() * 500;
+    const backoff = retryBackoffMs(attempt, res.headers.get("retry-after"));
     console.warn(
       `\n  HTTP ${res.status} — retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${retries})`,
     );

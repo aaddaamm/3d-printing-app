@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db.js";
-import { fetchWithRetry } from "./fetch.js";
+import { fetchWithRetry, HttpError } from "./fetch.js";
 
 export const COVERS_DIR = path.resolve(process.env["BAMBU_COVERS_DIR"] ?? "./covers");
 
@@ -61,7 +61,7 @@ export async function downloadCovers(): Promise<{
         fs.writeFileSync(dest, Buffer.from(buf));
         downloaded++;
       } catch (e) {
-        if (e instanceof Error && /^HTTP 403\b/.test(e.message)) expired++;
+        if (e instanceof HttpError && e.status === 403) expired++;
         else failed++;
       }
     }
