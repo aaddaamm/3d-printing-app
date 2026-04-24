@@ -7,9 +7,18 @@ import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jo
 import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
-import { ToastContainer } from "./components/toast.js";
+import { toast, ToastContainer } from "./components/toast.js";
 
 const html = htm.bind(h);
+
+async function errorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 // ── App ──────────────────────────────────────────────────────────────────────
 
@@ -110,21 +119,30 @@ function App() {
 
   // Generic job patch helper — updates local state from the returned job
   const patchJob = useCallback(async (jobId, fields) => {
-    const res = await fetch(`/jobs/${jobId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(fields),
-    });
-    if (!res.ok) return;
-    const { job } = await res.json();
-    setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...job } : j)));
-    setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...job } : j));
-    return job;
+    try {
+      const res = await fetch(`/jobs/${jobId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fields),
+      });
+      if (!res.ok) {
+        toast(await errorMessage(res, "Failed to update job."), "error");
+        return null;
+      }
+      const { job } = await res.json();
+      setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...job } : j)));
+      setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...job } : j));
+      return job;
+    } catch {
+      toast("Network error while updating job.", "error");
+      return null;
+    }
   }, []);
 
   const handleJobProjectChange = useCallback(
     async (jobId, projectId) => {
-      await patchJob(jobId, { project_id: projectId });
+      const job = await patchJob(jobId, { project_id: projectId });
+      if (!job) return;
       // Refresh project stats and prices (job counts / totals changed)
       fetch("/projects")
         .then((r) => r.json())

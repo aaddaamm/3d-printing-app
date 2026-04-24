@@ -18,6 +18,15 @@ import { useLocation } from "./router.js";
 
 const html = htm.bind(h);
 
+async function errorMessage(res, fallback) {
+  try {
+    const data = await res.json();
+    return data.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function NewProjectModal({ onClose, onCreate }) {
   const [name, setName] = useState("");
   const [customer, setCustomer] = useState("");
@@ -47,11 +56,15 @@ function NewProjectModal({ onClose, onCreate }) {
             notes: notes || null,
           }),
         });
-        const data = await res.json();
-        if (res.ok) {
-          onCreate(data.project);
-          onClose();
+        if (!res.ok) {
+          toast(await errorMessage(res, "Failed to create project."), "error");
+          return;
         }
+        const data = await res.json();
+        onCreate(data.project);
+        onClose();
+      } catch {
+        toast("Network error while creating project.", "error");
       } finally {
         setSaving(false);
       }
@@ -219,8 +232,17 @@ function ProjectDetail({
   const handleDelete = useCallback(async () => {
     if (!confirm(`Delete project "${project.name}"? Jobs will be unassigned but not deleted.`))
       return;
-    await fetch(`/projects/${project.id}`, { method: "DELETE" });
-    onDelete(project.id);
+    try {
+      const res = await fetch(`/projects/${project.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        toast(await errorMessage(res, "Failed to delete project."), "error");
+        return;
+      }
+      onDelete(project.id);
+      toast("Project deleted.", "success");
+    } catch {
+      toast("Network error while deleting project.", "error");
+    }
   }, [project, onDelete]);
 
   const handleAdd = useCallback(
@@ -334,6 +356,10 @@ export function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices
     setGrouping(true);
     try {
       const res = await fetch("/projects/auto-group", { method: "POST" });
+      if (!res.ok) {
+        toast(await errorMessage(res, "Auto-group failed."), "error");
+        return;
+      }
       const { projects_created, jobs_assigned } = await res.json();
       await onAutoGroup();
       if (projects_created === 0) {
@@ -344,6 +370,8 @@ export function ProjectsView({ projects, setProjects, onAutoGroup, projectPrices
           "success",
         );
       }
+    } catch {
+      toast("Network error while auto-grouping projects.", "error");
     } finally {
       setGrouping(false);
     }
