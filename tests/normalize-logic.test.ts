@@ -37,10 +37,13 @@ describe("deriveJobStatus", () => {
     expect(deriveJobStatus(["failed", "failed"])).toBe("failed");
   });
 
-  it("unknown status has fallback priority 1 (same as running)", () => {
-    // Unknown priority = 1, finish priority = 0 — unknown wins over finish
+  it("unknown status is normalized to running", () => {
     const result = deriveJobStatus(["finish", "unknown_status"]);
-    expect(result).toBe("unknown_status");
+    expect(result).toBe("running");
+  });
+
+  it("created status is normalized to running", () => {
+    expect(deriveJobStatus(["created"])).toBe("running");
   });
 });
 

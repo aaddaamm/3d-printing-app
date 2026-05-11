@@ -2,17 +2,30 @@ import { SESSION_GAP_S } from "./constants.js";
 
 // Status priority for deriving a job-level status from its plates.
 // Higher = worse outcome wins (a failed plate makes the job failed).
-const STATUS_PRIORITY: Record<string, number> = {
+const STATUS_PRIORITY = {
   finish: 0,
   running: 1,
   pause: 2,
   cancel: 3,
   failed: 4,
-};
+} as const;
+
+type CanonicalStatus = keyof typeof STATUS_PRIORITY;
+
+// Normalize upstream status strings into the canonical set used by the app.
+// Unknown/new statuses are treated as "running" so we never leak arbitrary
+// values into jobs.status (which drives UI filters and badge styling).
+function canonicalStatus(status: string): CanonicalStatus {
+  const s = status.toLowerCase();
+  if (s === "created") return "running";
+  if (Object.hasOwn(STATUS_PRIORITY, s)) return s as CanonicalStatus;
+  return "running";
+}
 
 export function deriveJobStatus(statuses: string[]): string {
-  return statuses.reduce((worst, s) => {
-    return (STATUS_PRIORITY[s] ?? 1) > (STATUS_PRIORITY[worst] ?? 1) ? s : worst;
+  return statuses.reduce<CanonicalStatus>((worst, s) => {
+    const next = canonicalStatus(s);
+    return STATUS_PRIORITY[next] > STATUS_PRIORITY[worst] ? next : worst;
   }, "finish");
 }
 
