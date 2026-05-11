@@ -49,4 +49,28 @@ describe("PATCH /projects/:id", () => {
     expect(await res.json()).toEqual({ error: "Unknown fields: nope" });
     expect(mockPatchProject).not.toHaveBeenCalled();
   });
+
+  it("rejects non-integer route id", async () => {
+    const res = await projects.request("/2.2", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "x" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid id" });
+    expect(mockGetProjectById).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-positive route id", async () => {
+    const res = await projects.request("/-1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "x" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid id" });
+    expect(mockGetProjectById).not.toHaveBeenCalled();
+  });
 });

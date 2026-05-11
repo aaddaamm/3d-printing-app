@@ -72,4 +72,28 @@ describe("PATCH /jobs/:id validation", () => {
     });
     expect(mockPatchJob).not.toHaveBeenCalled();
   });
+
+  it("rejects non-integer route id", async () => {
+    const res = await jobs.request("/1.5", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: "x" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid id" });
+    expect(mockGetJobById).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-positive route id", async () => {
+    const res = await jobs.request("/0", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ notes: "x" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Invalid id" });
+    expect(mockGetJobById).not.toHaveBeenCalled();
+  });
 });
