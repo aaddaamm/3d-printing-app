@@ -60,7 +60,7 @@ function App() {
           .then(({ prices }) => {
             setJobs((js) => js.map((j) => ({ ...j, final_price: prices[j.id] ?? null })));
           })
-          .catch(() => {});
+          .catch((err) => toast(err.message || "Failed to load job prices.", "error"));
         fetchJson("/projects", "Failed to load projects.")
           .then(({ projects }) => setProjects(projects))
           .catch((err) => toast(err.message || "Failed to load projects.", "error"))
@@ -69,7 +69,7 @@ function App() {
           .then(({ prices }) => {
             setProjectPrices(prices);
           })
-          .catch(() => {});
+          .catch((err) => toast(err.message || "Failed to load project prices.", "error"));
       })
       .catch((err) => {
         setError(err.message);
@@ -157,7 +157,7 @@ function App() {
         .catch((err) => toast(err.message || "Failed to load projects.", "error"));
       fetchJson("/projects/prices", "Failed to load project prices.")
         .then(({ prices }) => setProjectPrices(prices))
-        .catch(() => {});
+        .catch((err) => toast(err.message || "Failed to load project prices.", "error"));
     },
     [patchJob],
   );
@@ -197,10 +197,10 @@ function App() {
           js.map((j) => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })),
         );
       })
-      .catch(() => {});
+      .catch((err) => toast(err.message || "Failed to refresh job prices.", "error"));
     fetchJson("/projects/prices", "Failed to refresh project prices.")
       .then(({ prices }) => setProjectPrices(prices))
-      .catch(() => {});
+      .catch((err) => toast(err.message || "Failed to refresh project prices.", "error"));
   }, []);
 
   if (loading)
