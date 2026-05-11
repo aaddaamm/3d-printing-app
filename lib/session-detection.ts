@@ -35,6 +35,7 @@ export interface RawTask {
   startTime: string | null;
   endTime: string | null;
   instanceId: number | null;
+  plateIndex: number | null;
   deviceId: string | null;
   raw_json: string;
 }
@@ -79,6 +80,8 @@ export function detectSessions(tasks: RawTask[]): Map<string, string> {
 
     let sessionStart = first;
     let prevEnd: string | null = sessionStart.endTime;
+    let sessionPlateIndexes = new Set<number>();
+    if (sessionStart.plateIndex != null) sessionPlateIndexes.add(sessionStart.plateIndex);
 
     for (const task of group) {
       if (task === sessionStart) {
@@ -96,11 +99,19 @@ export function detectSessions(tasks: RawTask[]): Map<string, string> {
         newSession = false;
       }
 
+      // Multi-plate jobs have distinct plate indexes within a session. If the
+      // same plate index appears again, Bambu is reporting a repeat print run.
+      if (task.plateIndex != null && sessionPlateIndexes.has(task.plateIndex)) {
+        newSession = true;
+      }
+
       if (newSession) {
         sessionStart = task;
+        sessionPlateIndexes = new Set<number>();
       }
 
       taskToSession.set(task.id, sessionStart.id);
+      if (task.plateIndex != null) sessionPlateIndexes.add(task.plateIndex);
       // Advance prevEnd to whichever is later
       if (task.endTime && (!prevEnd || task.endTime > prevEnd)) {
         prevEnd = task.endTime;

@@ -55,6 +55,7 @@ function makeTask(overrides: Partial<RawTask> & { id: string }): RawTask {
     startTime: null,
     endTime: null,
     instanceId: null,
+    plateIndex: null,
     deviceId: null,
     raw_json: "{}",
     ...overrides,
@@ -159,6 +160,7 @@ describe("detectSessions", () => {
       makeTask({
         id: "50",
         instanceId: 3,
+        plateIndex: 1,
         deviceId: "d",
         startTime: ts("2024-01-01T10:00:00Z"),
         endTime: ts("2024-01-01T11:00:00Z"),
@@ -166,6 +168,7 @@ describe("detectSessions", () => {
       makeTask({
         id: "51",
         instanceId: 3,
+        plateIndex: 2,
         deviceId: "d",
         startTime: ts("2024-01-01T11:15:00Z"),
         endTime: ts("2024-01-01T12:00:00Z"),
@@ -173,6 +176,7 @@ describe("detectSessions", () => {
       makeTask({
         id: "52",
         instanceId: 3,
+        plateIndex: 3,
         deviceId: "d",
         startTime: ts("2024-01-01T12:20:00Z"),
         endTime: ts("2024-01-01T13:00:00Z"),
@@ -182,6 +186,29 @@ describe("detectSessions", () => {
     expect(map.get("50")).toBe("50");
     expect(map.get("51")).toBe("50");
     expect(map.get("52")).toBe("50");
+  });
+
+  it("starts a new session when a nearby task repeats the same plate index", () => {
+    const t1 = makeTask({
+      id: "80",
+      instanceId: 12,
+      plateIndex: 1,
+      deviceId: "dev-repeat",
+      startTime: ts("2024-01-01T10:00:00Z"),
+      endTime: ts("2024-01-01T11:00:00Z"),
+    });
+    const t2 = makeTask({
+      id: "81",
+      instanceId: 12,
+      plateIndex: 1,
+      deviceId: "dev-repeat",
+      startTime: ts("2024-01-01T11:05:00Z"),
+      endTime: ts("2024-01-01T12:00:00Z"),
+    });
+    const map = detectSessions([t1, t2]);
+
+    expect(map.get("80")).toBe("80");
+    expect(map.get("81")).toBe("81");
   });
 
   it("task with no startTime is attached to current session (not split)", () => {

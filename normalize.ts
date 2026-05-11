@@ -37,7 +37,7 @@ export function runNormalize(): void {
     .prepare<
       [],
       RawTask
-    >("SELECT id, status, startTime, endTime, instanceId, deviceId, raw_json FROM print_tasks")
+    >("SELECT id, status, startTime, endTime, instanceId, plateIndex, deviceId, raw_json FROM print_tasks")
     .all();
   console.log(`  Processing ${allTasks.length} tasks...`);
 
