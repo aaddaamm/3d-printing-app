@@ -20,6 +20,12 @@ async function errorMessage(res, fallback) {
   }
 }
 
+async function fetchJson(url, fallback) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(await errorMessage(res, fallback));
+  return res.json();
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -41,25 +47,25 @@ function App() {
   const [loc, navigate] = useLocation();
 
   useEffect(() => {
-    Promise.all([fetch("/ui/data").then((r) => r.json()), fetch("/summary").then((r) => r.json())])
+    Promise.all([
+      fetchJson("/ui/data", "Failed to load jobs."),
+      fetchJson("/summary", "Failed to load summary."),
+    ])
       .then(([data, sum]) => {
         setJobs(data.jobs);
         setSummary(sum);
         setLoading(false);
         // Prices and projects are useful, but should not block the main dashboard.
-        fetch("/jobs/prices")
-          .then((r) => r.json())
+        fetchJson("/jobs/prices", "Failed to load job prices.")
           .then(({ prices }) => {
             setJobs((js) => js.map((j) => ({ ...j, final_price: prices[j.id] ?? null })));
           })
           .catch(() => {});
-        fetch("/projects")
-          .then((r) => r.json())
+        fetchJson("/projects", "Failed to load projects.")
           .then(({ projects }) => setProjects(projects))
-          .catch(() => toast("Failed to load projects.", "error"))
+          .catch((err) => toast(err.message || "Failed to load projects.", "error"))
           .finally(() => setProjectsLoading(false));
-        fetch("/projects/prices")
-          .then((r) => r.json())
+        fetchJson("/projects/prices", "Failed to load project prices.")
           .then(({ prices }) => {
             setProjectPrices(prices);
           })
@@ -146,11 +152,10 @@ function App() {
       const job = await patchJob(jobId, { project_id: projectId });
       if (!job) return;
       // Refresh project stats and prices (job counts / totals changed)
-      fetch("/projects")
-        .then((r) => r.json())
-        .then((d) => setProjects(d.projects));
-      fetch("/projects/prices")
-        .then((r) => r.json())
+      fetchJson("/projects", "Failed to load projects.")
+        .then((d) => setProjects(d.projects))
+        .catch((err) => toast(err.message || "Failed to load projects.", "error"));
+      fetchJson("/projects/prices", "Failed to load project prices.")
         .then(({ prices }) => setProjectPrices(prices))
         .catch(() => {});
     },
@@ -181,21 +186,19 @@ function App() {
 
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
-      fetch("/ui/data").then((r) => r.json()),
-      fetch("/projects").then((r) => r.json()),
+      fetchJson("/ui/data", "Failed to refresh jobs."),
+      fetchJson("/projects", "Failed to refresh projects."),
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    fetch("/jobs/prices")
-      .then((r) => r.json())
+    fetchJson("/jobs/prices", "Failed to refresh job prices.")
       .then(({ prices }) => {
         setJobs((js) =>
           js.map((j) => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })),
         );
       })
       .catch(() => {});
-    fetch("/projects/prices")
-      .then((r) => r.json())
+    fetchJson("/projects/prices", "Failed to refresh project prices.")
       .then(({ prices }) => setProjectPrices(prices))
       .catch(() => {});
   }, []);

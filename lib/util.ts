@@ -1,7 +1,7 @@
 import type { Context } from "hono";
 
-/** Parse a numeric `:id` route param. Returns null if missing or non-finite. */
+/** Parse a positive integer `:id` route param. Returns null if invalid. */
 export function parseId(c: Context): number | null {
   const id = Number(c.req.param("id"));
-  return Number.isFinite(id) ? id : null;
+  return Number.isInteger(id) && id > 0 ? id : null;
 }
