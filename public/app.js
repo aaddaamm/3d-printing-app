@@ -20,8 +20,16 @@ async function errorMessage(res, fallback) {
   }
 }
 
+const FETCH_TIMEOUT_MS = 15000;
+
 async function fetchJson(url, fallback) {
-  const res = await fetch(url);
+  let res;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  } catch (err) {
+    if (err?.name === "TimeoutError") throw new Error(`${fallback} (request timed out)`);
+    throw new Error(`${fallback} (network error)`);
+  }
   if (!res.ok) throw new Error(await errorMessage(res, fallback));
   return res.json();
 }
