@@ -41,18 +41,23 @@ projects.post("/", async (c) => {
   } catch {
     return c.json({ error: "Invalid JSON body" }, 400);
   }
-  if (!body["name"] || typeof body["name"] !== "string" || !body["name"].trim()) {
+  const name = body.name;
+  const customer = body.customer;
+  const notes = body.notes;
+
+  if (!name || typeof name !== "string" || !name.trim()) {
     return c.json({ error: "name is required" }, 400);
   }
   for (const field of ["customer", "notes"] as const) {
-    if (field in body && body[field] !== null && typeof body[field] !== "string") {
+    const value = body[field];
+    if (field in body && value !== null && typeof value !== "string") {
       return c.json({ error: `${field} must be a string or null` }, 400);
     }
   }
   const project = createProject({
-    name: (body["name"] as string).trim(),
-    customer: (body["customer"] ?? null) as string | null,
-    notes: (body["notes"] ?? null) as string | null,
+    name: name.trim(),
+    customer: (customer ?? null) as string | null,
+    notes: (notes ?? null) as string | null,
   });
   return c.json({ project }, 201);
 });
@@ -91,19 +96,24 @@ projects.patch("/:id", async (c) => {
   const unknown = Object.keys(body).filter((k) => !ALLOWED.has(k));
   if (unknown.length) return c.json({ error: `Unknown fields: ${unknown.join(", ")}` }, 400);
 
-  if ("name" in body && (typeof body["name"] !== "string" || !body["name"].trim())) {
+  const name = body.name;
+  const customer = body.customer;
+  const notes = body.notes;
+
+  if ("name" in body && (typeof name !== "string" || !name.trim())) {
     return c.json({ error: "name must be a non-empty string" }, 400);
   }
   for (const field of ["customer", "notes"] as const) {
-    if (field in body && body[field] !== null && typeof body[field] !== "string") {
+    const value = body[field];
+    if (field in body && value !== null && typeof value !== "string") {
       return c.json({ error: `${field} must be a string or null` }, 400);
     }
   }
 
   const project = patchProject(id, {
-    ...("name" in body ? { name: (body["name"] as string).trim() } : {}),
-    ...("customer" in body ? { customer: (body["customer"] ?? null) as string | null } : {}),
-    ...("notes" in body ? { notes: (body["notes"] ?? null) as string | null } : {}),
+    ...("name" in body ? { name: (name as string).trim() } : {}),
+    ...("customer" in body ? { customer: (customer ?? null) as string | null } : {}),
+    ...("notes" in body ? { notes: (notes ?? null) as string | null } : {}),
   });
   return c.json({ project });
 });

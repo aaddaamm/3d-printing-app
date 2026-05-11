@@ -18,7 +18,7 @@ type CanonicalStatus = keyof typeof STATUS_PRIORITY;
 function canonicalStatus(status: string): CanonicalStatus {
   const s = status.toLowerCase();
   if (s === "created") return "running";
-  if (Object.hasOwn(STATUS_PRIORITY, s)) return s as CanonicalStatus;
+  if (Object.prototype.hasOwnProperty.call(STATUS_PRIORITY, s)) return s as CanonicalStatus;
   return "running";
 }
 
@@ -65,6 +65,8 @@ export function detectSessions(tasks: RawTask[]): Map<string, string> {
   }
 
   for (const group of groups.values()) {
+    if (group.length === 0) continue;
+
     // Sort by startTime; tasks with no startTime sort to the end
     group.sort((a, b) => {
       if (!a.startTime) return 1;
@@ -72,7 +74,10 @@ export function detectSessions(tasks: RawTask[]): Map<string, string> {
       return a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0;
     });
 
-    let sessionStart = group[0]!;
+    const first = group[0];
+    if (!first) continue;
+
+    let sessionStart = first;
     let prevEnd: string | null = sessionStart.endTime;
 
     for (const task of group) {
