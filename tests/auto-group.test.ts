@@ -161,6 +161,23 @@ describe("autoGroupProjects", () => {
     );
   });
 
+  it("uses all plate titles for a job instead of only the first plate", () => {
+    mockFindUserJobsAll.mockReturnValue([
+      { id: 40, title: "My_Project_Custom_Name" },
+      { id: 40, title: "My_Project_plate_1" },
+      { id: 41, title: "My_Project_plate_2" },
+    ]);
+    mockFindAutoProjectGet.mockReturnValue(undefined);
+    mockAssignByIdsRun.mockReturnValue({ changes: 2 });
+
+    const result = autoGroupProjects();
+
+    expect(result).toEqual({ created: 1, assigned: 2 });
+    expect(mockInsertAutoProjectRun).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "My_Project" }),
+    );
+  });
+
   it("reuses existing project for user-imported title group", () => {
     mockFindUserJobsAll.mockReturnValue([{ id: 30, title: "Widget_plate_1" }]);
     mockFindAutoProjectGet.mockReturnValue({ id: 55 });
@@ -230,5 +247,10 @@ describe("deriveBaseTitle", () => {
   it("keeps title with underscores intact when base is not known", () => {
     const bases = new Set<string>();
     expect(deriveBaseTitle("Blue_Tetris Magnets", bases)).toBe("Blue_Tetris Magnets");
+  });
+
+  it("can strip multiple trailing underscore segments to match a known base", () => {
+    const bases = new Set(["Project"]);
+    expect(deriveBaseTitle("Project_part_A", bases)).toBe("Project");
   });
 });

@@ -101,7 +101,7 @@ projects.patch("/:id", async (c) => {
   }
 
   const project = patchProject(id, {
-    ...("name" in body ? { name: body["name"] as string } : {}),
+    ...("name" in body ? { name: (body["name"] as string).trim() } : {}),
     ...("customer" in body ? { customer: (body["customer"] ?? null) as string | null } : {}),
     ...("notes" in body ? { notes: (body["notes"] ?? null) as string | null } : {}),
   });

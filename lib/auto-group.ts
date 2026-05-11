@@ -55,9 +55,7 @@ const assignJobs = db.prepare<[number, string]>(`
 const findUserJobs = db.prepare<[], { id: number; title: string | null }>(`
   SELECT j.id, pt.title
   FROM jobs j
-  JOIN print_tasks pt ON pt.session_id = j.session_id AND pt.plateIndex = (
-    SELECT MIN(pt2.plateIndex) FROM print_tasks pt2 WHERE pt2.session_id = j.session_id
-  )
+  JOIN print_tasks pt ON pt.session_id = j.session_id
   WHERE j.project_id IS NULL
     AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
 `);
@@ -71,10 +69,10 @@ export function deriveBaseTitle(title: string, knownBases: ReadonlySet<string>):
   const plateMatch = title.match(/^(.+)_plate_\d+$/);
   if (plateMatch) return plateMatch[1]!;
 
-  // Check if removing the last _segment yields a known base
-  const lastUnderscore = title.lastIndexOf("_");
-  if (lastUnderscore > 0) {
-    const candidate = title.slice(0, lastUnderscore);
+  // Check if repeatedly removing trailing _segments yields a known base
+  let candidate = title;
+  while (candidate.includes("_")) {
+    candidate = candidate.slice(0, candidate.lastIndexOf("_"));
     if (knownBases.has(candidate)) return candidate;
   }
 
@@ -110,7 +108,7 @@ export function autoGroupProjects(): { created: number; assigned: number } {
     const userJobs = findUserJobs.all();
     if (userJobs.length === 0) return;
 
-    // Pass 1: collect all _plate_N base names
+    // Pass 1: collect all _plate_N base names from any plate title in each session
     const plateBases = new Set<string>();
     for (const { title } of userJobs) {
       if (!title) continue;
@@ -118,13 +116,26 @@ export function autoGroupProjects(): { created: number; assigned: number } {
       if (m) plateBases.add(m[1]!);
     }
 
+    // Group titles per job id, then choose the best base per job.
+    const titlesByJobId = new Map<number, string[]>();
+    for (const { id, title } of userJobs) {
+      if (!title) continue;
+      if (!titlesByJobId.has(id)) titlesByJobId.set(id, []);
+      titlesByJobId.get(id)!.push(title);
+    }
+
     // Pass 2: derive base title for every job, group by base
     const groups = new Map<string, number[]>();
-    for (const { id, title } of userJobs) {
-      const base = title ? deriveBaseTitle(title, plateBases) : null;
-      if (!base) continue;
-      if (!groups.has(base)) groups.set(base, []);
-      groups.get(base)!.push(id);
+    for (const [id, titles] of titlesByJobId) {
+      const derived = titles.map((t) => deriveBaseTitle(t, plateBases));
+      const preferred =
+        derived.find((b) => plateBases.has(b)) ??
+        derived.find((b) => b.includes("_plate_")) ??
+        derived[0] ??
+        null;
+      if (!preferred) continue;
+      if (!groups.has(preferred)) groups.set(preferred, []);
+      groups.get(preferred)!.push(id);
     }
 
     // Pass 3: create/find projects and assign
