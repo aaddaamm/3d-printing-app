@@ -9,6 +9,7 @@ import {
   type FilamentWeight,
 } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
+import { invalidateProjectPriceCache } from "../lib/price-cache.js";
 import type { Project, Job, PriceBreakdown, MaterialRate, MachineRate } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
@@ -47,6 +48,7 @@ export function createProject(data: ProjectCreate): Project {
     created_at: now,
     source_design_id: null,
   });
+  invalidateProjectPriceCache();
   return stmts.getProjectById.get(result.lastInsertRowid as number)!;
 }
 
@@ -65,6 +67,7 @@ export function patchProject(id: number, patch: ProjectPatch): Project | undefin
     customer: "customer" in patch ? (patch.customer ?? null) : existing.customer,
     notes: "notes" in patch ? (patch.notes ?? null) : existing.notes,
   });
+  invalidateProjectPriceCache();
   return stmts.getProjectById.get(id);
 }
 
@@ -73,6 +76,7 @@ export function deleteProject(id: number): boolean {
   if (!existing) return false;
   stmts.unassignProjectJobs.run(id);
   stmts.deleteProject.run(id);
+  invalidateProjectPriceCache();
   return true;
 }
 
@@ -184,6 +188,28 @@ export function getProjectPrice(id: number): PriceBreakdown | null {
 }
 
 export function getAllProjectPrices(): Record<number, number> {
+  try {
+    const targetCount = (
+      db
+        .prepare("SELECT COUNT(DISTINCT project_id) AS n FROM jobs WHERE project_id IS NOT NULL")
+        .get() as { n: number }
+    ).n;
+    const cachedCount = (
+      db.prepare("SELECT COUNT(*) AS n FROM project_price_cache").get() as { n: number }
+    ).n;
+    if (targetCount > 0 && cachedCount === targetCount) {
+      const rows = db
+        .prepare<
+          [],
+          { project_id: number; final_price: number }
+        >("SELECT project_id, final_price FROM project_price_cache")
+        .all();
+      return Object.fromEntries(rows.map((r) => [r.project_id, r.final_price]));
+    }
+  } catch {
+    // cache table unavailable (tests/older DB) — fall through to live compute
+  }
+
   const config = loadRatesConfig();
   if (!config) return {};
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
@@ -219,11 +245,28 @@ export function getAllProjectPrices(): Record<number, number> {
       // skip — pricing config incomplete for this project
     }
   }
+  try {
+    const now = new Date().toISOString();
+    const writeCache = db.transaction((entries: Array<[number, number]>) => {
+      db.exec("DELETE FROM project_price_cache");
+      const insert = db.prepare(
+        "INSERT INTO project_price_cache (project_id, final_price, computed_at) VALUES (?, ?, ?)",
+      );
+      for (const [projectId, finalPrice] of entries) insert.run(projectId, finalPrice, now);
+    });
+    writeCache(
+      Object.entries(prices).map(([projectId, finalPrice]) => [Number(projectId), finalPrice]),
+    );
+  } catch {
+    // cache table unavailable (tests/older DB)
+  }
+
   return prices;
 }
 
 export function autoGroupByDesign(): { projects_created: number; jobs_assigned: number } {
   const { created, assigned } = autoGroupProjects();
+  if (created > 0 || assigned > 0) invalidateProjectPriceCache();
   return { projects_created: created, jobs_assigned: assigned };
 }
 
@@ -258,6 +301,7 @@ export function cleanupJunkProjects(): {
   })();
 
   const { projects_created, jobs_assigned } = autoGroupByDesign();
+  if (junk_projects_deleted > 0 || jobs_unassigned > 0) invalidateProjectPriceCache();
 
   return { junk_projects_deleted, jobs_unassigned, projects_created, jobs_assigned };
 }

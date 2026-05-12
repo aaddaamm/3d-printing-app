@@ -134,6 +134,16 @@ for (const sql of [
     created_at TEXT NOT NULL,
     source_design_id TEXT
   )`,
+  `CREATE TABLE IF NOT EXISTS job_price_cache (
+    job_id      INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+    final_price REAL NOT NULL,
+    computed_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS project_price_cache (
+    project_id  INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    final_price REAL NOT NULL,
+    computed_at TEXT NOT NULL
+  )`,
 ]) {
   db.exec(sql);
 }
@@ -236,6 +246,22 @@ const MIGRATIONS: Migration[] = [
       for (const columnName of ["material_cost", "labor_cost", "price", "notes", "customer"]) {
         dropColumnIfExists(database, "print_tasks", columnName);
       }
+    },
+  },
+  {
+    id: 8,
+    description: "add precomputed price cache tables",
+    up(database) {
+      database.exec(`CREATE TABLE IF NOT EXISTS job_price_cache (
+        job_id      INTEGER PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+        final_price REAL NOT NULL,
+        computed_at TEXT NOT NULL
+      )`);
+      database.exec(`CREATE TABLE IF NOT EXISTS project_price_cache (
+        project_id  INTEGER PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+        final_price REAL NOT NULL,
+        computed_at TEXT NOT NULL
+      )`);
     },
   },
 ];

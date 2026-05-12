@@ -8,6 +8,8 @@ import { runNormalize } from "./normalize.js";
 import { downloadCovers, COVERS_DIR } from "./lib/covers.js";
 import { autoGroupProjects } from "./lib/auto-group.js";
 import { API_PAGE_LIMIT } from "./lib/constants.js";
+import { getAllJobPrices } from "./models/jobs.js";
+import { getAllProjectPrices } from "./models/projects.js";
 import { bold, dim, red, green, yellow, cyan } from "./lib/colors.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
@@ -164,6 +166,12 @@ async function main(): Promise<void> {
       `  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`,
     );
   }
+
+  const jobPrices = getAllJobPrices();
+  const projectPrices = getAllProjectPrices();
+  console.log(
+    `  Warmed price cache: ${green(String(Object.keys(jobPrices).length))} jobs, ${green(String(Object.keys(projectPrices).length))} projects.`,
+  );
   console.log("");
 
   console.log(bold(cyan("=== cover images ===")));

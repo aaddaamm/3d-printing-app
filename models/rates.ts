@@ -1,4 +1,5 @@
 import { stmts } from "../lib/db.js";
+import { invalidateAllPriceCaches } from "../lib/price-cache.js";
 import type { MachineRate, MaterialRate, LaborConfig } from "../lib/types.js";
 
 export interface RatesConfig {
@@ -41,6 +42,7 @@ export function getRates(): {
 
 export function updateLaborConfig(patch: Omit<LaborConfig, "id">): LaborConfig {
   stmts.updateLaborConfig.run(patch);
+  invalidateAllPriceCaches();
   return stmts.getLaborConfig.get()!;
 }
 
@@ -50,6 +52,7 @@ export function upsertMachineRate(data: Omit<MachineRate, "machine_rate_per_hr">
   const machine_rate_per_hr =
     data.purchase_price / data.lifetime_hrs + data.electricity_rate + data.maintenance_buffer;
   stmts.upsertMachineRate.run({ ...data, machine_rate_per_hr });
+  invalidateAllPriceCaches();
   return stmts.getMachineRate.get(data.device_model)!;
 }
 
@@ -57,5 +60,6 @@ export function upsertMaterialRate(data: Omit<MaterialRate, "rate_per_g">): Mate
   // waste_buffer_pct is a fraction (0.10 = 10%), not a percentage
   const rate_per_g = data.cost_per_g * (1 + data.waste_buffer_pct);
   stmts.upsertMaterialRate.run({ ...data, rate_per_g });
+  invalidateAllPriceCaches();
   return stmts.getMaterialRate.get(data.filament_type)!;
 }
