@@ -31,6 +31,24 @@ function readTextFile(filePath: string): string {
   return readFileSync(filePath, "utf8");
 }
 
+function textResponse(content: string, contentType: string): Response {
+  return new Response(content, { headers: { "Content-Type": contentType } });
+}
+
+function binaryResponse(
+  content: Uint8Array,
+  contentType: string,
+  cacheControl = "public, max-age=31536000",
+): Response {
+  return new Response(new Blob([new Uint8Array(content)]), {
+    headers: { "Content-Type": contentType, "Cache-Control": cacheControl },
+  });
+}
+
+function notFound(c: Context): Response {
+  return c.json({ error: "Not found" }, 404);
+}
+
 interface JobRow {
   id: number;
   session_id: string;
@@ -137,38 +155,30 @@ export function createUiApp(apiKey: string): Hono {
     if (!existsSync(APP_JS_PATH)) {
       return new Response("UI bundle missing. Run npm run build:ui.", { status: 500 });
     }
-    const js = readTextFile(APP_JS_PATH);
-    return new Response(js, { headers: { "Content-Type": "application/javascript" } });
+    return textResponse(readTextFile(APP_JS_PATH), "application/javascript");
   });
 
-  ui.get("/app.css", (_c) => {
-    const css = readTextFile(APP_CSS_PATH);
-    return new Response(css, { headers: { "Content-Type": "text/css" } });
-  });
+  ui.get("/app.css", (_c) => textResponse(readTextFile(APP_CSS_PATH), "text/css"));
 
   ui.get("/fonts/:file", (c) => {
     const file = c.req.param("file");
-    if (!/^[\w,.-]+\.(woff2|ttf)$/.test(file)) return c.json({ error: "Not found" }, 404);
+    if (!/^[\w,.-]+\.(woff2|ttf)$/.test(file)) return notFound(c);
     const content = FONT_CONTENTS.get(file);
-    if (!content) return c.json({ error: "Not found" }, 404);
+    if (!content) return notFound(c);
     const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
-    return new Response(new Uint8Array(content), {
-      headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000" },
-    });
+    return binaryResponse(new Uint8Array(content), contentType);
   });
 
   // Locally cached cover images — no auth (non-sensitive thumbnails).
   ui.get("/covers/:taskId", (c) => {
     const taskId = c.req.param("taskId");
     if (!/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
-    if (!localCoverExists(taskId)) return c.json({ error: "Not found" }, 404);
-    const data = readFileSync(localCoverPath(taskId));
-    return new Response(data, {
-      headers: {
-        "Content-Type": "image/png",
-        "Cache-Control": "public, max-age=31536000, immutable",
-      },
-    });
+    if (!localCoverExists(taskId)) return notFound(c);
+    return binaryResponse(
+      readFileSync(localCoverPath(taskId)),
+      "image/png",
+      "public, max-age=31536000, immutable",
+    );
   });
 
   // Job data — protected by app-level auth middleware.
