@@ -15,7 +15,7 @@ import { deriveJobStatus, detectSessions, type RawTask } from "./lib/session-det
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
 
 interface SessionAccumulator {
-  session_id: string; // first task id in the session
+  session_id: string;
   instanceId: number | null;
   print_run: number;
   designId: string | null;
@@ -31,165 +31,185 @@ interface SessionAccumulator {
   statuses: string[];
 }
 
-// ── Core (importable) ─────────────────────────────────────────────────────────
+type TaskPayload = Record<string, unknown>;
 
-export function runNormalize(): void {
-  const allTasks = db
-    .prepare<
-      [],
-      RawTask
-    >("SELECT id, status, startTime, endTime, instanceId, plateIndex, deviceId, raw_json FROM print_tasks")
-    .all();
-  console.log(`  Processing ${allTasks.length} tasks...`);
+type SessionInfo = {
+  sessionId: string;
+  startTime: string | null;
+};
 
-  // ── Pass 1: detect sessions ────────────────────────────────────────────────
-  const taskToSession = detectSessions(allTasks);
+const selectAllTasks = db.prepare<
+  [],
+  RawTask
+>("SELECT id, status, startTime, endTime, instanceId, plateIndex, deviceId, raw_json FROM print_tasks");
 
-  // Compute print_run per (instanceId, deviceId, sessionId) in startTime order.
-  // We want: first session = run 1, second = run 2, etc.
-  const sessionOrder = new Map<string, number>(); // sessionId → print_run
-  {
-    type SessionInfo = {
-      sessionId: string;
-      instanceId: number | null;
-      deviceId: string | null;
-      startTime: string | null;
-    };
-    const seen = new Map<string, SessionInfo[]>(); // groupKey → sessions in order
+const updateTaskScalars = db.prepare<{
+  id: string;
+  session_id: string;
+  instanceId: number | null;
+  plateIndex: number | null;
+  deviceModel: string | null;
+  title: string | null;
+  failedType: number | null;
+  bedType: string | null;
+}>(`
+  UPDATE print_tasks SET
+    session_id  = @session_id,
+    instanceId  = @instanceId,
+    plateIndex  = @plateIndex,
+    deviceModel = @deviceModel,
+    title       = @title,
+    failedType  = @failedType,
+    bedType     = @bedType
+  WHERE id = @id
+`);
 
-    for (const task of allTasks) {
-      const sessionId = taskToSession.get(task.id);
-      if (!sessionId) continue;
-      if (sessionOrder.has(sessionId)) continue; // already registered
-      const key =
-        task.instanceId && task.instanceId !== 0
-          ? `${task.instanceId}:${task.deviceId ?? ""}`
-          : `solo:${task.id}`;
-      if (!seen.has(key)) seen.set(key, []);
-      seen.get(key)!.push({
-        sessionId,
-        instanceId: task.instanceId,
-        deviceId: task.deviceId,
-        startTime: task.startTime,
-      });
+function asNumber(v: unknown): number | null {
+  return typeof v === "number" ? v : null;
+}
+
+function asString(v: unknown): string | null {
+  return typeof v === "string" ? v : null;
+}
+
+function computeSessionOrder(allTasks: RawTask[], taskToSession: Map<string, string>): Map<string, number> {
+  const grouped = new Map<string, SessionInfo[]>();
+
+  for (const task of allTasks) {
+    const sessionId = taskToSession.get(task.id);
+    if (!sessionId) continue;
+
+    const groupKey =
+      task.instanceId && task.instanceId !== 0
+        ? `${task.instanceId}:${task.deviceId ?? ""}`
+        : `solo:${task.id}`;
+
+    const sessions = grouped.get(groupKey);
+    const info: SessionInfo = { sessionId, startTime: task.startTime };
+    if (sessions) {
+      sessions.push(info);
+      continue;
     }
-
-    for (const sessions of seen.values()) {
-      sessions.sort((a, b) => {
-        if (!a.startTime) return 1;
-        if (!b.startTime) return -1;
-        return a.startTime < b.startTime ? -1 : 1;
-      });
-      // Deduplicate (multiple tasks in same session map to same sessionId)
-      const unique = [...new Map(sessions.map((s) => [s.sessionId, s])).values()];
-      unique.forEach((s, i) => sessionOrder.set(s.sessionId, i + 1));
-    }
+    grouped.set(groupKey, [info]);
   }
 
-  // ── Pass 2: backfill task scalars + build session accumulators ─────────────
+  const sessionOrder = new Map<string, number>();
+  for (const sessions of grouped.values()) {
+    sessions.sort((a, b) => {
+      if (!a.startTime) return 1;
+      if (!b.startTime) return -1;
+      return a.startTime < b.startTime ? -1 : 1;
+    });
+
+    const uniqueBySession = [...new Map(sessions.map((s) => [s.sessionId, s])).values()];
+    uniqueBySession.forEach((session, i) => sessionOrder.set(session.sessionId, i + 1));
+  }
+
+  return sessionOrder;
+}
+
+function createAccumulator(
+  sessionId: string,
+  payload: TaskPayload,
+  instanceId: number | null,
+  printRun: number,
+): SessionAccumulator {
+  return {
+    session_id: sessionId,
+    instanceId,
+    print_run: printRun,
+    designId: payload["designId"] != null ? String(payload["designId"]) : null,
+    designTitle: asString(payload["designTitle"]),
+    modelId: asString(payload["modelId"]),
+    deviceId: asString(payload["deviceId"]),
+    deviceModel: asString(payload["deviceModel"]),
+    startTimes: [],
+    endTimes: [],
+    total_weight_g: 0,
+    total_time_s: 0,
+    plate_count: 0,
+    statuses: [],
+  };
+}
+
+function insertFilaments(taskId: string, instanceId: number | null, payload: TaskPayload): void {
+  stmts.deleteJobFilaments.run(taskId);
+
+  const amsMappingRaw = payload["amsDetailMapping"];
+  const amsMapping = Array.isArray(amsMappingRaw)
+    ? (amsMappingRaw.filter(
+        (slot): slot is Record<string, unknown> => !!slot && typeof slot === "object",
+      ) as Record<string, unknown>[])
+    : [];
+
+  for (const slot of amsMapping) {
+    const filament: Omit<JobFilament, "id"> = {
+      task_id: taskId,
+      instanceId,
+      filament_type: asString(slot["filamentType"]),
+      filament_id: asString(slot["filamentId"]),
+      color: asString(slot["targetColor"]),
+      weight_g: asNumber(slot["weight"]),
+      ams_id: asNumber(slot["amsId"]),
+      slot_id: asNumber(slot["slotId"]),
+    };
+    stmts.insertFilament.run(filament);
+  }
+}
+
+function backfillTasksAndBuildSessions(
+  allTasks: RawTask[],
+  taskToSession: Map<string, string>,
+  sessionOrder: Map<string, number>,
+): Map<string, SessionAccumulator> {
   const sessionAccumulators = new Map<string, SessionAccumulator>();
 
-  const updateTaskScalars = db.prepare<{
-    id: string;
-    session_id: string;
-    instanceId: number | null;
-    plateIndex: number | null;
-    deviceModel: string | null;
-    title: string | null;
-    failedType: number | null;
-    bedType: string | null;
-  }>(`
-    UPDATE print_tasks SET
-      session_id  = @session_id,
-      instanceId  = @instanceId,
-      plateIndex  = @plateIndex,
-      deviceModel = @deviceModel,
-      title       = @title,
-      failedType  = @failedType,
-      bedType     = @bedType
-    WHERE id = @id
-  `);
-
-  const normalizeAll = db.transaction(() => {
+  db.transaction(() => {
     for (const { id, status, raw_json } of allTasks) {
-      const t = JSON.parse(raw_json) as Record<string, unknown>;
-      const instanceId = typeof t["instanceId"] === "number" ? t["instanceId"] : null;
-      const sessionId = taskToSession.get(id)!;
-
+      const payload = JSON.parse(raw_json) as TaskPayload;
+      const instanceId = asNumber(payload["instanceId"]);
+      const sessionId = taskToSession.get(id);
       if (!sessionId) continue;
 
       updateTaskScalars.run({
         id,
         session_id: sessionId,
         instanceId,
-        plateIndex: typeof t["plateIndex"] === "number" ? t["plateIndex"] : null,
-        deviceModel: typeof t["deviceModel"] === "string" ? t["deviceModel"] : null,
-        title: typeof t["title"] === "string" ? t["title"] : null,
-        failedType: typeof t["failedType"] === "number" ? t["failedType"] : null,
-        bedType: typeof t["bedType"] === "string" ? t["bedType"] : null,
+        plateIndex: asNumber(payload["plateIndex"]),
+        deviceModel: asString(payload["deviceModel"]),
+        title: asString(payload["title"]),
+        failedType: asNumber(payload["failedType"]),
+        bedType: asString(payload["bedType"]),
       });
 
-      // Accumulate into the session's job record
-      if (!sessionAccumulators.has(sessionId)) {
-        sessionAccumulators.set(sessionId, {
-          session_id: sessionId,
-          instanceId,
-          print_run: sessionOrder.get(sessionId) ?? 1,
-          designId: t["designId"] != null ? String(t["designId"]) : null,
-          designTitle: typeof t["designTitle"] === "string" ? t["designTitle"] : null,
-          modelId: typeof t["modelId"] === "string" ? t["modelId"] : null,
-          deviceId: typeof t["deviceId"] === "string" ? t["deviceId"] : null,
-          deviceModel: typeof t["deviceModel"] === "string" ? t["deviceModel"] : null,
-          startTimes: [],
-          endTimes: [],
-          total_weight_g: 0,
-          total_time_s: 0,
-          plate_count: 0,
-          statuses: [],
-        });
-      }
-      const acc = sessionAccumulators.get(sessionId);
-      if (!acc) continue;
-      if (typeof t["startTime"] === "string") acc.startTimes.push(t["startTime"]);
-      if (typeof t["endTime"] === "string") acc.endTimes.push(t["endTime"]);
-      // Only charge for plates that finished — failed/cancelled plates are a
-      // production loss and should not be billed to the customer.
+      const existing = sessionAccumulators.get(sessionId);
+      const acc = existing ?? createAccumulator(sessionId, payload, instanceId, sessionOrder.get(sessionId) ?? 1);
+      if (!existing) sessionAccumulators.set(sessionId, acc);
+
+      const startTime = asString(payload["startTime"]);
+      const endTime = asString(payload["endTime"]);
+      if (startTime) acc.startTimes.push(startTime);
+      if (endTime) acc.endTimes.push(endTime);
+
       if (status === "finish") {
-        acc.total_weight_g += typeof t["weight"] === "number" ? t["weight"] : 0;
-        acc.total_time_s += typeof t["costTime"] === "number" ? t["costTime"] : 0;
+        acc.total_weight_g += asNumber(payload["weight"]) ?? 0;
+        acc.total_time_s += asNumber(payload["costTime"]) ?? 0;
       }
+
       acc.plate_count += 1;
       if (status) acc.statuses.push(status);
 
-      stmts.deleteJobFilaments.run(id);
-      const amsMappingRaw = t["amsDetailMapping"];
-      const amsMapping = Array.isArray(amsMappingRaw)
-        ? (amsMappingRaw.filter(
-            (slot): slot is Record<string, unknown> => !!slot && typeof slot === "object",
-          ) as Record<string, unknown>[])
-        : [];
-      for (const slot of amsMapping) {
-        const filament: Omit<JobFilament, "id"> = {
-          task_id: id,
-          instanceId,
-          filament_type: typeof slot["filamentType"] === "string" ? slot["filamentType"] : null,
-          filament_id: typeof slot["filamentId"] === "string" ? slot["filamentId"] : null,
-          color: typeof slot["targetColor"] === "string" ? slot["targetColor"] : null,
-          weight_g: typeof slot["weight"] === "number" ? slot["weight"] : null,
-          ams_id: typeof slot["amsId"] === "number" ? slot["amsId"] : null,
-          slot_id: typeof slot["slotId"] === "number" ? slot["slotId"] : null,
-        };
-        stmts.insertFilament.run(filament);
-      }
+      insertFilaments(id, instanceId, payload);
     }
-  });
+  })();
 
-  normalizeAll();
-  console.log(`  Backfilled ${allTasks.length} tasks into ${sessionAccumulators.size} sessions.`);
+  return sessionAccumulators;
+}
 
-  // ── Pass 3: upsert jobs ────────────────────────────────────────────────────
+function upsertJobs(sessionAccumulators: Map<string, SessionAccumulator>): number {
   let jobsDone = 0;
-  const upsertJobs = db.transaction(() => {
+
+  db.transaction(() => {
     for (const acc of sessionAccumulators.values()) {
       stmts.upsertJob.run({
         session_id: acc.session_id,
@@ -207,11 +227,26 @@ export function runNormalize(): void {
         plate_count: acc.plate_count,
         status: deriveJobStatus(acc.statuses),
       });
-      jobsDone++;
+      jobsDone += 1;
     }
-  });
+  })();
 
-  upsertJobs();
+  return jobsDone;
+}
+
+// ── Core (importable) ─────────────────────────────────────────────────────────
+
+export function runNormalize(): void {
+  const allTasks = selectAllTasks.all();
+  console.log(`  Processing ${allTasks.length} tasks...`);
+
+  const taskToSession = detectSessions(allTasks);
+  const sessionOrder = computeSessionOrder(allTasks, taskToSession);
+  const sessionAccumulators = backfillTasksAndBuildSessions(allTasks, taskToSession, sessionOrder);
+
+  console.log(`  Backfilled ${allTasks.length} tasks into ${sessionAccumulators.size} sessions.`);
+
+  const jobsDone = upsertJobs(sessionAccumulators);
   console.log(`  Upserted ${jobsDone} jobs.`);
   console.log("");
   console.log("Done.");
