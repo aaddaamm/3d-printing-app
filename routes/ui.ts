@@ -9,6 +9,7 @@ import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
 // In production, static text assets are cached in memory on first read.
 // In dev, files are read fresh each request so edits are live without restart.
@@ -167,6 +168,7 @@ export function createUiApp(apiKey: string): Hono {
 
   // Job data — protected by app-level auth middleware.
   ui.get("/data", (c) => {
+    const started = Date.now();
     const rows = db
       .prepare<
         [],
@@ -199,12 +201,21 @@ export function createUiApp(apiKey: string): Hono {
         ORDER BY j.startTime DESC`,
       )
       .all();
+    const afterQuery = Date.now();
     const jobs: JobRow[] = rows.map(({ first_task_id, filament_colors_json, ...row }) => ({
       ...row,
       cover_url:
         first_task_id && localCoverExists(first_task_id) ? `/ui/covers/${first_task_id}` : null,
       filament_colors: filament_colors_json ? (JSON.parse(filament_colors_json) as string[]) : [],
     }));
+    const afterMap = Date.now();
+
+    if (DEBUG_LOADING) {
+      console.log(
+        `[debug-loading] /ui/data jobs=${jobs.length} queryMs=${afterQuery - started} mapMs=${afterMap - afterQuery} totalMs=${afterMap - started}`,
+      );
+    }
+
     return c.json({ jobs });
   });
 

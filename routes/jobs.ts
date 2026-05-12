@@ -11,6 +11,7 @@ import { parseId } from "../lib/util.js";
 import { getProjectById } from "../models/projects.js";
 
 export const jobs = new Hono();
+const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
 const TEXT_FIELDS = ["customer", "notes", "status_override"] as const;
 const NUMERIC_FIELDS = ["price_override", "project_id", "extra_labor_minutes"] as const;
@@ -22,7 +23,14 @@ jobs.get("/", (c) => {
 });
 
 jobs.get("/prices", (c) => {
-  return c.json({ prices: getAllJobPrices() });
+  const started = Date.now();
+  const prices = getAllJobPrices();
+  if (DEBUG_LOADING) {
+    console.log(
+      `[debug-loading] /jobs/prices entries=${Object.keys(prices).length} totalMs=${Date.now() - started}`,
+    );
+  }
+  return c.json({ prices });
 });
 
 jobs.get("/export.csv", (c) => {

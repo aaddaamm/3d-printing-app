@@ -14,14 +14,29 @@ import {
 import { parseId } from "../lib/util.js";
 
 export const projects = new Hono();
+const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
 projects.get("/", (c) => {
-  return c.json({ projects: listProjects() });
+  const started = Date.now();
+  const projectsList = listProjects();
+  if (DEBUG_LOADING) {
+    console.log(
+      `[debug-loading] /projects count=${projectsList.length} totalMs=${Date.now() - started}`,
+    );
+  }
+  return c.json({ projects: projectsList });
 });
 
 // Must be before /:id to avoid param capture
 projects.get("/prices", (c) => {
-  return c.json({ prices: getAllProjectPrices() });
+  const started = Date.now();
+  const prices = getAllProjectPrices();
+  if (DEBUG_LOADING) {
+    console.log(
+      `[debug-loading] /projects/prices entries=${Object.keys(prices).length} totalMs=${Date.now() - started}`,
+    );
+  }
+  return c.json({ prices });
 });
 
 projects.post("/auto-group", (c) => {
