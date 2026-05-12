@@ -17,19 +17,24 @@ import { db } from "./db.js";
 // assignment forever — upsertJob never writes project_id, so re-syncs cannot
 // overwrite it either.
 
+type DesignRow = { designId: string; designTitle: string | null };
+type UserJobRow = { id: number; title: string | null };
+type ProjectRow = { id: number };
+type Summary = { created: number; assigned: number };
+
 // ── MakerWorld designs (have a real designId) ─────────────────────────────────
 
-const findDesigns = db.prepare<[], { designId: string; designTitle: string | null }>(`
+const findDesigns = db.prepare<[], DesignRow>(`
   SELECT DISTINCT designId, designTitle
   FROM jobs
   WHERE project_id IS NULL AND designId IS NOT NULL AND designId != '0' AND designId != ''
 `);
 
-const findAutoProject = db.prepare<[string], { id: number }>(`
+const findAutoProject = db.prepare<[string], ProjectRow>(`
   SELECT id FROM projects WHERE source_design_id = ?
 `);
 
-const findManualProjectByName = db.prepare<[string], { id: number }>(`
+const findManualProjectByName = db.prepare<[string], ProjectRow>(`
   SELECT id FROM projects WHERE source_design_id IS NULL AND name = ?
 `);
 
@@ -52,13 +57,126 @@ const assignJobs = db.prepare<[number, string]>(`
 
 // ── User-imported models (designId is "0"/empty/null → group by title) ───────
 
-const findUserJobs = db.prepare<[], { id: number; title: string | null }>(`
+const findUserJobs = db.prepare<[], UserJobRow>(`
   SELECT j.id, pt.title
   FROM jobs j
   JOIN print_tasks pt ON pt.session_id = j.session_id
   WHERE j.project_id IS NULL
     AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
 `);
+
+const assignByIdsStmtCache = new Map<number, ReturnType<typeof db.prepare>>();
+
+function getAssignByIdsStmt(idsLen: number) {
+  let stmt = assignByIdsStmtCache.get(idsLen);
+  if (!stmt) {
+    const placeholders = Array.from({ length: idsLen }, () => "?").join(",");
+    stmt = db.prepare(
+      `UPDATE jobs SET project_id = ? WHERE id IN (${placeholders}) AND project_id IS NULL`,
+    );
+    assignByIdsStmtCache.set(idsLen, stmt);
+  }
+  return stmt;
+}
+
+function ensureProject(sourceKey: string, name: string, now: string, summary: Summary): ProjectRow {
+  let project = findAutoProject.get(sourceKey);
+  if (project) return project;
+
+  project = findManualProjectByName.get(name);
+  if (project) {
+    adoptManualProject.run(sourceKey, project.id);
+    return project;
+  }
+
+  const { lastInsertRowid } = insertAutoProject.run({
+    name,
+    source_design_id: sourceKey,
+    created_at: now,
+  });
+  summary.created += 1;
+  return { id: Number(lastInsertRowid) };
+}
+
+function groupDesignJobs(now: string, summary: Summary): void {
+  const designs = findDesigns.all();
+
+  for (const { designId, designTitle } of designs) {
+    const project = ensureProject(designId, designTitle ?? designId, now, summary);
+    const { changes } = assignJobs.run(project.id, designId);
+    summary.assigned += changes;
+  }
+}
+
+function collectPlateBases(userJobs: UserJobRow[]): ReadonlySet<string> {
+  const plateBases = new Set<string>();
+  for (const { title } of userJobs) {
+    if (!title) continue;
+    const match = title.match(/^(.+)_plate_\d+$/);
+    if (match) plateBases.add(match[1]!);
+  }
+  return plateBases;
+}
+
+function collectTitlesByJobId(userJobs: UserJobRow[]): Map<number, string[]> {
+  const titlesByJobId = new Map<number, string[]>();
+  for (const { id, title } of userJobs) {
+    if (!title) continue;
+    const existing = titlesByJobId.get(id);
+    if (existing) {
+      existing.push(title);
+      continue;
+    }
+    titlesByJobId.set(id, [title]);
+  }
+  return titlesByJobId;
+}
+
+function choosePreferredBase(derivedBases: string[], plateBases: ReadonlySet<string>): string | null {
+  return (
+    derivedBases.find((base) => plateBases.has(base)) ??
+    derivedBases.find((base) => base.includes("_plate_")) ??
+    derivedBases[0] ??
+    null
+  );
+}
+
+function groupIdsByBaseTitle(userJobs: UserJobRow[]): Map<string, number[]> {
+  const plateBases = collectPlateBases(userJobs);
+  const titlesByJobId = collectTitlesByJobId(userJobs);
+  const groups = new Map<string, number[]>();
+
+  for (const [id, titles] of titlesByJobId) {
+    const derivedBases = titles.map((title) => deriveBaseTitle(title, plateBases));
+    const preferredBase = choosePreferredBase(derivedBases, plateBases);
+    if (!preferredBase) continue;
+
+    const ids = groups.get(preferredBase);
+    if (ids) {
+      ids.push(id);
+      continue;
+    }
+    groups.set(preferredBase, [id]);
+  }
+
+  return groups;
+}
+
+function groupTitleJobs(now: string, summary: Summary): void {
+  const userJobs = findUserJobs.all();
+  if (userJobs.length === 0) return;
+
+  const groups = groupIdsByBaseTitle(userJobs);
+  for (const [baseTitle, ids] of groups) {
+    const sourceKey = `title:${baseTitle}`;
+    const project = ensureProject(sourceKey, baseTitle, now, summary);
+    const stmt = getAssignByIdsStmt(ids.length) as {
+      run: (...args: Array<number>) => { changes: number };
+    };
+    const { changes } = stmt.run(project.id, ...ids);
+    summary.assigned += changes;
+  }
+}
 
 // Derive the project base name from a task title.
 // Bambu Studio uses "{project}_{plate_N}" or "{project}_{custom name}".
@@ -69,7 +187,6 @@ export function deriveBaseTitle(title: string, knownBases: ReadonlySet<string>):
   const plateMatch = title.match(/^(.+)_plate_\d+$/);
   if (plateMatch) return plateMatch[1]!;
 
-  // Check if repeatedly removing trailing _segments yields a known base
   let candidate = title;
   while (candidate.includes("_")) {
     candidate = candidate.slice(0, candidate.lastIndexOf("_"));
@@ -80,95 +197,13 @@ export function deriveBaseTitle(title: string, knownBases: ReadonlySet<string>):
 }
 
 export function autoGroupProjects(): { created: number; assigned: number } {
-  let created = 0;
-  let assigned = 0;
+  const summary: Summary = { created: 0, assigned: 0 };
   const now = new Date().toISOString();
 
   db.transaction(() => {
-    // 1. Group MakerWorld designs by designId
-    const designs = findDesigns.all();
-    for (const { designId, designTitle } of designs) {
-      let project = findAutoProject.get(designId);
-
-      if (!project) {
-        const { lastInsertRowid } = insertAutoProject.run({
-          name: designTitle ?? designId,
-          source_design_id: designId,
-          created_at: now,
-        });
-        project = { id: Number(lastInsertRowid) };
-        created++;
-      }
-
-      const { changes } = assignJobs.run(project.id, designId);
-      assigned += changes;
-    }
-
-    // 2. Group user-imported models by title prefix
-    const userJobs = findUserJobs.all();
-    if (userJobs.length === 0) return;
-
-    // Pass 1: collect all _plate_N base names from any plate title in each session
-    const plateBases = new Set<string>();
-    for (const { title } of userJobs) {
-      if (!title) continue;
-      const m = title.match(/^(.+)_plate_\d+$/);
-      if (m) plateBases.add(m[1]!);
-    }
-
-    // Group titles per job id, then choose the best base per job.
-    const titlesByJobId = new Map<number, string[]>();
-    for (const { id, title } of userJobs) {
-      if (!title) continue;
-      if (!titlesByJobId.has(id)) titlesByJobId.set(id, []);
-      titlesByJobId.get(id)!.push(title);
-    }
-
-    // Pass 2: derive base title for every job, group by base
-    const groups = new Map<string, number[]>();
-    for (const [id, titles] of titlesByJobId) {
-      const derived = titles.map((t) => deriveBaseTitle(t, plateBases));
-      const preferred =
-        derived.find((b) => plateBases.has(b)) ??
-        derived.find((b) => b.includes("_plate_")) ??
-        derived[0] ??
-        null;
-      if (!preferred) continue;
-      if (!groups.has(preferred)) groups.set(preferred, []);
-      groups.get(preferred)!.push(id);
-    }
-
-    // Pass 3: create/find projects and assign
-    for (const [baseTitle, ids] of groups) {
-      const sourceKey = `title:${baseTitle}`;
-      let project = findAutoProject.get(sourceKey);
-
-      if (!project) {
-        project = findManualProjectByName.get(baseTitle);
-        if (project) {
-          adoptManualProject.run(sourceKey, project.id);
-        }
-      }
-
-      if (!project) {
-        const { lastInsertRowid } = insertAutoProject.run({
-          name: baseTitle,
-          source_design_id: sourceKey,
-          created_at: now,
-        });
-        project = { id: Number(lastInsertRowid) };
-        created++;
-      }
-
-      const placeholders = ids.map(() => "?").join(",");
-      const { changes } = db
-        .prepare(
-          `UPDATE jobs SET project_id = ? WHERE id IN (${placeholders}) AND project_id IS NULL`,
-        )
-        .run(project.id, ...ids);
-      assigned += changes;
-    }
+    groupDesignJobs(now, summary);
+    groupTitleJobs(now, summary);
   })();
 
-  return { created, assigned };
+  return summary;
 }
