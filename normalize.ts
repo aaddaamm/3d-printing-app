@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
 import type { JobFilament } from "./lib/types.js";
 import { deriveJobStatus, detectSessions, type RawTask } from "./lib/session-detection.js";
