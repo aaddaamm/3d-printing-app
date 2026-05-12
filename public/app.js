@@ -1,6 +1,11 @@
-import { h, render } from "https://esm.sh/preact@10";
-import { useState, useEffect, useMemo, useCallback } from "https://esm.sh/preact@10/hooks";
-import htm from "https://esm.sh/htm@3";
+import { h, render } from "https://cdn.jsdelivr.net/npm/preact@10.29.1/dist/preact.module.js";
+import {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+} from "https://cdn.jsdelivr.net/npm/preact@10.29.1/hooks/dist/hooks.module.js";
+import htm from "https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.module.js";
 
 import { RouterProvider, useLocation } from "./components/router.js";
 import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";
@@ -45,6 +50,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState(null);
+  const [bootStatus, setBootStatus] = useState("Starting dashboard…");
 
   const [view, setView] = useState("table");
   const [q, setQ] = useState("");
@@ -57,13 +63,27 @@ function App() {
 
   useEffect(() => {
     const TOTAL_BOOT_REQUESTS = 5;
+    const BOOT_FAILSAFE_MS = 20000;
     const advanceProgress = () => {
       setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
     };
-    const trackedFetchJson = (url, fallback) =>
-      fetchJson(url, fallback).finally(() => {
-        advanceProgress();
-      });
+    const trackedFetchJson = (url, fallback) => {
+      setBootStatus(`Loading ${url}…`);
+      return fetchJson(url, fallback)
+        .catch((err) => {
+          console.error(`[boot] ${url} failed`, err);
+          throw err;
+        })
+        .finally(() => {
+          advanceProgress();
+        });
+    };
+
+    const failsafe = setTimeout(() => {
+      setError("Dashboard load timed out. Check console/network for the failing request.");
+      setLoading(false);
+      setProjectsLoading(false);
+    }, BOOT_FAILSAFE_MS);
 
     Promise.all([
       trackedFetchJson("/ui/data", "Failed to load jobs."),
@@ -73,6 +93,7 @@ function App() {
         setJobs(data.jobs);
         setSummary(sum);
         setLoading(false);
+        setBootStatus("Loading optional data…");
         // Prices and projects are useful, but should not block the main dashboard.
         trackedFetchJson("/jobs/prices", "Failed to load job prices.")
           .then(({ prices }) => {
@@ -93,7 +114,12 @@ function App() {
         setError(err.message);
         setLoading(false);
         setProjectsLoading(false);
+      })
+      .finally(() => {
+        clearTimeout(failsafe);
       });
+
+    return () => clearTimeout(failsafe);
   }, []);
 
   const devices = useMemo(
@@ -235,6 +261,7 @@ function App() {
           <p class="dashboard-loader-copy-text">
             Fetching jobs, projects, pricing, rates, and cover cache metadata…
           </p>
+          <p class="dashboard-loader-copy-text">${bootStatus}</p>
           <div class="dashboard-loader-steps" aria-hidden="true">
             <span>jobs</span>
             <span>projects</span>

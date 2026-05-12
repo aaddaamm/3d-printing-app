@@ -1,8 +1,8 @@
 // ── Jobs view — Header, Toolbar, TotalsBar, Table, Grid ──────────────────────
 
-import { h } from 'https://esm.sh/preact@10';
-import { useMemo } from 'https://esm.sh/preact@10/hooks';
-import htm from 'https://esm.sh/htm@3';
+import { h } from 'https://cdn.jsdelivr.net/npm/preact@10.29.1/dist/preact.module.js';
+import { useMemo } from 'https://cdn.jsdelivr.net/npm/preact@10.29.1/hooks/dist/hooks.module.js';
+import htm from 'https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.module.js';
 
 import { fmtTime, fmtDate, fmtDateShort, fmtCurrency, fmtWeight, fmtWeightTotal } from './helpers.js';
 import { Badge, RowThumb, CoverImg, FilamentSwatches } from './atoms.js';

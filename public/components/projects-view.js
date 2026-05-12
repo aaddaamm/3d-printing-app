@@ -1,8 +1,8 @@
 // ── Projects view ─────────────────────────────────────────────────────────────
 
-import { h } from "https://esm.sh/preact@10";
-import { useState, useEffect, useMemo, useCallback } from "https://esm.sh/preact@10/hooks";
-import htm from "https://esm.sh/htm@3";
+import { h } from "https://cdn.jsdelivr.net/npm/preact@10.29.1/dist/preact.module.js";
+import { useState, useEffect, useMemo, useCallback } from "https://cdn.jsdelivr.net/npm/preact@10.29.1/hooks/dist/hooks.module.js";
+import htm from "https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.module.js";
 
 import {
   fmtCurrency,
