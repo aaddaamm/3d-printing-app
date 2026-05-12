@@ -1,8 +1,8 @@
 // ── Modal ────────────────────────────────────────────────────────────────────
 
-import { h } from 'https://cdn.jsdelivr.net/npm/preact@10.29.1/dist/preact.module.js';
-import { useState, useEffect, useCallback } from 'https://cdn.jsdelivr.net/npm/preact@10.29.1/hooks/dist/hooks.module.js';
-import htm from 'https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.module.js';
+import { h } from 'preact';
+import { useState, useEffect, useCallback } from 'preact/hooks';
+import htm from 'htm';
 
 import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from './helpers.js';
 import { Badge, CoverImg, FilamentSwatches } from './atoms.js';

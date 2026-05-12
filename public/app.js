@@ -1,11 +1,11 @@
-import { h, render } from "https://cdn.jsdelivr.net/npm/preact@10.29.1/dist/preact.module.js";
+import { h, render } from "preact";
 import {
   useState,
   useEffect,
   useMemo,
   useCallback,
-} from "https://cdn.jsdelivr.net/npm/preact@10.29.1/hooks/dist/hooks.module.js";
-import htm from "https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.module.js";
+} from "preact/hooks";
+import htm from "htm";
 
 import { RouterProvider, useLocation } from "./components/router.js";
 import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";

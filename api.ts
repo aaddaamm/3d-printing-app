@@ -67,8 +67,6 @@ app.use("/*", async (c, next) => {
 // Protected: everything else — Bearer token (API clients) or session cookie (browser)
 
 const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css"]);
-// Matches the same set as the /components/:file handler (^[\w-]+\.js$)
-const PUBLIC_COMPONENT_RE = /^\/ui\/components\/[\w-]+\.js$/;
 const PUBLIC_FONT_RE = /^\/ui\/fonts\/[\w,.-]+\.(?:woff2|ttf)$/;
 
 function safeEqual(a: string, b: string): boolean {
@@ -78,7 +76,7 @@ function safeEqual(a: string, b: string): boolean {
 
 app.use("/*", async (c, next) => {
   const p = c.req.path;
-  if (PUBLIC_PATHS.has(p) || PUBLIC_COMPONENT_RE.test(p) || PUBLIC_FONT_RE.test(p)) return next();
+  if (PUBLIC_PATHS.has(p) || PUBLIC_FONT_RE.test(p)) return next();
   if (safeEqual(c.req.header("Authorization") ?? "", `Bearer ${API_KEY}`)) return next();
   if (safeEqual(getCookie(c, "session") ?? "", API_KEY)) return next();
   if (p.startsWith("/ui")) return c.redirect("/ui/login");

@@ -1,6 +1,6 @@
-import { h } from 'https://cdn.jsdelivr.net/npm/preact@10.29.1/dist/preact.module.js';
-import { useState, useCallback, useRef } from 'https://cdn.jsdelivr.net/npm/preact@10.29.1/hooks/dist/hooks.module.js';
-import htm from 'https://cdn.jsdelivr.net/npm/htm@3.1.1/dist/htm.module.js';
+import { h } from 'preact';
+import { useState, useCallback, useRef } from 'preact/hooks';
+import htm from 'htm';
 
 const html = htm.bind(h);
 

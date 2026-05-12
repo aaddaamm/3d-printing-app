@@ -1,4 +1,4 @@
-import fs from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
@@ -7,10 +7,15 @@ import { localCoverPath, localCoverExists } from "../lib/covers.js";
 import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 
 const INDEX_HTML_PATH = fileURLToPath(new URL("../public/index.html", import.meta.url));
-const APP_JS_PATH = fileURLToPath(new URL("../public/app.js", import.meta.url));
+const APP_JS_PATH = fileURLToPath(new URL("../public/dist/app.js", import.meta.url));
 const APP_CSS_PATH = fileURLToPath(new URL("../public/app.css", import.meta.url));
-const FONTS_DIR = fileURLToPath(new URL("../public/fonts/", import.meta.url));
-const COMPONENTS_DIR = fileURLToPath(new URL("../public/components/", import.meta.url));
+const INTER_FONT_PATH = fileURLToPath(
+  new URL("../public/fonts/Inter-VariableFont_slnt,wght.woff2", import.meta.url),
+);
+const JETBRAINS_FONT_PATH = fileURLToPath(
+  new URL("../public/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
+);
+
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
 // In production, static text assets are cached in memory on first read.
@@ -20,10 +25,10 @@ const fileCache = new Map<string, string>();
 
 function readTextFile(filePath: string): string {
   if (isProd) {
-    if (!fileCache.has(filePath)) fileCache.set(filePath, fs.readFileSync(filePath, "utf8"));
+    if (!fileCache.has(filePath)) fileCache.set(filePath, readFileSync(filePath, "utf8"));
     return fileCache.get(filePath)!;
   }
-  return fs.readFileSync(filePath, "utf8");
+  return readFileSync(filePath, "utf8");
 }
 
 interface JobRow {
@@ -49,19 +54,10 @@ interface JobRow {
   filament_colors: string[];
 }
 
-const FONT_PATHS = new Map(
-  fs
-    .readdirSync(FONTS_DIR)
-    .filter((f) => /^[\w,.-]+\.(woff2|ttf)$/.test(f))
-    .map((f) => [f, fileURLToPath(new URL(`../public/fonts/${f}`, import.meta.url))]),
-);
-
-const COMPONENT_PATHS = new Map(
-  fs
-    .readdirSync(COMPONENTS_DIR)
-    .filter((f) => /^[\w-]+\.js$/.test(f))
-    .map((f) => [f, fileURLToPath(new URL(`../public/components/${f}`, import.meta.url))]),
-);
+const FONT_CONTENTS = new Map<string, Buffer>([
+  ["Inter-VariableFont_slnt,wght.woff2", readFileSync(INTER_FONT_PATH)],
+  ["JetBrainsMono-VariableFont_wght.ttf", readFileSync(JETBRAINS_FONT_PATH)],
+]);
 
 const LOGIN_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -138,6 +134,9 @@ export function createUiApp(apiKey: string): Hono {
 
   // Static assets — served without auth (no sensitive data).
   ui.get("/app.js", (_c) => {
+    if (!existsSync(APP_JS_PATH)) {
+      return new Response("UI bundle missing. Run npm run build:ui.", { status: 500 });
+    }
     const js = readTextFile(APP_JS_PATH);
     return new Response(js, { headers: { "Content-Type": "application/javascript" } });
   });
@@ -150,22 +149,11 @@ export function createUiApp(apiKey: string): Hono {
   ui.get("/fonts/:file", (c) => {
     const file = c.req.param("file");
     if (!/^[\w,.-]+\.(woff2|ttf)$/.test(file)) return c.json({ error: "Not found" }, 404);
-    const filePath = FONT_PATHS.get(file);
-    if (!filePath || !fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
+    const content = FONT_CONTENTS.get(file);
+    if (!content) return c.json({ error: "Not found" }, 404);
     const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
-    return new Response(fs.readFileSync(filePath), {
+    return new Response(new Uint8Array(content), {
       headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000" },
-    });
-  });
-
-  // Component JS modules — served without auth (no sensitive data, imported by app.js).
-  ui.get("/components/:file", (c) => {
-    const file = c.req.param("file");
-    if (!/^[\w-]+\.js$/.test(file)) return c.json({ error: "Not found" }, 404);
-    const filePath = COMPONENT_PATHS.get(file);
-    if (!filePath || !fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
-    return new Response(readTextFile(filePath), {
-      headers: { "Content-Type": "application/javascript" },
     });
   });
 
@@ -174,7 +162,7 @@ export function createUiApp(apiKey: string): Hono {
     const taskId = c.req.param("taskId");
     if (!/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
     if (!localCoverExists(taskId)) return c.json({ error: "Not found" }, 404);
-    const data = fs.readFileSync(localCoverPath(taskId));
+    const data = readFileSync(localCoverPath(taskId));
     return new Response(data, {
       headers: {
         "Content-Type": "image/png",
