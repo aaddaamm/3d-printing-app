@@ -7,7 +7,7 @@ import {
   getJobPrice,
   getAllJobPrices,
 } from "../models/jobs.js";
-import { parseId } from "../lib/util.js";
+import { parseId, parseJsonBody, unknownFields } from "../lib/util.js";
 import { getProjectById } from "../models/projects.js";
 
 export const jobs = new Hono();
@@ -95,14 +95,10 @@ jobs.patch("/:id", async (c) => {
   if (id === null) return c.json({ error: "Invalid id" }, 400);
   if (!getJobById(id)) return c.json({ error: "Not found" }, 404);
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await c.req.json()) as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const body = await parseJsonBody(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
 
-  const unknown = Object.keys(body).filter((k) => !(ALL_FIELDS as readonly string[]).includes(k));
+  const unknown = unknownFields(body, ALL_FIELDS as readonly string[]);
   if (unknown.length) return c.json({ error: `Unknown fields: ${unknown.join(", ")}` }, 400);
 
   for (const field of NUMERIC_FIELDS) {

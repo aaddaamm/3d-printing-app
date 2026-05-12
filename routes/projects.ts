@@ -11,7 +11,7 @@ import {
   getProjectPrice,
   getAllProjectPrices,
 } from "../models/projects.js";
-import { parseId } from "../lib/util.js";
+import { parseId, parseJsonBody, unknownFields } from "../lib/util.js";
 
 export const projects = new Hono();
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
@@ -50,12 +50,8 @@ projects.post("/cleanup-junk", (c) => {
 });
 
 projects.post("/", async (c) => {
-  let body: Record<string, unknown>;
-  try {
-    body = (await c.req.json()) as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const body = await parseJsonBody(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
   const name = body.name;
   const customer = body.customer;
   const notes = body.notes;
@@ -100,15 +96,10 @@ projects.patch("/:id", async (c) => {
   if (id === null) return c.json({ error: "Invalid id" }, 400);
   if (!getProjectById(id)) return c.json({ error: "Not found" }, 404);
 
-  let body: Record<string, unknown>;
-  try {
-    body = (await c.req.json()) as Record<string, unknown>;
-  } catch {
-    return c.json({ error: "Invalid JSON body" }, 400);
-  }
+  const body = await parseJsonBody(c);
+  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
 
-  const ALLOWED = new Set(["name", "customer", "notes"]);
-  const unknown = Object.keys(body).filter((k) => !ALLOWED.has(k));
+  const unknown = unknownFields(body, ["name", "customer", "notes"]);
   if (unknown.length) return c.json({ error: `Unknown fields: ${unknown.join(", ")}` }, 400);
 
   const name = body.name;
