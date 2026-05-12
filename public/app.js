@@ -43,6 +43,7 @@ function App() {
   const [projectPrices, setProjectPrices] = useState({});
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState(null);
 
   const [view, setView] = useState("table");
@@ -55,25 +56,34 @@ function App() {
   const [loc, navigate] = useLocation();
 
   useEffect(() => {
+    const TOTAL_BOOT_REQUESTS = 5;
+    const advanceProgress = () => {
+      setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
+    };
+    const trackedFetchJson = (url, fallback) =>
+      fetchJson(url, fallback).finally(() => {
+        advanceProgress();
+      });
+
     Promise.all([
-      fetchJson("/ui/data", "Failed to load jobs."),
-      fetchJson("/summary", "Failed to load summary."),
+      trackedFetchJson("/ui/data", "Failed to load jobs."),
+      trackedFetchJson("/summary", "Failed to load summary."),
     ])
       .then(([data, sum]) => {
         setJobs(data.jobs);
         setSummary(sum);
         setLoading(false);
         // Prices and projects are useful, but should not block the main dashboard.
-        fetchJson("/jobs/prices", "Failed to load job prices.")
+        trackedFetchJson("/jobs/prices", "Failed to load job prices.")
           .then(({ prices }) => {
             setJobs((js) => js.map((j) => ({ ...j, final_price: prices[j.id] ?? null })));
           })
           .catch((err) => toast(err.message || "Failed to load job prices.", "error"));
-        fetchJson("/projects", "Failed to load projects.")
+        trackedFetchJson("/projects", "Failed to load projects.")
           .then(({ projects }) => setProjects(projects))
           .catch((err) => toast(err.message || "Failed to load projects.", "error"))
           .finally(() => setProjectsLoading(false));
-        fetchJson("/projects/prices", "Failed to load project prices.")
+        trackedFetchJson("/projects/prices", "Failed to load project prices.")
           .then(({ prices }) => {
             setProjectPrices(prices);
           })
@@ -230,6 +240,15 @@ function App() {
             <span>projects</span>
             <span>rates</span>
             <span>covers</span>
+          </div>
+          <div
+            class="dashboard-loader-progress"
+            role="progressbar"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow=${Math.round(loadProgress)}
+          >
+            <span style=${`width:${Math.max(8, loadProgress)}%`}></span>
           </div>
         </div>
         <div class="dashboard-loader-preview" aria-hidden="true">
