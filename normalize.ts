@@ -58,7 +58,8 @@ export function runNormalize(): void {
     const seen = new Map<string, SessionInfo[]>(); // groupKey → sessions in order
 
     for (const task of allTasks) {
-      const sessionId = taskToSession.get(task.id)!;
+      const sessionId = taskToSession.get(task.id);
+      if (!sessionId) continue;
       if (sessionOrder.has(sessionId)) continue; // already registered
       const key =
         task.instanceId && task.instanceId !== 0
@@ -115,6 +116,8 @@ export function runNormalize(): void {
       const instanceId = typeof t["instanceId"] === "number" ? t["instanceId"] : null;
       const sessionId = taskToSession.get(id)!;
 
+      if (!sessionId) continue;
+
       updateTaskScalars.run({
         id,
         session_id: sessionId,
@@ -145,7 +148,8 @@ export function runNormalize(): void {
           statuses: [],
         });
       }
-      const acc = sessionAccumulators.get(sessionId)!;
+      const acc = sessionAccumulators.get(sessionId);
+      if (!acc) continue;
       if (typeof t["startTime"] === "string") acc.startTimes.push(t["startTime"]);
       if (typeof t["endTime"] === "string") acc.endTimes.push(t["endTime"]);
       // Only charge for plates that finished — failed/cancelled plates are a
@@ -158,11 +162,14 @@ export function runNormalize(): void {
       if (status) acc.statuses.push(status);
 
       stmts.deleteJobFilaments.run(id);
-      const amsMapping = Array.isArray(t["amsDetailMapping"])
-        ? (t["amsDetailMapping"] as Record<string, unknown>[])
+      const amsMappingRaw = t["amsDetailMapping"];
+      const amsMapping = Array.isArray(amsMappingRaw)
+        ? (amsMappingRaw.filter(
+            (slot): slot is Record<string, unknown> => !!slot && typeof slot === "object",
+          ) as Record<string, unknown>[])
         : [];
       for (const slot of amsMapping) {
-        stmts.insertFilament.run({
+        const filament: Omit<JobFilament, "id"> = {
           task_id: id,
           instanceId,
           filament_type: typeof slot["filamentType"] === "string" ? slot["filamentType"] : null,
@@ -171,7 +178,8 @@ export function runNormalize(): void {
           weight_g: typeof slot["weight"] === "number" ? slot["weight"] : null,
           ams_id: typeof slot["amsId"] === "number" ? slot["amsId"] : null,
           slot_id: typeof slot["slotId"] === "number" ? slot["slotId"] : null,
-        } as Omit<JobFilament, "id">);
+        };
+        stmts.insertFilament.run(filament);
       }
     }
   });
@@ -192,8 +200,8 @@ export function runNormalize(): void {
         modelId: acc.modelId,
         deviceId: acc.deviceId,
         deviceModel: acc.deviceModel,
-        startTime: acc.startTimes.length ? acc.startTimes.sort()[0]! : null,
-        endTime: acc.endTimes.length ? acc.endTimes.sort().at(-1)! : null,
+        startTime: acc.startTimes.length ? ([...acc.startTimes].sort()[0] ?? null) : null,
+        endTime: acc.endTimes.length ? ([...acc.endTimes].sort().at(-1) ?? null) : null,
         total_weight_g: Math.round(acc.total_weight_g * 100) / 100,
         total_time_s: acc.total_time_s,
         plate_count: acc.plate_count,

@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
@@ -7,14 +6,18 @@ import { db } from "../lib/db.js";
 import { localCoverPath, localCoverExists } from "../lib/covers.js";
 import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const PUBLIC_DIR = path.join(__dirname, "..", "public");
+const INDEX_HTML_PATH = fileURLToPath(new URL("../public/index.html", import.meta.url));
+const APP_JS_PATH = fileURLToPath(new URL("../public/app.js", import.meta.url));
+const APP_CSS_PATH = fileURLToPath(new URL("../public/app.css", import.meta.url));
+const FONTS_DIR = fileURLToPath(new URL("../public/fonts/", import.meta.url));
+const COMPONENTS_DIR = fileURLToPath(new URL("../public/components/", import.meta.url));
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
 // In production, static text assets are cached in memory on first read.
 // In dev, files are read fresh each request so edits are live without restart.
 const isProd = process.env["NODE_ENV"] === "production";
 const fileCache = new Map<string, string>();
+
 function readTextFile(filePath: string): string {
   if (isProd) {
     if (!fileCache.has(filePath)) fileCache.set(filePath, fs.readFileSync(filePath, "utf8"));
@@ -45,6 +48,20 @@ interface JobRow {
   cover_url: string | null;
   filament_colors: string[];
 }
+
+const FONT_PATHS = new Map(
+  fs
+    .readdirSync(FONTS_DIR)
+    .filter((f) => /^[\w,.-]+\.(woff2|ttf)$/.test(f))
+    .map((f) => [f, fileURLToPath(new URL(`../public/fonts/${f}`, import.meta.url))]),
+);
+
+const COMPONENT_PATHS = new Map(
+  fs
+    .readdirSync(COMPONENTS_DIR)
+    .filter((f) => /^[\w-]+\.js$/.test(f))
+    .map((f) => [f, fileURLToPath(new URL(`../public/components/${f}`, import.meta.url))]),
+);
 
 const LOGIN_HTML = `<!DOCTYPE html>
 <html lang="en">
@@ -113,7 +130,7 @@ export function createUiApp(apiKey: string): Hono {
   });
 
   const serveShell = (c: Context) => {
-    const content = readTextFile(path.join(PUBLIC_DIR, "index.html"));
+    const content = readTextFile(INDEX_HTML_PATH);
     return c.html(content);
   };
   ui.get("/", (c) => serveShell(c));
@@ -121,20 +138,20 @@ export function createUiApp(apiKey: string): Hono {
 
   // Static assets — served without auth (no sensitive data).
   ui.get("/app.js", (_c) => {
-    const js = readTextFile(path.join(PUBLIC_DIR, "app.js"));
+    const js = readTextFile(APP_JS_PATH);
     return new Response(js, { headers: { "Content-Type": "application/javascript" } });
   });
 
   ui.get("/app.css", (_c) => {
-    const css = readTextFile(path.join(PUBLIC_DIR, "app.css"));
+    const css = readTextFile(APP_CSS_PATH);
     return new Response(css, { headers: { "Content-Type": "text/css" } });
   });
 
   ui.get("/fonts/:file", (c) => {
     const file = c.req.param("file");
     if (!/^[\w,.-]+\.(woff2|ttf)$/.test(file)) return c.json({ error: "Not found" }, 404);
-    const filePath = path.join(PUBLIC_DIR, "fonts", file);
-    if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
+    const filePath = FONT_PATHS.get(file);
+    if (!filePath || !fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
     const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
     return new Response(fs.readFileSync(filePath), {
       headers: { "Content-Type": contentType, "Cache-Control": "public, max-age=31536000" },
@@ -145,8 +162,8 @@ export function createUiApp(apiKey: string): Hono {
   ui.get("/components/:file", (c) => {
     const file = c.req.param("file");
     if (!/^[\w-]+\.js$/.test(file)) return c.json({ error: "Not found" }, 404);
-    const filePath = path.join(PUBLIC_DIR, "components", file);
-    if (!fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
+    const filePath = COMPONENT_PATHS.get(file);
+    if (!filePath || !fs.existsSync(filePath)) return c.json({ error: "Not found" }, 404);
     return new Response(readTextFile(filePath), {
       headers: { "Content-Type": "application/javascript" },
     });
