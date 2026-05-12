@@ -1,6 +1,5 @@
 import { toast } from "../components/toast.js";
-
-const FETCH_TIMEOUT_MS = 15000;
+import { FETCH_TIMEOUT_MS } from "./constants.js";
 
 export async function errorMessage(res, fallback) {
   try {

@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "preact/hooks";
 import { fetchJson } from "../lib/api.js";
+import { BOOT_FAILSAFE_MS, TOTAL_BOOT_REQUESTS } from "../lib/constants.js";
 
 export function useDashboardBootstrap({
   setJobs,
@@ -51,8 +52,6 @@ export function useDashboardBootstrap({
   );
 
   useEffect(() => {
-    const TOTAL_BOOT_REQUESTS = 5;
-    const BOOT_FAILSAFE_MS = 20000;
     const advanceProgress = () =>
       setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
     const trackedFetchJson = (url, fallback) => {

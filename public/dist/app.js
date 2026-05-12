@@ -896,8 +896,12 @@ function ToastContainer() {
   `;
 }
 
-// public/lib/api.js
+// public/lib/constants.js
 var FETCH_TIMEOUT_MS = 15e3;
+var BOOT_FAILSAFE_MS = 2e4;
+var TOTAL_BOOT_REQUESTS = 5;
+
+// public/lib/api.js
 async function errorMessage(res, fallback) {
   try {
     const data = await res.json();
@@ -1546,7 +1550,13 @@ function AdminView() {
 }
 
 // public/components/bootstrap.js
-function useDashboardBootstrap({ setJobs, setProjects, setProjectPrices, setSummary, toast: toast2 }) {
+function useDashboardBootstrap({
+  setJobs,
+  setProjects,
+  setProjectPrices,
+  setSummary,
+  toast: toast2
+}) {
   const [loading, setLoading] = d2(true);
   const [projectsLoading, setProjectsLoading] = d2(true);
   const [loadProgress, setLoadProgress] = d2(0);
@@ -1556,19 +1566,29 @@ function useDashboardBootstrap({ setJobs, setProjects, setProjectPrices, setSumm
     fetchJson("/projects", "Failed to load projects.").then((d3) => d3?.projects && setProjects(d3.projects)).catch((err) => toast2(err.message || "Failed to load projects.", "error")).finally(() => setProjectsLoading(false));
     fetchJson("/projects/prices", "Failed to load project prices.").then((d3) => d3?.prices && setProjectPrices(d3.prices)).catch((err) => toast2(err.message || "Failed to load project prices.", "error"));
   }, [setProjects, setProjectPrices, toast2]);
-  const refreshJobPrices = q2((merge = false) => {
-    fetchJson("/jobs/prices", merge ? "Failed to refresh job prices." : "Failed to load job prices.").then((d3) => {
-      if (!d3?.prices) return;
-      setJobs(
-        (js) => js.map((j3) => ({ ...j3, final_price: d3.prices[j3.id] ?? (merge ? j3.final_price : null) ?? null }))
+  const refreshJobPrices = q2(
+    (merge = false) => {
+      fetchJson(
+        "/jobs/prices",
+        merge ? "Failed to refresh job prices." : "Failed to load job prices."
+      ).then((d3) => {
+        if (!d3?.prices) return;
+        setJobs(
+          (js) => js.map((j3) => ({
+            ...j3,
+            final_price: d3.prices[j3.id] ?? (merge ? j3.final_price : null) ?? null
+          }))
+        );
+      }).catch(
+        (err) => toast2(
+          err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."),
+          "error"
+        )
       );
-    }).catch(
-      (err) => toast2(err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."), "error")
-    );
-  }, [setJobs, toast2]);
+    },
+    [setJobs, toast2]
+  );
   y2(() => {
-    const TOTAL_BOOT_REQUESTS = 5;
-    const BOOT_FAILSAFE_MS = 2e4;
     const advanceProgress = () => setLoadProgress((p3) => Math.min(100, p3 + 100 / TOTAL_BOOT_REQUESTS));
     const trackedFetchJson = (url, fallback) => {
       setBootStatus(`Loading ${url}\u2026`);
