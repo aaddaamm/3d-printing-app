@@ -2,6 +2,7 @@
 
 import { h } from 'preact';
 import { useState, useEffect, useCallback } from 'preact/hooks';
+import { useEscapeClose } from '../hooks/use-escape-close.js';
 import htm from 'htm';
 
 import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from './helpers.js';
@@ -58,11 +59,7 @@ export function Modal({ job, onClose, onPatch, projects, onJobProjectChange, onJ
     job.price_override != null ? String(job.price_override) : ''
   );
 
-  useEffect(() => {
-    const handler = e => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [onClose]);
+  useEscapeClose(onClose);
 
   const handleProjectChange = useCallback(e => {
     const val = e.target.value;

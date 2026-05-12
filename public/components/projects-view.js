@@ -16,6 +16,7 @@ import { Badge, RowThumb } from "./atoms.js";
 import { toast } from "./toast.js";
 import { useLocation } from "./router.js";
 import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import { useEscapeClose } from "../hooks/use-escape-close.js";
 
 const html = htm.bind(h);
 
@@ -25,13 +26,7 @@ function NewProjectModal({ onClose, onCreate }) {
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  useEscapeClose(onClose);
 
   const handleSubmit = useCallback(
     async (e) => {
@@ -132,13 +127,7 @@ function ProjectCard({ project, totalPrice, onClick }) {
 
 function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
   const [q, setQ] = useState("");
-  useEffect(() => {
-    const handler = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  useEscapeClose(onClose);
   const filtered = useMemo(() => {
     if (!q) return unassignedJobs;
     const lc = q.toLowerCase();

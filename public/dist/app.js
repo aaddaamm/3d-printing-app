@@ -711,6 +711,17 @@ function GridView({ sorted, onJobClick }) {
   `;
 }
 
+// public/hooks/use-escape-close.js
+function useEscapeClose(onClose) {
+  y2(() => {
+    const handler = (e3) => {
+      if (e3.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+}
+
 // public/components/modal.js
 var html4 = htm_module_default.bind(k);
 function PricingSection({ jobId }) {
@@ -753,13 +764,7 @@ function Modal({ job, onClose, onPatch, projects, onJobProjectChange, onJobStatu
   const [localPriceOverride, setLocalPriceOverride] = d2(
     job.price_override != null ? String(job.price_override) : ""
   );
-  y2(() => {
-    const handler = (e3) => {
-      if (e3.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  useEscapeClose(onClose);
   const handleProjectChange = q2((e3) => {
     const val = e3.target.value;
     onJobProjectChange(job.id, val === "" ? null : Number(val));
@@ -951,13 +956,7 @@ function NewProjectModal({ onClose, onCreate }) {
   const [customer, setCustomer] = d2("");
   const [notes, setNotes] = d2("");
   const [saving, setSaving] = d2(false);
-  y2(() => {
-    const handler = (e3) => {
-      if (e3.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  useEscapeClose(onClose);
   const handleSubmit = q2(
     async (e3) => {
       e3.preventDefault();
@@ -1051,13 +1050,7 @@ function ProjectCard({ project, totalPrice, onClick }) {
 }
 function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
   const [q3, setQ] = d2("");
-  y2(() => {
-    const handler = (e3) => {
-      if (e3.key === "Escape") onClose();
-    };
-    document.addEventListener("keydown", handler);
-    return () => document.removeEventListener("keydown", handler);
-  }, [onClose]);
+  useEscapeClose(onClose);
   const filtered = T2(() => {
     if (!q3) return unassignedJobs;
     const lc = q3.toLowerCase();
