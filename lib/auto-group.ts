@@ -132,7 +132,10 @@ function collectTitlesByJobId(userJobs: UserJobRow[]): Map<number, string[]> {
   return titlesByJobId;
 }
 
-function choosePreferredBase(derivedBases: string[], plateBases: ReadonlySet<string>): string | null {
+function choosePreferredBase(
+  derivedBases: string[],
+  plateBases: ReadonlySet<string>,
+): string | null {
   return (
     derivedBases.find((base) => plateBases.has(base)) ??
     derivedBases.find((base) => base.includes("_plate_")) ??
