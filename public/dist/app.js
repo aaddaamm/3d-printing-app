@@ -1545,40 +1545,37 @@ function AdminView() {
   `;
 }
 
-// public/app.js
-var html8 = htm_module_default.bind(k);
-function App() {
-  const [jobs, setJobs] = d2([]);
-  const [projects, setProjects] = d2([]);
-  const [projectsLoading, setProjectsLoading] = d2(true);
-  const [projectPrices, setProjectPrices] = d2({});
-  const [summary, setSummary] = d2(null);
+// public/components/bootstrap.js
+function useDashboardBootstrap({ setJobs, setProjects, setProjectPrices, setSummary, toast: toast2 }) {
   const [loading, setLoading] = d2(true);
+  const [projectsLoading, setProjectsLoading] = d2(true);
   const [loadProgress, setLoadProgress] = d2(0);
   const [error, setError] = d2(null);
   const [bootStatus, setBootStatus] = d2("Starting dashboard\u2026");
-  const [view, setView] = d2("table");
-  const [q3, setQ] = d2("");
-  const [statusFilter, setStatusFilter] = d2("");
-  const [deviceFilter, setDeviceFilter] = d2("");
-  const [sortCol, setSortCol] = d2("startTime");
-  const [sortDir, setSortDir] = d2("desc");
-  const [selectedJob, setSelectedJob] = d2(null);
-  const [loc, navigate] = useLocation();
+  const refreshProjectsAndPrices = q2(() => {
+    fetchJson("/projects", "Failed to load projects.").then((d3) => d3?.projects && setProjects(d3.projects)).catch((err) => toast2(err.message || "Failed to load projects.", "error")).finally(() => setProjectsLoading(false));
+    fetchJson("/projects/prices", "Failed to load project prices.").then((d3) => d3?.prices && setProjectPrices(d3.prices)).catch((err) => toast2(err.message || "Failed to load project prices.", "error"));
+  }, [setProjects, setProjectPrices, toast2]);
+  const refreshJobPrices = q2((merge = false) => {
+    fetchJson("/jobs/prices", merge ? "Failed to refresh job prices." : "Failed to load job prices.").then((d3) => {
+      if (!d3?.prices) return;
+      setJobs(
+        (js) => js.map((j3) => ({ ...j3, final_price: d3.prices[j3.id] ?? (merge ? j3.final_price : null) ?? null }))
+      );
+    }).catch(
+      (err) => toast2(err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."), "error")
+    );
+  }, [setJobs, toast2]);
   y2(() => {
     const TOTAL_BOOT_REQUESTS = 5;
     const BOOT_FAILSAFE_MS = 2e4;
-    const advanceProgress = () => {
-      setLoadProgress((p3) => Math.min(100, p3 + 100 / TOTAL_BOOT_REQUESTS));
-    };
+    const advanceProgress = () => setLoadProgress((p3) => Math.min(100, p3 + 100 / TOTAL_BOOT_REQUESTS));
     const trackedFetchJson = (url, fallback) => {
       setBootStatus(`Loading ${url}\u2026`);
       return fetchJson(url, fallback).catch((err) => {
         console.error(`[boot] ${url} failed`, err);
         throw err;
-      }).finally(() => {
-        advanceProgress();
-      });
+      }).finally(advanceProgress);
     };
     const failsafe = setTimeout(() => {
       setError("Dashboard load timed out. Check console/network for the failing request.");
@@ -1593,22 +1590,56 @@ function App() {
       setSummary(sum);
       setLoading(false);
       setBootStatus("Loading optional data\u2026");
-      trackedFetchJson("/jobs/prices", "Failed to load job prices.").then(({ prices }) => {
-        setJobs((js) => js.map((j3) => ({ ...j3, final_price: prices[j3.id] ?? null })));
-      }).catch((err) => toast(err.message || "Failed to load job prices.", "error"));
-      trackedFetchJson("/projects", "Failed to load projects.").then(({ projects: projects2 }) => setProjects(projects2)).catch((err) => toast(err.message || "Failed to load projects.", "error")).finally(() => setProjectsLoading(false));
-      trackedFetchJson("/projects/prices", "Failed to load project prices.").then(({ prices }) => {
-        setProjectPrices(prices);
-      }).catch((err) => toast(err.message || "Failed to load project prices.", "error"));
+      refreshJobPrices(false);
+      refreshProjectsAndPrices();
     }).catch((err) => {
       setError(err.message);
       setLoading(false);
       setProjectsLoading(false);
-    }).finally(() => {
-      clearTimeout(failsafe);
-    });
+    }).finally(() => clearTimeout(failsafe));
     return () => clearTimeout(failsafe);
-  }, []);
+  }, [setJobs, setSummary, refreshJobPrices, refreshProjectsAndPrices]);
+  return {
+    loading,
+    projectsLoading,
+    loadProgress,
+    error,
+    bootStatus,
+    refreshProjectsAndPrices,
+    refreshJobPrices
+  };
+}
+
+// public/app.js
+var html8 = htm_module_default.bind(k);
+function App() {
+  const [jobs, setJobs] = d2([]);
+  const [projects, setProjects] = d2([]);
+  const [projectPrices, setProjectPrices] = d2({});
+  const [summary, setSummary] = d2(null);
+  const [view, setView] = d2("table");
+  const [q3, setQ] = d2("");
+  const [statusFilter, setStatusFilter] = d2("");
+  const [deviceFilter, setDeviceFilter] = d2("");
+  const [sortCol, setSortCol] = d2("startTime");
+  const [sortDir, setSortDir] = d2("desc");
+  const [selectedJob, setSelectedJob] = d2(null);
+  const [loc, navigate] = useLocation();
+  const {
+    loading,
+    projectsLoading,
+    loadProgress,
+    error,
+    bootStatus,
+    refreshProjectsAndPrices,
+    refreshJobPrices
+  } = useDashboardBootstrap({
+    setJobs,
+    setProjects,
+    setProjectPrices,
+    setSummary,
+    toast
+  });
   const devices = T2(
     () => [...new Set(jobs.map((j3) => j3.deviceModel).filter(Boolean))].sort(),
     [jobs]
@@ -1659,14 +1690,9 @@ function App() {
     async (jobId, projectId) => {
       const job = await patchJob(jobId, { project_id: projectId });
       if (!job) return;
-      fetchJsonOrToast("/projects", "Failed to load projects.").then((d3) => {
-        if (d3?.projects) setProjects(d3.projects);
-      });
-      fetchJsonOrToast("/projects/prices", "Failed to load project prices.").then((d3) => {
-        if (d3?.prices) setProjectPrices(d3.prices);
-      });
+      refreshProjectsAndPrices();
     },
-    [patchJob]
+    [patchJob, refreshProjectsAndPrices]
   );
   const handleJobStatusChange = q2(
     (jobId, statusOverride) => {
@@ -1694,14 +1720,9 @@ function App() {
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    fetchJsonOrToast("/jobs/prices", "Failed to refresh job prices.").then((d3) => {
-      if (!d3?.prices) return;
-      setJobs((js) => js.map((j3) => ({ ...j3, final_price: d3.prices[j3.id] ?? j3.final_price ?? null })));
-    });
-    fetchJsonOrToast("/projects/prices", "Failed to refresh project prices.").then((d3) => {
-      if (d3?.prices) setProjectPrices(d3.prices);
-    });
-  }, []);
+    refreshJobPrices(true);
+    refreshProjectsAndPrices();
+  }, [refreshJobPrices, refreshProjectsAndPrices]);
   if (loading)
     return html8` <div class="in-app-loading" role="status" aria-live="polite">
       <section class="dashboard-loader-card">

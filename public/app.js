@@ -1,7 +1,6 @@
 import { h, render } from "preact";
 import {
   useState,
-  useEffect,
   useMemo,
   useCallback,
 } from "preact/hooks";
@@ -13,7 +12,8 @@ import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
 import { toast, ToastContainer } from "./components/toast.js";
-import { fetchJson, fetchJsonOrToast, patchJsonOrToast } from "./lib/api.js";
+import { fetchJson, patchJsonOrToast } from "./lib/api.js";
+import { useDashboardBootstrap } from "./components/bootstrap.js";
 
 const html = htm.bind(h);
 
@@ -22,13 +22,8 @@ const html = htm.bind(h);
 function App() {
   const [jobs, setJobs] = useState([]);
   const [projects, setProjects] = useState([]);
-  const [projectsLoading, setProjectsLoading] = useState(true);
   const [projectPrices, setProjectPrices] = useState({});
   const [summary, setSummary] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [loadProgress, setLoadProgress] = useState(0);
-  const [error, setError] = useState(null);
-  const [bootStatus, setBootStatus] = useState("Starting dashboard…");
 
   const [view, setView] = useState("table");
   const [q, setQ] = useState("");
@@ -39,66 +34,21 @@ function App() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [loc, navigate] = useLocation();
 
-  useEffect(() => {
-    const TOTAL_BOOT_REQUESTS = 5;
-    const BOOT_FAILSAFE_MS = 20000;
-    const advanceProgress = () => {
-      setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
-    };
-    const trackedFetchJson = (url, fallback) => {
-      setBootStatus(`Loading ${url}…`);
-      return fetchJson(url, fallback)
-        .catch((err) => {
-          console.error(`[boot] ${url} failed`, err);
-          throw err;
-        })
-        .finally(() => {
-          advanceProgress();
-        });
-    };
-
-    const failsafe = setTimeout(() => {
-      setError("Dashboard load timed out. Check console/network for the failing request.");
-      setLoading(false);
-      setProjectsLoading(false);
-    }, BOOT_FAILSAFE_MS);
-
-    Promise.all([
-      trackedFetchJson("/ui/data", "Failed to load jobs."),
-      trackedFetchJson("/summary", "Failed to load summary."),
-    ])
-      .then(([data, sum]) => {
-        setJobs(data.jobs);
-        setSummary(sum);
-        setLoading(false);
-        setBootStatus("Loading optional data…");
-        // Prices and projects are useful, but should not block the main dashboard.
-        trackedFetchJson("/jobs/prices", "Failed to load job prices.")
-          .then(({ prices }) => {
-            setJobs((js) => js.map((j) => ({ ...j, final_price: prices[j.id] ?? null })));
-          })
-          .catch((err) => toast(err.message || "Failed to load job prices.", "error"));
-        trackedFetchJson("/projects", "Failed to load projects.")
-          .then(({ projects }) => setProjects(projects))
-          .catch((err) => toast(err.message || "Failed to load projects.", "error"))
-          .finally(() => setProjectsLoading(false));
-        trackedFetchJson("/projects/prices", "Failed to load project prices.")
-          .then(({ prices }) => {
-            setProjectPrices(prices);
-          })
-          .catch((err) => toast(err.message || "Failed to load project prices.", "error"));
-      })
-      .catch((err) => {
-        setError(err.message);
-        setLoading(false);
-        setProjectsLoading(false);
-      })
-      .finally(() => {
-        clearTimeout(failsafe);
-      });
-
-    return () => clearTimeout(failsafe);
-  }, []);
+  const {
+    loading,
+    projectsLoading,
+    loadProgress,
+    error,
+    bootStatus,
+    refreshProjectsAndPrices,
+    refreshJobPrices,
+  } = useDashboardBootstrap({
+    setJobs,
+    setProjects,
+    setProjectPrices,
+    setSummary,
+    toast,
+  });
 
   const devices = useMemo(
     () => [...new Set(jobs.map((j) => j.deviceModel).filter(Boolean))].sort(),
@@ -162,14 +112,9 @@ function App() {
       const job = await patchJob(jobId, { project_id: projectId });
       if (!job) return;
       // Refresh project stats and prices (job counts / totals changed)
-      fetchJsonOrToast("/projects", "Failed to load projects.").then((d) => {
-        if (d?.projects) setProjects(d.projects);
-      });
-      fetchJsonOrToast("/projects/prices", "Failed to load project prices.").then((d) => {
-        if (d?.prices) setProjectPrices(d.prices);
-      });
+      refreshProjectsAndPrices();
     },
-    [patchJob],
+    [patchJob, refreshProjectsAndPrices],
   );
 
   const handleJobStatusChange = useCallback(
@@ -201,14 +146,9 @@ function App() {
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    fetchJsonOrToast("/jobs/prices", "Failed to refresh job prices.").then((d) => {
-      if (!d?.prices) return;
-      setJobs((js) => js.map((j) => ({ ...j, final_price: d.prices[j.id] ?? j.final_price ?? null })));
-    });
-    fetchJsonOrToast("/projects/prices", "Failed to refresh project prices.").then((d) => {
-      if (d?.prices) setProjectPrices(d.prices);
-    });
-  }, []);
+    refreshJobPrices(true);
+    refreshProjectsAndPrices();
+  }, [refreshJobPrices, refreshProjectsAndPrices]);
 
   if (loading)
     return html` <div class="in-app-loading" role="status" aria-live="polite">
