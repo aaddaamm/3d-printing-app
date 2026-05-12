@@ -896,8 +896,8 @@ function ToastContainer() {
   `;
 }
 
-// public/components/projects-view.js
-var html6 = htm_module_default.bind(k);
+// public/lib/api.js
+var FETCH_TIMEOUT_MS = 15e3;
 async function errorMessage(res, fallback) {
   try {
     const data = await res.json();
@@ -906,6 +906,42 @@ async function errorMessage(res, fallback) {
     return fallback;
   }
 }
+async function fetchJson(url, fallback, options) {
+  let res;
+  try {
+    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options });
+  } catch (err) {
+    if (err?.name === "TimeoutError") throw new Error(`${fallback} (request timed out)`);
+    throw new Error(`${fallback} (network error)`);
+  }
+  if (!res.ok) throw new Error(await errorMessage(res, fallback));
+  return res.json();
+}
+async function fetchJsonOrToast(url, fallback, options) {
+  try {
+    return await fetchJson(url, fallback, options);
+  } catch (err) {
+    toast(err.message || fallback, "error");
+    return null;
+  }
+}
+async function patchJsonOrToast(url, payload, fallback) {
+  return fetchJsonOrToast(url, fallback, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+async function postJsonOrToast(url, payload, fallback) {
+  return fetchJsonOrToast(url, fallback, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+}
+
+// public/components/projects-view.js
+var html6 = htm_module_default.bind(k);
 function NewProjectModal({ onClose, onCreate }) {
   const [name, setName] = d2("");
   const [customer, setCustomer] = d2("");
@@ -924,24 +960,14 @@ function NewProjectModal({ onClose, onCreate }) {
       if (!name.trim()) return;
       setSaving(true);
       try {
-        const res = await fetch("/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            customer: customer || null,
-            notes: notes || null
-          })
-        });
-        if (!res.ok) {
-          toast(await errorMessage(res, "Failed to create project."), "error");
-          return;
-        }
-        const data = await res.json();
+        const data = await postJsonOrToast(
+          "/projects",
+          { name: name.trim(), customer: customer || null, notes: notes || null },
+          "Failed to create project."
+        );
+        if (!data?.project) return;
         onCreate(data.project);
         onClose();
-      } catch {
-        toast("Network error while creating project.", "error");
       } finally {
         setSaving(false);
       }
@@ -1089,7 +1115,8 @@ function ProjectDetail({
   y2(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetch(`/projects/${project.id}/price`).then((r3) => r3.json()).then(setPrice).catch(() => {
+    fetchJsonOrToast(`/projects/${project.id}/price`, "Failed to load project price.").then((d3) => {
+      if (d3) setPrice(d3);
     });
   }, [project.id, jobs.length]);
   const handleAdd = q2(
@@ -1197,12 +1224,9 @@ function ProjectsView({
   const handleAutoGroup = q2(async () => {
     setGrouping(true);
     try {
-      const res = await fetch("/projects/auto-group", { method: "POST" });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Auto-group failed."), "error");
-        return;
-      }
-      const { projects_created, jobs_assigned } = await res.json();
+      const data = await postJsonOrToast("/projects/auto-group", {}, "Auto-group failed.");
+      if (!data) return;
+      const { projects_created, jobs_assigned } = data;
       await onAutoGroup();
       if (projects_created === 0) {
         toast("No ungrouped jobs found \u2014 everything is already assigned to a project.", "info");
@@ -1212,8 +1236,6 @@ function ProjectsView({
           "success"
         );
       }
-    } catch {
-      toast("Network error while auto-grouping projects.", "error");
     } finally {
       setGrouping(false);
     }
@@ -1270,14 +1292,6 @@ function ProjectsView({
 
 // public/components/admin-view.js
 var html7 = htm_module_default.bind(k);
-async function errorMessage2(res, fallback) {
-  try {
-    const data = await res.json();
-    return data.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
 function RateField({ label, value, onChange, step = "0.01", min = "0" }) {
   return html7`
     <label class="form-label">
@@ -1407,10 +1421,9 @@ function AdminView() {
   const [saving, setSaving] = d2("");
   const [saved, setSaved] = d2("");
   y2(() => {
-    fetch("/rates").then((r3) => {
-      if (!r3.ok) throw new Error("Failed to load rates.");
-      return r3.json();
-    }).then(setRates).catch(() => toast("Failed to load rates.", "error"));
+    fetchJsonOrToast("/rates", "Failed to load rates.").then((data) => {
+      if (data) setRates(data);
+    });
   }, []);
   const flash = (key) => {
     setSaved(key);
@@ -1419,20 +1432,10 @@ function AdminView() {
   const saveLaborConfig = async (labor) => {
     setSaving("labor");
     try {
-      const res = await fetch("/rates/labor", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(labor)
-      });
-      if (!res.ok) {
-        toast(await errorMessage2(res, "Failed to save labor rates."), "error");
-        return;
-      }
-      const { labor_config } = await res.json();
-      setRates((r3) => ({ ...r3, labor_config }));
+      const data = await patchJsonOrToast("/rates/labor", labor, "Failed to save labor rates.");
+      if (!data?.labor_config) return;
+      setRates((r3) => ({ ...r3, labor_config: data.labor_config }));
       flash("labor");
-    } catch {
-      toast("Network error while saving labor rates.", "error");
     } finally {
       setSaving("");
     }
@@ -1441,30 +1444,19 @@ function AdminView() {
     setSaving(machine.device_model);
     const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = machine;
     try {
-      const res = await fetch(`/rates/machines/${encodeURIComponent(device_model)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          purchase_price,
-          lifetime_hrs,
-          electricity_rate,
-          maintenance_buffer
-        })
-      });
-      if (!res.ok) {
-        toast(await errorMessage2(res, "Failed to save machine rate."), "error");
-        return;
-      }
-      const { machine_rate } = await res.json();
+      const data = await patchJsonOrToast(
+        `/rates/machines/${encodeURIComponent(device_model)}`,
+        { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer },
+        "Failed to save machine rate."
+      );
+      if (!data?.machine_rate) return;
       setRates((r3) => ({
         ...r3,
         machine_rates: r3.machine_rates.map(
-          (m3) => m3.device_model === device_model ? machine_rate : m3
+          (m3) => m3.device_model === device_model ? data.machine_rate : m3
         )
       }));
       flash(device_model);
-    } catch {
-      toast("Network error while saving machine rate.", "error");
     } finally {
       setSaving("");
     }
@@ -1473,25 +1465,19 @@ function AdminView() {
     setSaving(material.filament_type);
     const { filament_type, cost_per_g, waste_buffer_pct } = material;
     try {
-      const res = await fetch(`/rates/materials/${encodeURIComponent(filament_type)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cost_per_g, waste_buffer_pct })
-      });
-      if (!res.ok) {
-        toast(await errorMessage2(res, "Failed to save material rate."), "error");
-        return;
-      }
-      const { material_rate } = await res.json();
+      const data = await patchJsonOrToast(
+        `/rates/materials/${encodeURIComponent(filament_type)}`,
+        { cost_per_g, waste_buffer_pct },
+        "Failed to save material rate."
+      );
+      if (!data?.material_rate) return;
       setRates((r3) => ({
         ...r3,
         material_rates: r3.material_rates.map(
-          (m3) => m3.filament_type === filament_type ? material_rate : m3
+          (m3) => m3.filament_type === filament_type ? data.material_rate : m3
         )
       }));
       flash(filament_type);
-    } catch {
-      toast("Network error while saving material rate.", "error");
     } finally {
       setSaving("");
     }
@@ -1561,26 +1547,6 @@ function AdminView() {
 
 // public/app.js
 var html8 = htm_module_default.bind(k);
-async function errorMessage3(res, fallback) {
-  try {
-    const data = await res.json();
-    return data.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
-var FETCH_TIMEOUT_MS = 15e3;
-async function fetchJson(url, fallback) {
-  let res;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  } catch (err) {
-    if (err?.name === "TimeoutError") throw new Error(`${fallback} (request timed out)`);
-    throw new Error(`${fallback} (network error)`);
-  }
-  if (!res.ok) throw new Error(await errorMessage3(res, fallback));
-  return res.json();
-}
 function App() {
   const [jobs, setJobs] = d2([]);
   const [projects, setProjects] = d2([]);
@@ -1682,31 +1648,23 @@ function App() {
   );
   const closeModal = q2(() => setSelectedJob(null), []);
   const patchJob = q2(async (jobId, fields) => {
-    try {
-      const res = await fetch(`/jobs/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields)
-      });
-      if (!res.ok) {
-        toast(await errorMessage3(res, "Failed to update job."), "error");
-        return null;
-      }
-      const { job } = await res.json();
-      setJobs((js) => js.map((j3) => j3.id === jobId ? { ...j3, ...job } : j3));
-      setSelectedJob((j3) => j3 && j3.id === jobId ? { ...j3, ...job } : j3);
-      return job;
-    } catch {
-      toast("Network error while updating job.", "error");
-      return null;
-    }
+    const data = await patchJsonOrToast(`/jobs/${jobId}`, fields, "Failed to update job.");
+    if (!data?.job) return null;
+    const { job } = data;
+    setJobs((js) => js.map((j3) => j3.id === jobId ? { ...j3, ...job } : j3));
+    setSelectedJob((j3) => j3 && j3.id === jobId ? { ...j3, ...job } : j3);
+    return job;
   }, []);
   const handleJobProjectChange = q2(
     async (jobId, projectId) => {
       const job = await patchJob(jobId, { project_id: projectId });
       if (!job) return;
-      fetchJson("/projects", "Failed to load projects.").then((d3) => setProjects(d3.projects)).catch((err) => toast(err.message || "Failed to load projects.", "error"));
-      fetchJson("/projects/prices", "Failed to load project prices.").then(({ prices }) => setProjectPrices(prices)).catch((err) => toast(err.message || "Failed to load project prices.", "error"));
+      fetchJsonOrToast("/projects", "Failed to load projects.").then((d3) => {
+        if (d3?.projects) setProjects(d3.projects);
+      });
+      fetchJsonOrToast("/projects/prices", "Failed to load project prices.").then((d3) => {
+        if (d3?.prices) setProjectPrices(d3.prices);
+      });
     },
     [patchJob]
   );
@@ -1736,12 +1694,13 @@ function App() {
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    fetchJson("/jobs/prices", "Failed to refresh job prices.").then(({ prices }) => {
-      setJobs(
-        (js) => js.map((j3) => ({ ...j3, final_price: prices[j3.id] ?? j3.final_price ?? null }))
-      );
-    }).catch((err) => toast(err.message || "Failed to refresh job prices.", "error"));
-    fetchJson("/projects/prices", "Failed to refresh project prices.").then(({ prices }) => setProjectPrices(prices)).catch((err) => toast(err.message || "Failed to refresh project prices.", "error"));
+    fetchJsonOrToast("/jobs/prices", "Failed to refresh job prices.").then((d3) => {
+      if (!d3?.prices) return;
+      setJobs((js) => js.map((j3) => ({ ...j3, final_price: d3.prices[j3.id] ?? j3.final_price ?? null })));
+    });
+    fetchJsonOrToast("/projects/prices", "Failed to refresh project prices.").then((d3) => {
+      if (d3?.prices) setProjectPrices(d3.prices);
+    });
   }, []);
   if (loading)
     return html8` <div class="in-app-loading" role="status" aria-live="polite">

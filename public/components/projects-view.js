@@ -15,17 +15,9 @@ import {
 import { Badge, RowThumb } from "./atoms.js";
 import { toast } from "./toast.js";
 import { useLocation } from "./router.js";
+import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.js";
 
 const html = htm.bind(h);
-
-async function errorMessage(res, fallback) {
-  try {
-    const data = await res.json();
-    return data.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function NewProjectModal({ onClose, onCreate }) {
   const [name, setName] = useState("");
@@ -47,24 +39,14 @@ function NewProjectModal({ onClose, onCreate }) {
       if (!name.trim()) return;
       setSaving(true);
       try {
-        const res = await fetch("/projects", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: name.trim(),
-            customer: customer || null,
-            notes: notes || null,
-          }),
-        });
-        if (!res.ok) {
-          toast(await errorMessage(res, "Failed to create project."), "error");
-          return;
-        }
-        const data = await res.json();
+        const data = await postJsonOrToast(
+          "/projects",
+          { name: name.trim(), customer: customer || null, notes: notes || null },
+          "Failed to create project.",
+        );
+        if (!data?.project) return;
         onCreate(data.project);
         onClose();
-      } catch {
-        toast("Network error while creating project.", "error");
       } finally {
         setSaving(false);
       }
@@ -222,10 +204,9 @@ function ProjectDetail({
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetch(`/projects/${project.id}/price`)
-      .then((r) => r.json())
-      .then(setPrice)
-      .catch(() => {});
+    fetchJsonOrToast(`/projects/${project.id}/price`, "Failed to load project price.").then((d) => {
+      if (d) setPrice(d);
+    });
   }, [project.id, jobs.length]);
 
   const handleAdd = useCallback(
@@ -343,12 +324,9 @@ export function ProjectsView({
   const handleAutoGroup = useCallback(async () => {
     setGrouping(true);
     try {
-      const res = await fetch("/projects/auto-group", { method: "POST" });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Auto-group failed."), "error");
-        return;
-      }
-      const { projects_created, jobs_assigned } = await res.json();
+      const data = await postJsonOrToast("/projects/auto-group", {}, "Auto-group failed.");
+      if (!data) return;
+      const { projects_created, jobs_assigned } = data;
       await onAutoGroup();
       if (projects_created === 0) {
         toast("No ungrouped jobs found — everything is already assigned to a project.", "info");
@@ -358,8 +336,6 @@ export function ProjectsView({
           "success",
         );
       }
-    } catch {
-      toast("Network error while auto-grouping projects.", "error");
     } finally {
       setGrouping(false);
     }

@@ -13,31 +13,9 @@ import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
 import { toast, ToastContainer } from "./components/toast.js";
+import { fetchJson, fetchJsonOrToast, patchJsonOrToast } from "./lib/api.js";
 
 const html = htm.bind(h);
-
-async function errorMessage(res, fallback) {
-  try {
-    const data = await res.json();
-    return data.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
-
-const FETCH_TIMEOUT_MS = 15000;
-
-async function fetchJson(url, fallback) {
-  let res;
-  try {
-    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
-  } catch (err) {
-    if (err?.name === "TimeoutError") throw new Error(`${fallback} (request timed out)`);
-    throw new Error(`${fallback} (network error)`);
-  }
-  if (!res.ok) throw new Error(await errorMessage(res, fallback));
-  return res.json();
-}
 
 // ── App ──────────────────────────────────────────────────────────────────────
 
@@ -171,24 +149,12 @@ function App() {
 
   // Generic job patch helper — updates local state from the returned job
   const patchJob = useCallback(async (jobId, fields) => {
-    try {
-      const res = await fetch(`/jobs/${jobId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(fields),
-      });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Failed to update job."), "error");
-        return null;
-      }
-      const { job } = await res.json();
-      setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...job } : j)));
-      setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...job } : j));
-      return job;
-    } catch {
-      toast("Network error while updating job.", "error");
-      return null;
-    }
+    const data = await patchJsonOrToast(`/jobs/${jobId}`, fields, "Failed to update job.");
+    if (!data?.job) return null;
+    const { job } = data;
+    setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...job } : j)));
+    setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...job } : j));
+    return job;
   }, []);
 
   const handleJobProjectChange = useCallback(
@@ -196,12 +162,12 @@ function App() {
       const job = await patchJob(jobId, { project_id: projectId });
       if (!job) return;
       // Refresh project stats and prices (job counts / totals changed)
-      fetchJson("/projects", "Failed to load projects.")
-        .then((d) => setProjects(d.projects))
-        .catch((err) => toast(err.message || "Failed to load projects.", "error"));
-      fetchJson("/projects/prices", "Failed to load project prices.")
-        .then(({ prices }) => setProjectPrices(prices))
-        .catch((err) => toast(err.message || "Failed to load project prices.", "error"));
+      fetchJsonOrToast("/projects", "Failed to load projects.").then((d) => {
+        if (d?.projects) setProjects(d.projects);
+      });
+      fetchJsonOrToast("/projects/prices", "Failed to load project prices.").then((d) => {
+        if (d?.prices) setProjectPrices(d.prices);
+      });
     },
     [patchJob],
   );
@@ -235,16 +201,13 @@ function App() {
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    fetchJson("/jobs/prices", "Failed to refresh job prices.")
-      .then(({ prices }) => {
-        setJobs((js) =>
-          js.map((j) => ({ ...j, final_price: prices[j.id] ?? j.final_price ?? null })),
-        );
-      })
-      .catch((err) => toast(err.message || "Failed to refresh job prices.", "error"));
-    fetchJson("/projects/prices", "Failed to refresh project prices.")
-      .then(({ prices }) => setProjectPrices(prices))
-      .catch((err) => toast(err.message || "Failed to refresh project prices.", "error"));
+    fetchJsonOrToast("/jobs/prices", "Failed to refresh job prices.").then((d) => {
+      if (!d?.prices) return;
+      setJobs((js) => js.map((j) => ({ ...j, final_price: d.prices[j.id] ?? j.final_price ?? null })));
+    });
+    fetchJsonOrToast("/projects/prices", "Failed to refresh project prices.").then((d) => {
+      if (d?.prices) setProjectPrices(d.prices);
+    });
   }, []);
 
   if (loading)

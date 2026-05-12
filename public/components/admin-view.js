@@ -6,17 +6,9 @@ import htm from "htm";
 
 import { fmtCurrency } from "./helpers.js";
 import { toast } from "./toast.js";
+import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.js";
 
 const html = htm.bind(h);
-
-async function errorMessage(res, fallback) {
-  try {
-    const data = await res.json();
-    return data.error || fallback;
-  } catch {
-    return fallback;
-  }
-}
 
 function RateField({ label, value, onChange, step = "0.01", min = "0" }) {
   return html`
@@ -152,13 +144,9 @@ export function AdminView() {
   const [saved, setSaved] = useState("");
 
   useEffect(() => {
-    fetch("/rates")
-      .then((r) => {
-        if (!r.ok) throw new Error("Failed to load rates.");
-        return r.json();
-      })
-      .then(setRates)
-      .catch(() => toast("Failed to load rates.", "error"));
+    fetchJsonOrToast("/rates", "Failed to load rates.").then((data) => {
+      if (data) setRates(data);
+    });
   }, []);
 
   const flash = (key) => {
@@ -169,20 +157,10 @@ export function AdminView() {
   const saveLaborConfig = async (labor) => {
     setSaving("labor");
     try {
-      const res = await fetch("/rates/labor", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(labor),
-      });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Failed to save labor rates."), "error");
-        return;
-      }
-      const { labor_config } = await res.json();
-      setRates((r) => ({ ...r, labor_config }));
+      const data = await patchJsonOrToast("/rates/labor", labor, "Failed to save labor rates.");
+      if (!data?.labor_config) return;
+      setRates((r) => ({ ...r, labor_config: data.labor_config }));
       flash("labor");
-    } catch {
-      toast("Network error while saving labor rates.", "error");
     } finally {
       setSaving("");
     }
@@ -193,30 +171,19 @@ export function AdminView() {
     const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } =
       machine;
     try {
-      const res = await fetch(`/rates/machines/${encodeURIComponent(device_model)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          purchase_price,
-          lifetime_hrs,
-          electricity_rate,
-          maintenance_buffer,
-        }),
-      });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Failed to save machine rate."), "error");
-        return;
-      }
-      const { machine_rate } = await res.json();
+      const data = await patchJsonOrToast(
+        `/rates/machines/${encodeURIComponent(device_model)}`,
+        { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer },
+        "Failed to save machine rate.",
+      );
+      if (!data?.machine_rate) return;
       setRates((r) => ({
         ...r,
         machine_rates: r.machine_rates.map((m) =>
-          m.device_model === device_model ? machine_rate : m,
+          m.device_model === device_model ? data.machine_rate : m,
         ),
       }));
       flash(device_model);
-    } catch {
-      toast("Network error while saving machine rate.", "error");
     } finally {
       setSaving("");
     }
@@ -226,25 +193,19 @@ export function AdminView() {
     setSaving(material.filament_type);
     const { filament_type, cost_per_g, waste_buffer_pct } = material;
     try {
-      const res = await fetch(`/rates/materials/${encodeURIComponent(filament_type)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cost_per_g, waste_buffer_pct }),
-      });
-      if (!res.ok) {
-        toast(await errorMessage(res, "Failed to save material rate."), "error");
-        return;
-      }
-      const { material_rate } = await res.json();
+      const data = await patchJsonOrToast(
+        `/rates/materials/${encodeURIComponent(filament_type)}`,
+        { cost_per_g, waste_buffer_pct },
+        "Failed to save material rate.",
+      );
+      if (!data?.material_rate) return;
       setRates((r) => ({
         ...r,
         material_rates: r.material_rates.map((m) =>
-          m.filament_type === filament_type ? material_rate : m,
+          m.filament_type === filament_type ? data.material_rate : m,
         ),
       }));
       flash(filament_type);
-    } catch {
-      toast("Network error while saving material rate.", "error");
     } finally {
       setSaving("");
     }
