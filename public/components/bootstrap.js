@@ -1,7 +1,13 @@
 import { useEffect, useState, useCallback } from "preact/hooks";
 import { fetchJson } from "../lib/api.js";
 
-export function useDashboardBootstrap({ setJobs, setProjects, setProjectPrices, setSummary, toast }) {
+export function useDashboardBootstrap({
+  setJobs,
+  setProjects,
+  setProjectPrices,
+  setSummary,
+  toast,
+}) {
   const [loading, setLoading] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
@@ -19,23 +25,36 @@ export function useDashboardBootstrap({ setJobs, setProjects, setProjectPrices, 
       .catch((err) => toast(err.message || "Failed to load project prices.", "error"));
   }, [setProjects, setProjectPrices, toast]);
 
-  const refreshJobPrices = useCallback((merge = false) => {
-    fetchJson("/jobs/prices", merge ? "Failed to refresh job prices." : "Failed to load job prices.")
-      .then((d) => {
-        if (!d?.prices) return;
-        setJobs((js) =>
-          js.map((j) => ({ ...j, final_price: d.prices[j.id] ?? (merge ? j.final_price : null) ?? null })),
+  const refreshJobPrices = useCallback(
+    (merge = false) => {
+      fetchJson(
+        "/jobs/prices",
+        merge ? "Failed to refresh job prices." : "Failed to load job prices.",
+      )
+        .then((d) => {
+          if (!d?.prices) return;
+          setJobs((js) =>
+            js.map((j) => ({
+              ...j,
+              final_price: d.prices[j.id] ?? (merge ? j.final_price : null) ?? null,
+            })),
+          );
+        })
+        .catch((err) =>
+          toast(
+            err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."),
+            "error",
+          ),
         );
-      })
-      .catch((err) =>
-        toast(err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."), "error"),
-      );
-  }, [setJobs, toast]);
+    },
+    [setJobs, toast],
+  );
 
   useEffect(() => {
     const TOTAL_BOOT_REQUESTS = 5;
     const BOOT_FAILSAFE_MS = 20000;
-    const advanceProgress = () => setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
+    const advanceProgress = () =>
+      setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
     const trackedFetchJson = (url, fallback) => {
       setBootStatus(`Loading ${url}…`);
       return fetchJson(url, fallback)

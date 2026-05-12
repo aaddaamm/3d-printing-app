@@ -1,9 +1,5 @@
 import { h, render } from "preact";
-import {
-  useState,
-  useMemo,
-  useCallback,
-} from "preact/hooks";
+import { useState, useMemo, useCallback } from "preact/hooks";
 import htm from "htm";
 
 import { RouterProvider, useLocation } from "./components/router.js";

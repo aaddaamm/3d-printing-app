@@ -14,9 +14,6 @@ export async function parseJsonBody(c: Context): Promise<Record<string, unknown>
   }
 }
 
-export function unknownFields(
-  body: Record<string, unknown>,
-  allowed: readonly string[],
-): string[] {
+export function unknownFields(body: Record<string, unknown>, allowed: readonly string[]): string[] {
   return Object.keys(body).filter((k) => !allowed.includes(k));
 }
