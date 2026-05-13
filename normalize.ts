@@ -38,10 +38,9 @@ type SessionInfo = {
   startTime: string | null;
 };
 
-const selectAllTasks = db.prepare<
-  [],
-  RawTask
->("SELECT id, status, startTime, endTime, instanceId, plateIndex, deviceId, raw_json FROM print_tasks");
+const selectAllTasks = db.prepare<[], RawTask>(
+  "SELECT id, status, startTime, endTime, instanceId, plateIndex, deviceId, raw_json FROM print_tasks",
+);
 
 const updateTaskScalars = db.prepare<{
   id: string;
@@ -72,7 +71,10 @@ function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-function computeSessionOrder(allTasks: RawTask[], taskToSession: Map<string, string>): Map<string, number> {
+function computeSessionOrder(
+  allTasks: RawTask[],
+  taskToSession: Map<string, string>,
+): Map<string, number> {
   const grouped = new Map<string, SessionInfo[]>();
 
   for (const task of allTasks) {
@@ -183,7 +185,9 @@ function backfillTasksAndBuildSessions(
       });
 
       const existing = sessionAccumulators.get(sessionId);
-      const acc = existing ?? createAccumulator(sessionId, payload, instanceId, sessionOrder.get(sessionId) ?? 1);
+      const acc =
+        existing ??
+        createAccumulator(sessionId, payload, instanceId, sessionOrder.get(sessionId) ?? 1);
       if (!existing) sessionAccumulators.set(sessionId, acc);
 
       const startTime = asString(payload["startTime"]);

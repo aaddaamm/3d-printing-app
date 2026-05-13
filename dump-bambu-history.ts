@@ -1,7 +1,6 @@
 import "dotenv/config";
 import fs from "node:fs";
 import os from "node:os";
-import path from "node:path";
 import { db, stmts, insertBatch } from "./lib/db.js";
 import { fetchTasks } from "./lib/fetch.js";
 import { normalizeTask } from "./lib/normalize.js";
@@ -21,7 +20,26 @@ if (!BASE_URL.startsWith("https://")) {
   process.exit(1);
 }
 
-const TOKEN_PATH = process.env["BAMBU_TOKEN_PATH"] ?? path.join(os.homedir(), ".bambu_token");
+function resolveTokenPath(): string {
+  const configured = process.env["BAMBU_TOKEN_PATH"];
+  if (!configured) return `${os.homedir()}/.bambu_token`;
+  if (configured.includes("\0")) {
+    throw new Error("BAMBU_TOKEN_PATH contains invalid characters");
+  }
+  return configured;
+}
+
+const TOKEN_PATH = resolveTokenPath();
+const DEVICE_ID = process.env["BAMBU_DEVICE_ID"];
+const LIMIT = Number(process.env["BAMBU_LIMIT"] ?? API_PAGE_LIMIT);
+const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
+
+type FetchSummary = {
+  total: number;
+  inserted: number;
+  updated: number;
+  apiTotal: number | string;
+};
 
 function readToken(raw: string): string {
   const s = raw.trim();
@@ -41,39 +59,35 @@ function readToken(raw: string): string {
   return s;
 }
 
-const TOKEN = readToken(
-  process.env["BAMBU_TOKEN"] ??
-    (fs.existsSync(TOKEN_PATH) ? fs.readFileSync(TOKEN_PATH, "utf8") : ""),
-);
-
-if (!TOKEN) {
-  console.error(`No token found. Set BAMBU_TOKEN or ensure token exists at ${TOKEN_PATH}`);
-  process.exit(1);
+function resolveToken(): string {
+  return readToken(
+    process.env["BAMBU_TOKEN"] ??
+      (fs.existsSync(TOKEN_PATH) ? fs.readFileSync(TOKEN_PATH, "utf8") : ""),
+  );
 }
 
-if (!process.env["BAMBU_TOKEN"] && fs.existsSync(TOKEN_PATH)) {
-  const mode = fs.statSync(TOKEN_PATH).mode;
-  if (mode & 0o044) {
-    console.warn(
-      `Warning: ${TOKEN_PATH} is readable by group/others (mode ${(mode & 0o777).toString(8)}). Run: chmod 600 ${TOKEN_PATH}`,
-    );
+function validateConfig(token: string): void {
+  if (!token) {
+    console.error(`No token found. Set BAMBU_TOKEN or ensure token exists at ${TOKEN_PATH}`);
+    process.exit(1);
+  }
+
+  if (!Number.isFinite(LIMIT) || LIMIT <= 0) {
+    console.error("BAMBU_LIMIT must be a positive number");
+    process.exit(1);
+  }
+
+  if (!process.env["BAMBU_TOKEN"] && fs.existsSync(TOKEN_PATH)) {
+    const mode = fs.statSync(TOKEN_PATH).mode;
+    if (mode & 0o044) {
+      console.warn(
+        `Warning: ${TOKEN_PATH} is readable by group/others (mode ${(mode & 0o777).toString(8)}). Run: chmod 600 ${TOKEN_PATH}`,
+      );
+    }
   }
 }
 
-const DEVICE_ID = process.env["BAMBU_DEVICE_ID"]; // optional
-const LIMIT = Number(process.env["BAMBU_LIMIT"] ?? API_PAGE_LIMIT);
-
-// ── Colors ────────────────────────────────────────────────────────────────────
-
-if (!Number.isFinite(LIMIT) || LIMIT <= 0) {
-  console.error("BAMBU_LIMIT must be a positive number");
-  process.exit(1);
-}
-const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite"; // for display only
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-
-async function main(): Promise<void> {
+function printHeader(): void {
   const tokenSource = process.env["BAMBU_TOKEN"] ? "BAMBU_TOKEN env var" : TOKEN_PATH;
   console.log(bold(cyan("=== bambu-history-dump ===")));
   console.log(`  ${dim("Token :")} ${tokenSource}`);
@@ -81,38 +95,28 @@ async function main(): Promise<void> {
   console.log(`  ${dim("DB    :")} ${dim(DB_PATH)}`);
   if (DEVICE_ID) console.log(`  ${dim("Device:")} ${DEVICE_ID}`);
   console.log("");
+}
 
+async function fetchAndStoreTasks(token: string, syncId: number): Promise<FetchSummary> {
   let total = 0;
   let inserted = 0;
   let updated = 0;
-  const startedAt = Date.now();
-
-  const { lastInsertRowid: syncId } = stmts.insertSyncLog.run({
-    started_at: new Date().toISOString(),
-  });
-
-  process.on("SIGINT", () => {
-    console.log(`\n\n${yellow("Interrupted.")} Saved ${bold(String(total))} tasks before exit.`);
-    db.close();
-    process.exit(0);
-  });
+  let offset = 0;
+  let apiTotal: number | string | undefined;
 
   try {
-    let offset = 0;
-    let apiTotal: number | string = "?";
-
     while (true) {
       process.stdout.write(`\r  Fetching tasks: offset ${offset}...   `);
       const page = await fetchTasks({
         baseUrl: BASE_URL,
-        token: TOKEN,
+        token,
         limit: LIMIT,
         offset,
         deviceId: DEVICE_ID,
       });
+
       const tasks = page.hits ?? [];
       apiTotal = page.total ?? "?";
-
       if (tasks.length === 0) break;
 
       const counts = insertBatch(tasks.map(normalizeTask));
@@ -124,7 +128,7 @@ async function main(): Promise<void> {
         `\r  Fetching tasks: ${bold(String(total))}/${apiTotal} (${green(`${inserted} new`)}, ${yellow(`${updated} updated`)})   `,
       );
 
-      if (tasks.length < LIMIT) break; // last page
+      if (tasks.length < LIMIT) break;
       offset += LIMIT;
     }
 
@@ -134,7 +138,7 @@ async function main(): Promise<void> {
     );
 
     stmts.updateSyncLog.run({
-      id: Number(syncId),
+      id: syncId,
       ended_at: new Date().toISOString(),
       inserted,
       updated,
@@ -144,7 +148,7 @@ async function main(): Promise<void> {
     process.stdout.write("\n");
     const msg = e instanceof Error ? e.message : String(e);
     stmts.updateSyncLog.run({
-      id: Number(syncId),
+      id: syncId,
       ended_at: new Date().toISOString(),
       inserted,
       updated,
@@ -153,6 +157,10 @@ async function main(): Promise<void> {
     throw e;
   }
 
+  return { total, inserted, updated, apiTotal };
+}
+
+function postSyncSteps(startedAt: number): void {
   const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
   console.log(`  ${dim("Elapsed:")} ${elapsed}s`);
   console.log("");
@@ -174,7 +182,9 @@ async function main(): Promise<void> {
     `  Warmed price cache: ${green(String(Object.keys(jobPrices).length))} jobs, ${green(String(Object.keys(projectPrices).length))} projects.`,
   );
   console.log("");
+}
 
+async function runCoverSyncAndSummary(): Promise<void> {
   console.log(bold(cyan("=== cover images ===")));
   console.log(`  ${dim("Cache:")} ${dim(COVERS_DIR)}`);
   await downloadCovers();
@@ -186,6 +196,7 @@ async function main(): Promise<void> {
       { status: string | null; n: number }
     >("SELECT status, COUNT(*) AS n FROM print_tasks GROUP BY status ORDER BY n DESC")
     .all();
+
   console.log(bold("By status:"));
   for (const row of statusSummary) {
     const s = row.status ?? "(null)";
@@ -203,6 +214,30 @@ async function main(): Promise<void> {
                 : dim(s);
     console.log(`  ${label}: ${bold(String(row.n))}`);
   }
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+async function main(): Promise<void> {
+  const token = resolveToken();
+  validateConfig(token);
+  printHeader();
+
+  const startedAt = Date.now();
+  const { lastInsertRowid } = stmts.insertSyncLog.run({
+    started_at: new Date().toISOString(),
+  });
+  const syncId = Number(lastInsertRowid);
+
+  process.on("SIGINT", () => {
+    console.log(`\n\n${yellow("Interrupted.")} Exiting safely.`);
+    db.close();
+    process.exit(0);
+  });
+
+  await fetchAndStoreTasks(token, syncId);
+  postSyncSteps(startedAt);
+  await runCoverSyncAndSummary();
 
   db.close();
 }
