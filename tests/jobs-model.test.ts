@@ -49,7 +49,7 @@ vi.mock("../models/rates.js", () => ({
   })),
 }));
 
-import { getAllJobPrices, patchJob } from "../models/jobs.js";
+import { getAllJobPrices, getJobPrice, patchJob } from "../models/jobs.js";
 
 function job(overrides: Partial<Job> = {}): Job {
   return {
@@ -78,10 +78,36 @@ function job(overrides: Partial<Job> = {}): Job {
   };
 }
 
+function setDefaultDbMocks(): void {
+  mockDbPrepare.mockImplementation((sql: string) => {
+    if (sql.includes("SELECT 1 AS exists FROM jobs")) return { get: vi.fn(() => undefined) };
+    if (sql.includes("SELECT COUNT(*) AS n FROM jobs")) return { get: vi.fn(() => ({ n: 1 })) };
+    if (sql.includes("SELECT COUNT(*) AS n FROM job_price_cache"))
+      return { get: vi.fn(() => ({ n: 0 })) };
+    if (sql.includes("SELECT job_id, final_price FROM job_price_cache"))
+      return { all: vi.fn(() => []) };
+    if (sql.includes("INSERT INTO job_price_cache")) return { run: vi.fn() };
+    if (sql.includes("FROM job_filaments") && sql.includes("GROUP BY pt.session_id"))
+      return { all: vi.fn(() => []) };
+    if (sql.includes("FROM print_tasks") && sql.includes("GROUP BY session_id"))
+      return { all: vi.fn(() => []) };
+    if (sql.includes("SELECT * FROM jobs")) return { all: vi.fn(() => [job()]) };
+    if (sql.includes("FROM job_filaments") && sql.includes("GROUP BY jf.filament_type"))
+      return { all: vi.fn(() => []) };
+    if (
+      sql.includes("SUM(COALESCE(weight, 0)) AS total_weight_g") &&
+      sql.includes("WHERE session_id = ?")
+    )
+      return { get: vi.fn(() => ({ total_weight_g: 0, total_time_s: 0 })) };
+    return { all: vi.fn(() => []), get: vi.fn(), run: vi.fn() };
+  });
+}
+
 describe("patchJob", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockGetJobById.mockReturnValue(job());
+    setDefaultDbMocks();
   });
 
   it("leaves omitted fields unchanged", () => {
@@ -104,16 +130,63 @@ describe("patchJob", () => {
 describe("getAllJobPrices", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockDbPrepare.mockImplementation((sql: string) => {
-      if (sql.includes("FROM job_filaments")) return { all: vi.fn(() => []) };
-      if (sql.includes("SELECT * FROM jobs")) return { all: vi.fn(() => [job()]) };
-      return { all: vi.fn(() => []), get: vi.fn(), run: vi.fn() };
-    });
+    setDefaultDbMocks();
   });
 
   it("prices jobs with no filament rows using the PLA fallback", () => {
     const prices = getAllJobPrices();
 
     expect(prices[1]).toBeGreaterThan(0);
+  });
+
+  it("bypasses cache when active jobs exist", () => {
+    mockDbPrepare.mockImplementation((sql: string) => {
+      if (sql.includes("SELECT 1 AS exists FROM jobs"))
+        return { get: vi.fn(() => ({ exists: 1 })) };
+      if (sql.includes("FROM job_filaments") && sql.includes("GROUP BY pt.session_id"))
+        return { all: vi.fn(() => []) };
+      if (sql.includes("FROM print_tasks") && sql.includes("GROUP BY session_id"))
+        return { all: vi.fn(() => []) };
+      if (sql.includes("SELECT * FROM jobs"))
+        return {
+          all: vi.fn(() => [job({ status: "running", total_weight_g: 0, total_time_s: 0 })]),
+        };
+      if (sql.includes("INSERT INTO job_price_cache")) return { run: vi.fn() };
+      return { all: vi.fn(() => []), get: vi.fn(), run: vi.fn() };
+    });
+
+    const prices = getAllJobPrices();
+    expect(prices[1]).toBeGreaterThan(0);
+  });
+});
+
+describe("getJobPrice", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    setDefaultDbMocks();
+  });
+
+  it("uses print_tasks estimates for active jobs with zero normalized totals", () => {
+    mockGetJobById.mockReturnValue(job({ status: "running", total_weight_g: 0, total_time_s: 0 }));
+
+    mockDbPrepare.mockImplementation((sql: string) => {
+      if (sql.includes("FROM job_filaments") && sql.includes("GROUP BY jf.filament_type")) {
+        return { all: vi.fn(() => [{ filament_type: "PLA", total_weight: 200 }]) };
+      }
+      if (
+        sql.includes("SUM(COALESCE(weight, 0)) AS total_weight_g") &&
+        sql.includes("WHERE session_id = ?")
+      ) {
+        return { get: vi.fn(() => ({ total_weight_g: 200, total_time_s: 7200 })) };
+      }
+      return { all: vi.fn(() => []), get: vi.fn(), run: vi.fn() };
+    });
+
+    const result = getJobPrice(1);
+
+    expect(result).not.toBeNull();
+    expect(result!.material_cost).toBeGreaterThan(0);
+    expect(result!.machine_cost).toBeGreaterThan(0);
+    expect(result!.final_price).toBeGreaterThan(9);
   });
 });

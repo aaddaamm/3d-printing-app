@@ -14,6 +14,7 @@ const ACTIVE_STATUSES = new Set(["running", "pause", "created"]);
 const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
 
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
+type UsageTotals = { total_weight_g: number; total_time_s: number };
 
 export interface ListJobsFilter {
   status?: string | undefined;
@@ -89,6 +90,18 @@ export function getJobWithDetails(
 
 function isActiveJob(job: Job): boolean {
   return ACTIVE_STATUSES.has((job.status_override ?? job.status ?? "").toLowerCase());
+}
+
+function shouldUseEstimate(job: Job): boolean {
+  return (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+}
+
+function estimateStatusesForJob(job: Job): readonly string[] {
+  return shouldUseEstimate(job) ? ESTIMATE_STATUSES : ["finish"];
+}
+
+function directUsage(job: Job): UsageTotals {
+  return { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
 }
 
 function loadSessionFilaments(statuses: readonly string[]): Map<string, FilamentWeight[]> {
@@ -177,18 +190,25 @@ function writeJobPriceCache(prices: Record<number, number>): void {
   }
 }
 
-export function getJobPrice(
-  id: number,
-): ({ id: number; filament_type: string } & PriceBreakdown) | null {
-  const job = stmts.getJobById.get(id);
-  if (!job) return null;
+function loadEstimatedUsage(sessionId: string): UsageTotals {
+  const estimate = db
+    .prepare<[string], { total_weight_g: number; total_time_s: number }>(
+      `SELECT SUM(COALESCE(weight, 0)) AS total_weight_g,
+              SUM(COALESCE(costTime, 0)) AS total_time_s
+       FROM print_tasks
+       WHERE session_id = ? AND status IN ('finish', 'running', 'pause', 'created')`,
+    )
+    .get(sessionId);
 
-  const shouldUseEstimate =
-    (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
-  const eligibleStatuses = shouldUseEstimate ? ESTIMATE_STATUSES : (["finish"] as const);
-  const placeholders = eligibleStatuses.map(() => "?").join(",");
+  return {
+    total_weight_g: estimate?.total_weight_g ?? 0,
+    total_time_s: estimate?.total_time_s ?? 0,
+  };
+}
 
-  const filamentTotals = db
+function loadJobFilamentTotals(sessionId: string, statuses: readonly string[]): FilamentWeight[] {
+  const placeholders = statuses.map(() => "?").join(",");
+  return db
     .prepare<[string, ...string[]], FilamentWeight>(
       `SELECT jf.filament_type, SUM(jf.weight_g) AS total_weight
        FROM job_filaments jf
@@ -196,7 +216,18 @@ export function getJobPrice(
        WHERE pt.session_id = ? AND jf.filament_type IS NOT NULL AND pt.status IN (${placeholders})
        GROUP BY jf.filament_type ORDER BY total_weight DESC`,
     )
-    .all(job.session_id, ...eligibleStatuses);
+    .all(sessionId, ...statuses);
+}
+
+export function getJobPrice(
+  id: number,
+): ({ id: number; filament_type: string } & PriceBreakdown) | null {
+  const job = stmts.getJobById.get(id);
+  if (!job) return null;
+
+  const eligibleStatuses = estimateStatusesForJob(job);
+  const filamentTotals = loadJobFilamentTotals(job.session_id, eligibleStatuses);
+  const usage = shouldUseEstimate(job) ? loadEstimatedUsage(job.session_id) : directUsage(job);
 
   const filamentType = filamentTotals[0]?.filament_type ?? "PLA";
   const config = loadRatesConfig();
@@ -208,26 +239,9 @@ export function getJobPrice(
 
   if (!fallbackMaterialRate) throw new Error('No material rate for fallback filament type "PLA"');
 
-  let totalWeightG = job.total_weight_g ?? 0;
-  let totalTimeS = job.total_time_s ?? 0;
-  if (shouldUseEstimate) {
-    const estimate = db
-      .prepare<[string], { total_weight_g: number; total_time_s: number }>(
-        `SELECT SUM(COALESCE(weight, 0)) AS total_weight_g,
-                SUM(COALESCE(costTime, 0)) AS total_time_s
-         FROM print_tasks
-         WHERE session_id = ? AND status IN ('finish', 'running', 'pause', 'created')`,
-      )
-      .get(job.session_id);
-    if (estimate) {
-      totalWeightG = estimate.total_weight_g ?? 0;
-      totalTimeS = estimate.total_time_s ?? 0;
-    }
-  }
-
   const breakdown = calcPrice({
     total_weight_g: 0,
-    total_time_s: totalTimeS,
+    total_time_s: usage.total_time_s,
     extra_labor_minutes: job.extra_labor_minutes ?? null,
     price_override: job.price_override ?? null,
     machineRate,
@@ -235,7 +249,12 @@ export function getJobPrice(
     laborConfig,
   });
   breakdown.material_cost = round2(
-    calcWeightedMaterialCost(totalWeightG, filamentTotals, materialRates, fallbackMaterialRate),
+    calcWeightedMaterialCost(
+      usage.total_weight_g,
+      filamentTotals,
+      materialRates,
+      fallbackMaterialRate,
+    ),
   );
   breakdown.base_price = round2(
     breakdown.material_cost +
@@ -270,11 +289,10 @@ export function getAllJobPrices(): Record<number, number> {
   for (const job of listJobs()) {
     try {
       const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-      const shouldUseEstimate =
-        (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
-      const usage = shouldUseEstimate
-        ? activeSessionUsage.get(job.session_id)
-        : { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
+      const useEstimate = shouldUseEstimate(job);
+      const usage = useEstimate
+        ? (activeSessionUsage.get(job.session_id) ?? directUsage(job))
+        : directUsage(job);
       const breakdown = calcPrice({
         total_weight_g: 0,
         total_time_s: usage?.total_time_s ?? 0,
@@ -286,9 +304,7 @@ export function getAllJobPrices(): Record<number, number> {
       });
       const materialCost = calcWeightedMaterialCost(
         usage?.total_weight_g ?? 0,
-        (shouldUseEstimate ? activeSessionFilaments : finishedSessionFilaments).get(
-          job.session_id,
-        ) ?? [],
+        (useEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ?? [],
         materialRates,
         fallbackMaterialRate,
       );

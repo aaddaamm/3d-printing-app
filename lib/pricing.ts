@@ -57,7 +57,7 @@ export function calcMachineCost(print_time_s: number, machineRate: MachineRate):
 
 /**
  * Labor cost with a minimum time floor so short jobs aren't underpriced.
- * e.g. a 5-minute job still bills at minimum_minutes (default 15 min).
+ * e.g. a 5-minute job still bills at minimum_minutes.
  */
 export function calcLaborCost(labor_minutes: number, laborConfig: LaborConfig): number {
   const billable = Math.max(labor_minutes, laborConfig.minimum_minutes);
@@ -83,12 +83,12 @@ export function totalPricingMultiplier(laborConfig: LaborConfig): number {
 export function calcPrice({
   total_weight_g,
   total_time_s,
-  labor_minutes = 15,
-  extra_labor_minutes = null,
-  price_override = null,
   machineRate,
   materialRate,
   laborConfig,
+  labor_minutes = laborConfig.minimum_minutes,
+  extra_labor_minutes = null,
+  price_override = null,
 }: CalcPriceParams): PriceBreakdown {
   const material_cost = calcMaterialCost(total_weight_g, materialRate);
   const machine_cost = calcMachineCost(total_time_s, machineRate);

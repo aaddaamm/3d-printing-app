@@ -191,7 +191,7 @@ describe("calcPrice", () => {
     expect(singleLaborCharge).toBeLessThan(threeJobLaborCharges);
   });
 
-  it("defaults labor_minutes to 15 when not provided", () => {
+  it("defaults labor_minutes to laborConfig.minimum_minutes when not provided", () => {
     const withDefault = calcPrice({
       total_weight_g: 0,
       total_time_s: 0,
@@ -202,7 +202,7 @@ describe("calcPrice", () => {
     const withExplicit = calcPrice({
       total_weight_g: 0,
       total_time_s: 0,
-      labor_minutes: 15,
+      labor_minutes: laborConfig.minimum_minutes,
       machineRate,
       materialRate,
       laborConfig,
