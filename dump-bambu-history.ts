@@ -21,12 +21,7 @@ if (!BASE_URL.startsWith("https://")) {
 }
 
 function resolveTokenPath(): string {
-  const configured = process.env["BAMBU_TOKEN_PATH"];
-  if (!configured) return `${os.homedir()}/.bambu_token`;
-  if (configured.includes("\0")) {
-    throw new Error("BAMBU_TOKEN_PATH contains invalid characters");
-  }
-  return configured;
+  return `${os.homedir()}/.bambu_token`;
 }
 
 const TOKEN_PATH = resolveTokenPath();
@@ -60,10 +55,20 @@ function readToken(raw: string): string {
 }
 
 function resolveToken(): string {
-  return readToken(
-    process.env["BAMBU_TOKEN"] ??
-      (fs.existsSync(TOKEN_PATH) ? fs.readFileSync(TOKEN_PATH, "utf8") : ""),
-  );
+  if (process.env["BAMBU_TOKEN"]) {
+    return readToken(process.env["BAMBU_TOKEN"]);
+  }
+
+  if (!fs.existsSync(TOKEN_PATH)) {
+    return "";
+  }
+
+  const stat = fs.lstatSync(TOKEN_PATH);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`BAMBU_TOKEN_PATH must point to a regular file: ${TOKEN_PATH}`);
+  }
+
+  return readToken(fs.readFileSync(TOKEN_PATH, "utf8"));
 }
 
 function validateConfig(token: string): void {

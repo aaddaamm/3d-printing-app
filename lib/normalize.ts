@@ -13,8 +13,20 @@ const STATUS_MAP: Record<number, string> = {
   6: "pause",
 };
 
+function toNullableString(value: unknown): string | null {
+  return value != null ? String(value) : null;
+}
+
+function toNullableNumber(value: unknown): number | null {
+  return typeof value === "number" ? value : null;
+}
+
+function toStatus(status: unknown): string | null {
+  if (typeof status !== "number") return null;
+  return STATUS_MAP[status] ?? String(status);
+}
+
 export function normalizeTask(t: BambuApiTask): PrintTask {
-  const statusCode = typeof t.status === "number" ? t.status : null;
   return {
     id: String(t.id),
     session_id: null, // assigned later by normalize step
@@ -23,17 +35,17 @@ export function normalizeTask(t: BambuApiTask): PrintTask {
     deviceId: t.deviceId ?? null,
     deviceName: t.deviceName ?? null,
     deviceModel: t.deviceModel ?? null,
-    designId: t.designId != null ? String(t.designId) : null,
+    designId: toNullableString(t.designId),
     designTitle: t.designTitle ?? null,
     modelId: t.modelId ?? null,
-    profileId: t.profileId != null ? String(t.profileId) : null,
+    profileId: toNullableString(t.profileId),
     title: t.title ?? null,
-    status: statusCode != null ? (STATUS_MAP[statusCode] ?? String(statusCode)) : null,
+    status: toStatus(t.status),
     failedType: t.failedType ?? null,
     bedType: t.bedType ?? null,
-    weight: typeof t.weight === "number" ? t.weight : null,
-    length: typeof t.length === "number" ? t.length : null,
-    costTime: typeof t.costTime === "number" ? t.costTime : null,
+    weight: toNullableNumber(t.weight),
+    length: toNullableNumber(t.length),
+    costTime: toNullableNumber(t.costTime),
     startTime: t.startTime ?? null,
     endTime: t.endTime ?? null,
     cover: t.cover ?? null,

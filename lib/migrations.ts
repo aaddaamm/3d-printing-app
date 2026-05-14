@@ -10,6 +10,17 @@ interface TableInfoRow {
   name: string;
 }
 
+function assertSafeIdentifier(identifier: string, kind: "table" | "column"): void {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(identifier)) {
+    throw new Error(`Unsafe ${kind} identifier: ${identifier}`);
+  }
+}
+
+function safeIdentifier(identifier: string, kind: "table" | "column"): string {
+  assertSafeIdentifier(identifier, kind);
+  return identifier;
+}
+
 export function sqliteVersionAtLeast(version: string, minimum: string): boolean {
   const parse = (v: string) => v.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const a = parse(version);
@@ -33,7 +44,8 @@ export function columnExists(
   tableName: string,
   columnName: string,
 ): boolean {
-  return (db.prepare(`PRAGMA table_info(${tableName})`).all() as TableInfoRow[]).some(
+  const safeTableName = safeIdentifier(tableName, "table");
+  return (db.prepare(`PRAGMA table_info(${safeTableName})`).all() as TableInfoRow[]).some(
     (row) => row.name === columnName,
   );
 }
@@ -45,7 +57,9 @@ export function addColumnIfMissing(
   columnDefinition: string,
 ): void {
   if (columnExists(db, tableName, columnName)) return;
-  db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${columnDefinition}`);
+  const safeTableName = safeIdentifier(tableName, "table");
+  const safeColumnName = safeIdentifier(columnName, "column");
+  db.exec(`ALTER TABLE ${safeTableName} ADD COLUMN ${safeColumnName} ${columnDefinition}`);
 }
 
 export function dropColumnIfExists(
@@ -54,7 +68,9 @@ export function dropColumnIfExists(
   columnName: string,
 ): void {
   if (!columnExists(db, tableName, columnName)) return;
-  db.exec(`ALTER TABLE ${tableName} DROP COLUMN ${columnName}`);
+  const safeTableName = safeIdentifier(tableName, "table");
+  const safeColumnName = safeIdentifier(columnName, "column");
+  db.exec(`ALTER TABLE ${safeTableName} DROP COLUMN ${safeColumnName}`);
 }
 
 export function runMigrations(db: Database.Database, migrations: Migration[]): void {

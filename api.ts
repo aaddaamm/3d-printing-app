@@ -51,6 +51,7 @@ const API_KEY = getRequiredApiKey();
 const PORT = Number(process.env["PORT"] ?? 3000);
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
 const SYNC_INTERVAL_HOURS = Number(process.env["SYNC_INTERVAL_HOURS"] ?? 0);
+const LOG_REQUESTS = process.env["LOG_REQUESTS"] === "1";
 
 const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css"]);
 const PUBLIC_FONT_RE = /^\/ui\/fonts\/[\w,.-]+\.(?:woff2|ttf)$/;
@@ -66,7 +67,11 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname) || PUBLIC_FONT_RE.test(pathname);
 }
 
-function isAuthorized(pathname: string, authorizationHeader: string | undefined, session: string): boolean {
+function isAuthorized(
+  pathname: string,
+  authorizationHeader: string | undefined,
+  session: string,
+): boolean {
   if (isPublicPath(pathname)) return true;
   if (safeEqual(authorizationHeader ?? "", `Bearer ${API_KEY}`)) return true;
   if (safeEqual(session, API_KEY)) return true;
@@ -75,6 +80,11 @@ function isAuthorized(pathname: string, authorizationHeader: string | undefined,
 
 function mountMiddleware(): void {
   app.use("/*", async (c, next) => {
+    if (!LOG_REQUESTS) {
+      await next();
+      return;
+    }
+
     const start = Date.now();
     await next();
     const ms = Date.now() - start;
@@ -83,10 +93,11 @@ function mountMiddleware(): void {
     );
   });
 
-  app.use("/*", async (c, next) => {
+  app.use("/*", async (c, next): Promise<void | Response> => {
     const p = c.req.path;
     if (isAuthorized(p, c.req.header("Authorization"), getCookie(c, "session") ?? "")) {
-      return next();
+      await next();
+      return;
     }
     if (p.startsWith("/ui")) return c.redirect("/ui/login");
     return c.json({ error: "Unauthorized" }, 401);
@@ -156,7 +167,9 @@ async function runScheduledSync(): Promise<void> {
   try {
     await spawnSync();
   } catch (e: unknown) {
-    console.error(`${red("Sync error:")} ${(e as Error).message}`);
+    const error = e instanceof Error ? e : new Error(String(e));
+    console.error(`${red("Sync error:")} ${error.message}`);
+    throw error;
   } finally {
     syncInProgress = false;
   }
@@ -167,8 +180,16 @@ function startSyncScheduler(): void {
 
   console.log(`  ${dim("Sync:")} every ${SYNC_INTERVAL_HOURS}h`);
   const intervalMs = SYNC_INTERVAL_HOURS * 3_600_000;
-  setTimeout(() => void runScheduledSync(), 10_000);
-  setInterval(() => void runScheduledSync(), intervalMs);
+  setTimeout(() => {
+    runScheduledSync().catch(() => {
+      // already logged in runScheduledSync
+    });
+  }, 10_000);
+  setInterval(() => {
+    runScheduledSync().catch(() => {
+      // already logged in runScheduledSync
+    });
+  }, intervalMs);
 }
 
 function startServer(): void {

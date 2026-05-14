@@ -139,29 +139,28 @@ export function getJobPrice(
   return { id, filament_type: filamentType, ...breakdown };
 }
 
-export function getAllJobPrices(): Record<number, number> {
+function getCachedJobPrices(): Record<number, number> | null {
   try {
     const totalJobs = (db.prepare("SELECT COUNT(*) AS n FROM jobs").get() as { n: number }).n;
     const cachedCount = (
       db.prepare("SELECT COUNT(*) AS n FROM job_price_cache").get() as { n: number }
     ).n;
-    if (totalJobs > 0 && cachedCount === totalJobs) {
-      const rows = db
-        .prepare<
-          [],
-          { job_id: number; final_price: number }
-        >("SELECT job_id, final_price FROM job_price_cache")
-        .all();
-      return Object.fromEntries(rows.map((r) => [r.job_id, r.final_price]));
-    }
+    if (totalJobs <= 0 || cachedCount !== totalJobs) return null;
+
+    const rows = db
+      .prepare<
+        [],
+        { job_id: number; final_price: number }
+      >("SELECT job_id, final_price FROM job_price_cache")
+      .all();
+    return Object.fromEntries(rows.map((r) => [r.job_id, r.final_price]));
   } catch {
-    // cache table unavailable (tests/older DB) — fall through to live compute
+    // cache table unavailable (tests/older DB)
+    return null;
   }
+}
 
-  const config = loadRatesConfig();
-  if (!config) return {};
-  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
-
+function getSessionFilaments(): Map<string, FilamentWeight[]> {
   const filamentRows = db
     .prepare<[], { session_id: string } & FilamentWeight>(
       `
@@ -180,13 +179,41 @@ export function getAllJobPrices(): Record<number, number> {
     if (!sessionFilaments.has(session_id)) sessionFilaments.set(session_id, []);
     sessionFilaments.get(session_id)!.push(row);
   }
+  return sessionFilaments;
+}
 
+function writeJobPriceCache(prices: Record<number, number>): void {
+  try {
+    const now = new Date().toISOString();
+    const writeCache = db.transaction((entries: Array<[number, number]>) => {
+      db.exec("DELETE FROM job_price_cache");
+      const insert = db.prepare(
+        "INSERT INTO job_price_cache (job_id, final_price, computed_at) VALUES (?, ?, ?)",
+      );
+      for (const [jobId, finalPrice] of entries) insert.run(jobId, finalPrice, now);
+    });
+    writeCache(Object.entries(prices).map(([jobId, finalPrice]) => [Number(jobId), finalPrice]));
+  } catch {
+    // cache table unavailable (tests/older DB)
+  }
+}
+
+export function getAllJobPrices(): Record<number, number> {
+  const cached = getCachedJobPrices();
+  if (cached) return cached;
+
+  const config = loadRatesConfig();
+  if (!config) return {};
+  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
+  const fallbackMaterialRate = materialRates.get("PLA");
+  if (!fallbackMaterialRate) return {};
+
+  const sessionFilaments = getSessionFilaments();
   const prices: Record<number, number> = {};
+
   for (const job of listJobs()) {
     try {
-      const fallbackMaterialRate = materialRates.get("PLA");
       const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-      if (!fallbackMaterialRate) continue;
       const breakdown = calcPrice({
         total_weight_g: 0,
         total_time_s: job.total_time_s ?? 0,
@@ -211,19 +238,7 @@ export function getAllJobPrices(): Record<number, number> {
       // skip — pricing config incomplete for this job
     }
   }
-  try {
-    const now = new Date().toISOString();
-    const writeCache = db.transaction((entries: Array<[number, number]>) => {
-      db.exec("DELETE FROM job_price_cache");
-      const insert = db.prepare(
-        "INSERT INTO job_price_cache (job_id, final_price, computed_at) VALUES (?, ?, ?)",
-      );
-      for (const [jobId, finalPrice] of entries) insert.run(jobId, finalPrice, now);
-    });
-    writeCache(Object.entries(prices).map(([jobId, finalPrice]) => [Number(jobId), finalPrice]));
-  } catch {
-    // cache table unavailable (tests/older DB)
-  }
 
+  writeJobPriceCache(prices);
   return prices;
 }
