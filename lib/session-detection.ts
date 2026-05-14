@@ -48,76 +48,77 @@ export interface RawTask {
 //
 // Returns a Map<taskId, sessionId> covering every task.
 
+function isSoloTask(task: RawTask): boolean {
+  return task.instanceId == null || task.instanceId === 0;
+}
+
+function groupTasks(tasks: RawTask[]): Map<string, RawTask[]> {
+  const groups = new Map<string, RawTask[]>();
+
+  for (const task of tasks) {
+    const key = isSoloTask(task) ? `solo:${task.id}` : `${task.instanceId}:${task.deviceId ?? ""}`;
+    const group = groups.get(key);
+    if (group) {
+      group.push(task);
+    } else {
+      groups.set(key, [task]);
+    }
+  }
+
+  return groups;
+}
+
+function sortByStartTime(tasks: RawTask[]): void {
+  tasks.sort((a, b) => {
+    if (!a.startTime) return 1;
+    if (!b.startTime) return -1;
+    return a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0;
+  });
+}
+
+function shouldStartNewSession(
+  task: RawTask,
+  prevEnd: string | null,
+  sessionPlateIndexes: Set<number>,
+): boolean {
+  const repeatsPlate = task.plateIndex != null && sessionPlateIndexes.has(task.plateIndex);
+  if (repeatsPlate) return true;
+
+  if (!task.startTime || !prevEnd) return false;
+
+  const gapS = (Date.parse(task.startTime) - Date.parse(prevEnd)) / 1000;
+  return gapS > SESSION_GAP_S;
+}
+
+function assignGroupSessions(group: RawTask[], taskToSession: Map<string, string>): void {
+  if (group.length === 0) return;
+
+  sortByStartTime(group);
+
+  const first = group[0];
+  if (!first) return;
+
+  let sessionStart = first;
+  let prevEnd: string | null = first.endTime;
+  let sessionPlateIndexes = new Set<number>();
+
+  if (first.plateIndex != null) sessionPlateIndexes.add(first.plateIndex);
+  taskToSession.set(first.id, first.id);
+
+  for (const task of group.slice(1)) {
+    if (shouldStartNewSession(task, prevEnd, sessionPlateIndexes)) {
+      sessionStart = task;
+      sessionPlateIndexes = new Set<number>();
+    }
+
+    taskToSession.set(task.id, sessionStart.id);
+    if (task.plateIndex != null) sessionPlateIndexes.add(task.plateIndex);
+    if (task.endTime && (!prevEnd || task.endTime > prevEnd)) prevEnd = task.endTime;
+  }
+}
+
 export function detectSessions(tasks: RawTask[]): Map<string, string> {
   const taskToSession = new Map<string, string>();
-
-  // Group by (instanceId, deviceId). Tasks with instanceId null/0 are solo.
-  const groups = new Map<string, RawTask[]>();
-  for (const task of tasks) {
-    const iid = task.instanceId;
-    if (iid == null || iid === 0) {
-      // Each solo task is its own session keyed by its own id
-      groups.set(`solo:${task.id}`, [task]);
-    } else {
-      const key = `${iid}:${task.deviceId ?? ""}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(task);
-    }
-  }
-
-  for (const group of groups.values()) {
-    if (group.length === 0) continue;
-
-    // Sort by startTime; tasks with no startTime sort to the end
-    group.sort((a, b) => {
-      if (!a.startTime) return 1;
-      if (!b.startTime) return -1;
-      return a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0;
-    });
-
-    const first = group[0];
-    if (!first) continue;
-
-    let sessionStart = first;
-    let prevEnd: string | null = sessionStart.endTime;
-    let sessionPlateIndexes = new Set<number>();
-    if (sessionStart.plateIndex != null) sessionPlateIndexes.add(sessionStart.plateIndex);
-
-    for (const task of group) {
-      if (task === sessionStart) {
-        taskToSession.set(task.id, sessionStart.id);
-        continue;
-      }
-
-      // Calculate gap in seconds between prev endTime and this startTime
-      let newSession = false;
-      if (task.startTime && prevEnd) {
-        const gapS = (Date.parse(task.startTime) - Date.parse(prevEnd)) / 1000;
-        if (gapS > SESSION_GAP_S) newSession = true;
-      } else if (!task.startTime) {
-        // No startTime — can't place it; attach to current session
-        newSession = false;
-      }
-
-      // Multi-plate jobs have distinct plate indexes within a session. If the
-      // same plate index appears again, Bambu is reporting a repeat print run.
-      if (task.plateIndex != null && sessionPlateIndexes.has(task.plateIndex)) {
-        newSession = true;
-      }
-
-      if (newSession) {
-        sessionStart = task;
-        sessionPlateIndexes = new Set<number>();
-      }
-
-      taskToSession.set(task.id, sessionStart.id);
-      if (task.plateIndex != null) sessionPlateIndexes.add(task.plateIndex);
-      // Advance prevEnd to whichever is later
-      if (task.endTime && (!prevEnd || task.endTime > prevEnd)) {
-        prevEnd = task.endTime;
-      }
-    }
-  }
-
+  for (const group of groupTasks(tasks).values()) assignGroupSessions(group, taskToSession);
   return taskToSession;
 }
