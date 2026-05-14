@@ -6,7 +6,7 @@ import { createProjectStatements } from "./db/project-statements.js";
 import { createRateStatements } from "./db/rate-statements.js";
 import { createSyncStatements } from "./db/sync-statements.js";
 import { createTaskJobStatements } from "./db/task-job-statements.js";
-import type { PrintTask } from "./types.js";
+import { createInsertBatch } from "./db/batch.js";
 
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
 
@@ -152,13 +152,4 @@ export const stmts = {
 
 // ── insertBatch ───────────────────────────────────────────────────────────────
 
-const countTasks = db.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM print_tasks");
-
-export const insertBatch = db.transaction(
-  (rows: PrintTask[]): { inserted: number; updated: number } => {
-    const before = countTasks.get()!.n;
-    for (const row of rows) stmts.upsertTask.run(row);
-    const inserted = countTasks.get()!.n - before;
-    return { inserted, updated: rows.length - inserted };
-  },
-);
+export const insertBatch = createInsertBatch(db, stmts.upsertTask);
