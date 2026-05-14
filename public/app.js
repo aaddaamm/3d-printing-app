@@ -13,6 +13,170 @@ import { useDashboardBootstrap } from "./components/bootstrap.js";
 
 const html = htm.bind(h);
 
+function filterJobs(jobs, q, statusFilter, deviceFilter) {
+  return jobs.filter((j) => {
+    const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
+    if (q && !text.includes(q.toLowerCase())) return false;
+    if (statusFilter && (j.status || "").toLowerCase() !== statusFilter) return false;
+    if (deviceFilter && j.deviceModel !== deviceFilter) return false;
+    return true;
+  });
+}
+
+function sortJobs(filtered, sortCol, sortDir) {
+  return [...filtered].sort((a, b) => {
+    let av = a[sortCol];
+    let bv = b[sortCol];
+    if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
+    if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
+    if (typeof av === "string") {
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+}
+
+function LoadingView({ bootStatus, loadProgress }) {
+  return html` <div class="in-app-loading" role="status" aria-live="polite">
+    <section class="dashboard-loader-card">
+      <div class="dashboard-loader-copy">
+        <div class="loader-hero-row dashboard-loader-title-row">
+          <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
+          <div>
+            <p class="dashboard-loader-kicker">INTERNAL PRINT DASHBOARD</p>
+            <h1 class="dashboard-loader-title">loading workspace</h1>
+          </div>
+        </div>
+        <p class="dashboard-loader-copy-text">
+          Fetching jobs, projects, pricing, rates, and cover cache metadata…
+        </p>
+        <p class="dashboard-loader-copy-text">${bootStatus}</p>
+        <div class="dashboard-loader-steps" aria-hidden="true">
+          <span>jobs</span>
+          <span>projects</span>
+          <span>rates</span>
+          <span>covers</span>
+        </div>
+        <div
+          class="dashboard-loader-progress"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow=${Math.round(loadProgress)}
+        >
+          <span style=${`width:${Math.max(8, loadProgress)}%`}></span>
+        </div>
+      </div>
+      <div class="dashboard-loader-preview" aria-hidden="true">
+        <div class="dashboard-loader-stat"><span></span><strong></strong></div>
+        <div class="dashboard-loader-stat"><span></span><strong></strong></div>
+        <div class="dashboard-loader-table">
+          ${Array.from(
+            { length: 5 },
+            (_, i) => html`
+              <div class="dashboard-loader-row" key=${i}>
+                <span></span><span></span><span></span><span></span>
+              </div>
+            `,
+          )}
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+
+function ErrorView({ error }) {
+  return html`<div class="app-loading">
+    <div class="loader-shell">
+      <div class="loader-main loader-error">
+        <div class="loader-hero-row">
+          <div class="loader-cursor" aria-hidden="true"></div>
+          <h1 class="loader-title">failed to load</h1>
+        </div>
+        <p class="loader-copy">${error}</p>
+      </div>
+    </div>
+  </div>`;
+}
+
+function ProjectRouteView({
+  projectId,
+  projects,
+  jobs,
+  projectsLoading,
+  navigate,
+  setSelectedJob,
+  handleJobProjectChange,
+}) {
+  const project = projects.find((p) => p.id === projectId);
+  const projectJobs = jobs.filter((j) => j.project_id === projectId);
+
+  if (!project) {
+    return projectsLoading
+      ? html`<div class="empty">Loading projects…</div>`
+      : html`<div class="empty">Project not found.</div>`;
+  }
+
+  const unassignedJobs = jobs.filter((j) => j.project_id == null);
+  return html`<${ProjectDetail}
+    project=${project}
+    jobs=${projectJobs}
+    unassignedJobs=${unassignedJobs}
+    onBack=${() => navigate("/projects")}
+    onJobClick=${setSelectedJob}
+    onAddJob=${(jobId) => handleJobProjectChange(jobId, projectId)}
+    onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}
+  />`;
+}
+
+function JobsRouteView({
+  q,
+  setQ,
+  statusFilter,
+  setStatusFilter,
+  deviceFilter,
+  setDeviceFilter,
+  devices,
+  view,
+  setView,
+  filtered,
+  jobs,
+  isFiltered,
+  sorted,
+  sortCol,
+  sortDir,
+  onSort,
+  onJobClick,
+}) {
+  return html`
+    <${Toolbar}
+      q=${q}
+      setQ=${setQ}
+      statusFilter=${statusFilter}
+      setStatusFilter=${setStatusFilter}
+      deviceFilter=${deviceFilter}
+      setDeviceFilter=${setDeviceFilter}
+      devices=${devices}
+      view=${view}
+      setView=${setView}
+      filteredCount=${filtered.length}
+      totalCount=${jobs.length}
+    />
+    <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
+    ${sorted.length === 0
+      ? html`<div class="empty">No jobs match your filters.</div>`
+      : view === "table"
+        ? html`<${TableView}
+            sorted=${sorted}
+            sortCol=${sortCol}
+            sortDir=${sortDir}
+            onSort=${onSort}
+            onJobClick=${onJobClick}
+          />`
+        : html`<${GridView} sorted=${sorted} onJobClick=${onJobClick} />`}
+  `;
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -54,30 +218,11 @@ function App() {
   const isFiltered = !!(q || statusFilter || deviceFilter);
 
   const filtered = useMemo(
-    () =>
-      jobs.filter((j) => {
-        const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
-        if (q && !text.includes(q.toLowerCase())) return false;
-        if (statusFilter && (j.status || "").toLowerCase() !== statusFilter) return false;
-        if (deviceFilter && j.deviceModel !== deviceFilter) return false;
-        return true;
-      }),
+    () => filterJobs(jobs, q, statusFilter, deviceFilter),
     [jobs, q, statusFilter, deviceFilter],
   );
 
-  const sorted = useMemo(
-    () =>
-      [...filtered].sort((a, b) => {
-        let av = a[sortCol],
-          bv = b[sortCol];
-        if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
-        if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
-        if (typeof av === "string")
-          return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-        return sortDir === "asc" ? av - bv : bv - av;
-      }),
-    [filtered, sortCol, sortDir],
-  );
+  const sorted = useMemo(() => sortJobs(filtered, sortCol, sortDir), [filtered, sortCol, sortDir]);
 
   const handleSort = useCallback(
     (col) => {
@@ -113,18 +258,25 @@ function App() {
     [patchJob, refreshProjectsAndPrices],
   );
 
-  const handleJobStatusChange = useCallback(
-    (jobId, statusOverride) => {
-      patchJob(jobId, { status_override: statusOverride });
+  const patchJobField = useCallback(
+    (jobId, fields) => {
+      patchJob(jobId, fields);
     },
     [patchJob],
   );
 
+  const handleJobStatusChange = useCallback(
+    (jobId, statusOverride) => {
+      patchJobField(jobId, { status_override: statusOverride });
+    },
+    [patchJobField],
+  );
+
   const handleJobExtraLaborChange = useCallback(
     (jobId, minutes) => {
-      patchJob(jobId, { extra_labor_minutes: minutes });
+      patchJobField(jobId, { extra_labor_minutes: minutes });
     },
-    [patchJob],
+    [patchJobField],
   );
 
   const handleNavigateToProject = useCallback(
@@ -147,90 +299,29 @@ function App() {
   }, [refreshJobPrices, refreshProjectsAndPrices]);
 
   if (loading)
-    return html` <div class="in-app-loading" role="status" aria-live="polite">
-      <section class="dashboard-loader-card">
-        <div class="dashboard-loader-copy">
-          <div class="loader-hero-row dashboard-loader-title-row">
-            <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
-            <div>
-              <p class="dashboard-loader-kicker">INTERNAL PRINT DASHBOARD</p>
-              <h1 class="dashboard-loader-title">loading workspace</h1>
-            </div>
-          </div>
-          <p class="dashboard-loader-copy-text">
-            Fetching jobs, projects, pricing, rates, and cover cache metadata…
-          </p>
-          <p class="dashboard-loader-copy-text">${bootStatus}</p>
-          <div class="dashboard-loader-steps" aria-hidden="true">
-            <span>jobs</span>
-            <span>projects</span>
-            <span>rates</span>
-            <span>covers</span>
-          </div>
-          <div
-            class="dashboard-loader-progress"
-            role="progressbar"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow=${Math.round(loadProgress)}
-          >
-            <span style=${`width:${Math.max(8, loadProgress)}%`}></span>
-          </div>
-        </div>
-        <div class="dashboard-loader-preview" aria-hidden="true">
-          <div class="dashboard-loader-stat"><span></span><strong></strong></div>
-          <div class="dashboard-loader-stat"><span></span><strong></strong></div>
-          <div class="dashboard-loader-table">
-            ${Array.from(
-              { length: 5 },
-              (_, i) => html`
-                <div class="dashboard-loader-row" key=${i}>
-                  <span></span><span></span><span></span><span></span>
-                </div>
-              `,
-            )}
-          </div>
-        </div>
-      </section>
-    </div>`;
-  if (error)
-    return html`<div class="app-loading">
-      <div class="loader-shell">
-        <div class="loader-main loader-error">
-          <div class="loader-hero-row">
-            <div class="loader-cursor" aria-hidden="true"></div>
-            <h1 class="loader-title">failed to load</h1>
-          </div>
-          <p class="loader-copy">${error}</p>
-        </div>
-      </div>
-    </div>`;
+    return html`<${LoadingView} bootStatus=${bootStatus} loadProgress=${loadProgress} />`;
+  if (error) return html`<${ErrorView} error=${error} />`;
 
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
   const isProjects = loc.startsWith("/projects");
 
-  const renderMain = () => {
-    if (loc.startsWith("/admin")) return html`<${AdminView} />`;
+  const renderMainContent = () => {
+    if (loc.startsWith("/admin")) {
+      return html`<${AdminView} />`;
+    }
+
     if (projectDetailMatch) {
-      const id = Number(projectDetailMatch[1]);
-      const project = projects.find((p) => p.id === id);
-      const projectJobs = jobs.filter((j) => j.project_id === id);
-      if (!project) {
-        return projectsLoading
-          ? html`<div class="empty">Loading projects…</div>`
-          : html`<div class="empty">Project not found.</div>`;
-      }
-      const unassignedJobs = jobs.filter((j) => j.project_id == null);
-      return html`<${ProjectDetail}
-        project=${project}
-        jobs=${projectJobs}
-        unassignedJobs=${unassignedJobs}
-        onBack=${() => navigate("/projects")}
-        onJobClick=${setSelectedJob}
-        onAddJob=${(jobId) => handleJobProjectChange(jobId, id)}
-        onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}
+      return html`<${ProjectRouteView}
+        projectId=${Number(projectDetailMatch[1])}
+        projects=${projects}
+        jobs=${jobs}
+        projectsLoading=${projectsLoading}
+        navigate=${navigate}
+        setSelectedJob=${setSelectedJob}
+        handleJobProjectChange=${handleJobProjectChange}
       />`;
     }
+
     if (isProjects) {
       return html`<${ProjectsView}
         projects=${projects}
@@ -240,38 +331,31 @@ function App() {
         loading=${projectsLoading}
       />`;
     }
-    return html`
-      <${Toolbar}
-        q=${q}
-        setQ=${setQ}
-        statusFilter=${statusFilter}
-        setStatusFilter=${setStatusFilter}
-        deviceFilter=${deviceFilter}
-        setDeviceFilter=${setDeviceFilter}
-        devices=${devices}
-        view=${view}
-        setView=${setView}
-        filteredCount=${filtered.length}
-        totalCount=${jobs.length}
-      />
-      <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
-      ${sorted.length === 0
-        ? html`<div class="empty">No jobs match your filters.</div>`
-        : view === "table"
-          ? html`<${TableView}
-              sorted=${sorted}
-              sortCol=${sortCol}
-              sortDir=${sortDir}
-              onSort=${handleSort}
-              onJobClick=${setSelectedJob}
-            />`
-          : html`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`}
-    `;
+
+    return html`<${JobsRouteView}
+      q=${q}
+      setQ=${setQ}
+      statusFilter=${statusFilter}
+      setStatusFilter=${setStatusFilter}
+      deviceFilter=${deviceFilter}
+      setDeviceFilter=${setDeviceFilter}
+      devices=${devices}
+      view=${view}
+      setView=${setView}
+      filtered=${filtered}
+      jobs=${jobs}
+      isFiltered=${isFiltered}
+      sorted=${sorted}
+      sortCol=${sortCol}
+      sortDir=${sortDir}
+      onSort=${handleSort}
+      onJobClick=${setSelectedJob}
+    />`;
   };
 
   return html`
     <${Header} summary=${summary} />
-    ${renderMain()}
+    ${renderMainContent()}
     ${selectedJob &&
     html`<${Modal}
       key=${selectedJob.id}
