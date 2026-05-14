@@ -138,7 +138,7 @@ function MaterialForm({ material, saving, saved, onSave }) {
   `;
 }
 
-export function AdminView() {
+export function AdminView({ onRatesChanged = () => {} }) {
   const [rates, setRates] = useState(null);
   const [saving, setSaving] = useState("");
   const [saved, setSaved] = useState("");
@@ -161,6 +161,7 @@ export function AdminView() {
       if (!data?.labor_config) return;
       setRates((r) => ({ ...r, labor_config: data.labor_config }));
       flash("labor");
+      onRatesChanged();
     } finally {
       setSaving("");
     }
@@ -184,6 +185,7 @@ export function AdminView() {
         ),
       }));
       flash(device_model);
+      onRatesChanged();
     } finally {
       setSaving("");
     }
@@ -206,6 +208,7 @@ export function AdminView() {
         ),
       }));
       flash(filament_type);
+      onRatesChanged();
     } finally {
       setSaving("");
     }

@@ -287,6 +287,22 @@ function App() {
     [navigate],
   );
 
+  const refreshSummary = useCallback(async () => {
+    const data = await fetchJson("/summary", "Failed to refresh summary.");
+    setSummary(data);
+  }, []);
+
+  const handleRatesChanged = useCallback(async () => {
+    refreshJobPrices(true);
+    refreshProjectsAndPrices();
+    try {
+      await refreshSummary();
+      toast("Pricing refreshed from updated rates.", "success");
+    } catch (err) {
+      toast(err?.message || "Updated rates saved, but summary refresh failed.", "error");
+    }
+  }, [refreshJobPrices, refreshProjectsAndPrices, refreshSummary]);
+
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
       fetchJson("/ui/data", "Failed to refresh jobs."),
@@ -307,7 +323,7 @@ function App() {
 
   const renderMainContent = () => {
     if (loc.startsWith("/admin")) {
-      return html`<${AdminView} />`;
+      return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
     }
 
     if (projectDetailMatch) {
