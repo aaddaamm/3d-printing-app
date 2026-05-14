@@ -1,13 +1,13 @@
 import "dotenv/config";
 import { Hono } from "hono";
 import { serve } from "@hono/node-server";
-import { db, stmts } from "./lib/db.js";
 import { tasks } from "./routes/tasks.js";
 import { jobs } from "./routes/jobs.js";
 import { summary } from "./routes/summary.js";
 import { rates } from "./routes/rates.js";
 import { projects } from "./routes/projects.js";
 import { createUiApp } from "./routes/ui.js";
+import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
 import { createAuthMiddleware, createRequestLogger } from "./lib/server/middleware.js";
 import { startSyncScheduler } from "./lib/server/sync-scheduler.js";
@@ -36,15 +36,7 @@ function mountMiddleware(): void {
 function mountRoutes(): void {
   app.route("/ui", createUiApp(API_KEY));
 
-  app.get("/health", (c) => {
-    let ok = true;
-    try {
-      db.prepare("SELECT 1").get();
-    } catch {
-      ok = false;
-    }
-    return c.json({ ok, db: DB_PATH, last_sync: stmts.getLastSync.get() ?? null });
-  });
+  app.route("/health", createHealthRoutes(DB_PATH));
 
   app.route("/tasks", tasks);
   app.route("/jobs", jobs);
@@ -52,7 +44,6 @@ function mountRoutes(): void {
   app.route("/summary", summary);
   app.route("/rates", rates);
 }
-
 
 function startServer(): void {
   serve({ fetch: app.fetch, port: PORT }, (info) => {
