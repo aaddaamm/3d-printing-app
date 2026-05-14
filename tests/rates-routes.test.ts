@@ -30,48 +30,47 @@ async function patch(path: string, body: unknown): Promise<Response> {
 // ── PATCH /labor ───────────────────────────────────────────────────────────────
 
 describe("PATCH /labor validation", () => {
+  const validLaborBody = {
+    hourly_rate: 25,
+    minimum_minutes: 15,
+    profit_markup_pct: 0.2,
+    failure_buffer_pct: 0.05,
+    overhead_buffer_pct: 0.1,
+  };
+
   beforeEach(() => {
     vi.resetAllMocks();
     mockUpdateLabor.mockReturnValue({
       id: 1,
-      hourly_rate: 25,
-      minimum_minutes: 15,
-      profit_markup_pct: 0.2,
+      ...validLaborBody,
     });
   });
 
   it("accepts valid numeric values", async () => {
-    const res = await patch("/labor", {
-      hourly_rate: 25,
-      minimum_minutes: 15,
-      profit_markup_pct: 0.2,
-    });
+    const res = await patch("/labor", validLaborBody);
     expect(res.status).toBe(200);
   });
 
   it("rejects null (non-finite) for hourly_rate", async () => {
     const res = await patch("/labor", {
+      ...validLaborBody,
       hourly_rate: null,
-      minimum_minutes: 15,
-      profit_markup_pct: 0.2,
     });
     expect(res.status).toBe(400);
   });
 
   it("rejects string value for minimum_minutes", async () => {
     const res = await patch("/labor", {
-      hourly_rate: 25,
+      ...validLaborBody,
       minimum_minutes: "15",
-      profit_markup_pct: 0.2,
     });
     expect(res.status).toBe(400);
   });
 
   it("rejects negative hourly_rate", async () => {
     const res = await patch("/labor", {
+      ...validLaborBody,
       hourly_rate: -1,
-      minimum_minutes: 15,
-      profit_markup_pct: 0.2,
     });
     expect(res.status).toBe(400);
   });

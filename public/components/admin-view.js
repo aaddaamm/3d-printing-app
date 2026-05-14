@@ -5,7 +5,6 @@ import { useState, useEffect } from "preact/hooks";
 import htm from "htm";
 
 import { fmtCurrency } from "./helpers.js";
-import { toast } from "./toast.js";
 import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.js";
 
 const html = htm.bind(h);
@@ -49,6 +48,18 @@ function LaborForm({ labor, saving, saved, onSave }) {
           value=${Math.round(v.profit_markup_pct * 100)}
           step="1"
           onChange=${(val) => setV((x) => ({ ...x, profit_markup_pct: val / 100 }))}
+        />
+        <${RateField}
+          label="Failure buffer (%)"
+          value=${Math.round(v.failure_buffer_pct * 100)}
+          step="1"
+          onChange=${(val) => setV((x) => ({ ...x, failure_buffer_pct: val / 100 }))}
+        />
+        <${RateField}
+          label="Overhead buffer (%)"
+          value=${Math.round(v.overhead_buffer_pct * 100)}
+          step="1"
+          onChange=${(val) => setV((x) => ({ ...x, overhead_buffer_pct: val / 100 }))}
         />
       </div>
       <div class="admin-card-footer">

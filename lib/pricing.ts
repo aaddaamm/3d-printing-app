@@ -71,6 +71,15 @@ export function calcLaborCost(labor_minutes: number, laborConfig: LaborConfig): 
  * calculated so margin is visible. Rounds up to the nearest dollar after markup
  * (mirrors the CEILING formula from the spreadsheet).
  */
+export function totalPricingMultiplier(laborConfig: LaborConfig): number {
+  return (
+    1 +
+    laborConfig.profit_markup_pct +
+    laborConfig.failure_buffer_pct +
+    laborConfig.overhead_buffer_pct
+  );
+}
+
 export function calcPrice({
   total_weight_g,
   total_time_s,
@@ -88,7 +97,7 @@ export function calcPrice({
     ? (extra_labor_minutes / 60) * laborConfig.hourly_rate
     : 0;
   const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
-  const calculated_price = Math.ceil(base_price * (1 + laborConfig.profit_markup_pct));
+  const calculated_price = Math.ceil(base_price * totalPricingMultiplier(laborConfig));
 
   const is_override = price_override != null;
   const final_price = is_override ? price_override : calculated_price;

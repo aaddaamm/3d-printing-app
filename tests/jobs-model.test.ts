@@ -20,6 +20,8 @@ const laborConfig: LaborConfig = {
   hourly_rate: 25,
   minimum_minutes: 15,
   profit_markup_pct: 0.2,
+  failure_buffer_pct: 0,
+  overhead_buffer_pct: 0,
 };
 
 const machineRate: MachineRate = {

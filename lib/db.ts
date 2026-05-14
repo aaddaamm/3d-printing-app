@@ -113,10 +113,12 @@ for (const sql of [
     rate_per_g       REAL NOT NULL
   )`,
   `CREATE TABLE IF NOT EXISTS labor_config (
-    id                INTEGER PRIMARY KEY CHECK (id = 1),
-    hourly_rate       REAL NOT NULL DEFAULT 25.0,
-    minimum_minutes   REAL NOT NULL DEFAULT 15.0,
-    profit_markup_pct REAL NOT NULL DEFAULT 0.20
+    id                 INTEGER PRIMARY KEY CHECK (id = 1),
+    hourly_rate        REAL NOT NULL DEFAULT 25.0,
+    minimum_minutes    REAL NOT NULL DEFAULT 15.0,
+    profit_markup_pct  REAL NOT NULL DEFAULT 0.20,
+    failure_buffer_pct REAL NOT NULL DEFAULT 0.00,
+    overhead_buffer_pct REAL NOT NULL DEFAULT 0.00
   )`,
   `CREATE TABLE IF NOT EXISTS sync_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -264,6 +266,24 @@ const MIGRATIONS: Migration[] = [
       )`);
     },
   },
+  {
+    id: 9,
+    description: "add labor failure and overhead buffers",
+    up(database) {
+      addColumnIfMissing(
+        database,
+        "labor_config",
+        "failure_buffer_pct",
+        "REAL NOT NULL DEFAULT 0.00",
+      );
+      addColumnIfMissing(
+        database,
+        "labor_config",
+        "overhead_buffer_pct",
+        "REAL NOT NULL DEFAULT 0.00",
+      );
+    },
+  },
 ];
 
 runMigrations(db, MIGRATIONS);
@@ -319,7 +339,7 @@ db.prepare(
 
 if ((db.prepare("SELECT COUNT(*) AS n FROM labor_config").get() as { n: number }).n === 0) {
   db.prepare(
-    "INSERT INTO labor_config (id, hourly_rate, minimum_minutes, profit_markup_pct) VALUES (1, 25.0, 15.0, 0.20)",
+    "INSERT INTO labor_config (id, hourly_rate, minimum_minutes, profit_markup_pct, failure_buffer_pct, overhead_buffer_pct) VALUES (1, 25.0, 15.0, 0.20, 0.00, 0.00)",
   ).run();
 }
 
@@ -450,7 +470,11 @@ export const stmts = {
 
   updateLaborConfig: db.prepare<Omit<LaborConfig, "id">>(`
     UPDATE labor_config
-    SET hourly_rate=@hourly_rate, minimum_minutes=@minimum_minutes, profit_markup_pct=@profit_markup_pct
+    SET hourly_rate=@hourly_rate,
+      minimum_minutes=@minimum_minutes,
+      profit_markup_pct=@profit_markup_pct,
+      failure_buffer_pct=@failure_buffer_pct,
+      overhead_buffer_pct=@overhead_buffer_pct
     WHERE id=1
   `),
 

@@ -3,6 +3,7 @@ import {
   calcPrice,
   calcWeightedMaterialCost,
   round2,
+  totalPricingMultiplier,
   type FilamentWeight,
 } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
@@ -132,7 +133,7 @@ export function getJobPrice(
   );
   if (!breakdown.is_override) {
     breakdown.final_price = round2(
-      Math.ceil(breakdown.base_price * (1 + laborConfig.profit_markup_pct)),
+      Math.ceil(breakdown.base_price * totalPricingMultiplier(laborConfig)),
     );
   }
 
@@ -233,7 +234,7 @@ export function getAllJobPrices(): Record<number, number> {
         materialCost + breakdown.machine_cost + breakdown.labor_cost + breakdown.extra_labor_cost;
       prices[job.id] = breakdown.is_override
         ? breakdown.final_price
-        : Math.ceil(basePrice * (1 + laborConfig.profit_markup_pct));
+        : Math.ceil(basePrice * totalPricingMultiplier(laborConfig));
     } catch {
       // skip — pricing config incomplete for this job
     }

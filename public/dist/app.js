@@ -731,48 +731,77 @@ function PricingSection({ jobId }) {
     fetch(`/jobs/${jobId}/price`).then((r3) => r3.ok ? r3.json() : null).then((d3) => setPrice(d3 ?? false)).catch(() => setPrice(false));
   }, [jobId]);
   if (price === null) return html4`<div class="pricing-row pricing-loading">Loading price…</div>`;
-  if (price === false) return html4`<div class="pricing-row pricing-na">Pricing not configured</div>`;
+  if (price === false)
+    return html4`<div class="pricing-row pricing-na">Pricing not configured</div>`;
   const markup = price.final_price - price.base_price;
   const markupPct = price.base_price > 0 ? Math.round(markup / price.base_price * 100) : 0;
   return html4`
     <div class="pricing-box">
-      <div class="pricing-row"><span>Material</span><span>${fmtCurrency(price.material_cost)}</span></div>
-      <div class="pricing-row"><span>Machine</span><span>${fmtCurrency(price.machine_cost)}</span></div>
+      <div class="pricing-row">
+        <span>Material</span><span>${fmtCurrency(price.material_cost)}</span>
+      </div>
+      <div class="pricing-row">
+        <span>Machine</span><span>${fmtCurrency(price.machine_cost)}</span>
+      </div>
       <div class="pricing-row"><span>Labor</span><span>${fmtCurrency(price.labor_cost)}</span></div>
       ${price.extra_labor_cost > 0 && html4`
-        <div class="pricing-row pricing-extra-labor"><span>Extra labor</span><span>${fmtCurrency(price.extra_labor_cost)}</span></div>
+        <div class="pricing-row pricing-extra-labor">
+          <span>Extra labor</span><span>${fmtCurrency(price.extra_labor_cost)}</span>
+        </div>
       `}
       <div class="pricing-divider"></div>
-      <div class="pricing-row pricing-base"><span>Base</span><span>${fmtCurrency(price.base_price)}</span></div>
+      <div class="pricing-row pricing-base">
+        <span>Base</span><span>${fmtCurrency(price.base_price)}</span>
+      </div>
       ${markup !== 0 && html4`
         <div class="pricing-row pricing-markup">
           <span>Markup</span>
-          <span>${markup > 0 ? "+" : ""}${fmtCurrency(markup)} (${markupPct > 0 ? "+" : ""}${markupPct}%)</span>
+          <span
+            >${markup > 0 ? "+" : ""}${fmtCurrency(markup)}
+            (${markupPct > 0 ? "+" : ""}${markupPct}%)</span
+          >
         </div>
       `}
       <div class="pricing-row pricing-final">
-        <span>Final${price.is_override ? html4`<span class="override-tag">override</span>` : ""}</span>
+        <span
+          >Final${price.is_override ? html4`<span class="override-tag">override</span>` : ""}</span
+        >
         <span>${fmtCurrency(price.final_price)}</span>
       </div>
     </div>
   `;
 }
 var STATUS_OPTIONS = ["finish", "failed", "cancel", "running", "pause"];
-function Modal({ job, onClose, onPatch, projects, onJobProjectChange, onJobStatusChange, onJobExtraLaborChange, onNavigateToProject }) {
+function Modal({
+  job,
+  onClose,
+  onPatch,
+  projects,
+  onJobProjectChange,
+  onJobStatusChange,
+  onJobExtraLaborChange,
+  onNavigateToProject
+}) {
   const [localCustomer, setLocalCustomer] = d2(job.customer ?? "");
   const [localNotes, setLocalNotes] = d2(job.notes ?? "");
   const [localPriceOverride, setLocalPriceOverride] = d2(
     job.price_override != null ? String(job.price_override) : ""
   );
   useEscapeClose(onClose);
-  const handleProjectChange = q2((e3) => {
-    const val = e3.target.value;
-    onJobProjectChange(job.id, val === "" ? null : Number(val));
-  }, [job.id, onJobProjectChange]);
-  const handleStatusChange = q2((e3) => {
-    const val = e3.target.value;
-    onJobStatusChange(job.id, val === "" ? null : val);
-  }, [job.id, onJobStatusChange]);
+  const handleProjectChange = q2(
+    (e3) => {
+      const val = e3.target.value;
+      onJobProjectChange(job.id, val === "" ? null : Number(val));
+    },
+    [job.id, onJobProjectChange]
+  );
+  const handleStatusChange = q2(
+    (e3) => {
+      const val = e3.target.value;
+      onJobStatusChange(job.id, val === "" ? null : val);
+    },
+    [job.id, onJobStatusChange]
+  );
   return html4`
     <div class="overlay" onClick=${(e3) => e3.target === e3.currentTarget && onClose()}>
       <div class="modal">
@@ -790,57 +819,98 @@ function Modal({ job, onClose, onPatch, projects, onJobProjectChange, onJobStatu
                 ${job.status_override && html4`<span class="override-tag">override</span>`}
               </div>
             </div>
-            <div class="detail-item"><label>Printer</label><div class="detail-val">${job.deviceModel || "\u2014"}</div></div>
-            <div class="detail-item"><label>Started</label><div class="detail-val">${fmtDate(job.startTime)}</div></div>
-            <div class="detail-item"><label>Duration</label><div class="detail-val">${fmtTime(job.total_time_s)}</div></div>
-            <div class="detail-item"><label>Filament</label>
-              <div class="detail-val">${fmtWeight(job.total_weight_g)} <${FilamentSwatches} colors=${job.filament_colors} /></div>
+            <div class="detail-item">
+              <label>Printer</label>
+              <div class="detail-val">${job.deviceModel || "\u2014"}</div>
             </div>
-            <div class="detail-item"><label>Plates</label><div class="detail-val">${job.plate_count ?? "\u2014"}</div></div>
-            <div class="detail-item"><label>Print Run</label><div class="detail-val">
-              ${job.print_run > 1 ? `Run #${job.print_run} of this design` : "1st print of this design"}
-            </div></div>
+            <div class="detail-item">
+              <label>Started</label>
+              <div class="detail-val">${fmtDate(job.startTime)}</div>
+            </div>
+            <div class="detail-item">
+              <label>Duration</label>
+              <div class="detail-val">${fmtTime(job.total_time_s)}</div>
+            </div>
+            <div class="detail-item">
+              <label>Filament</label>
+              <div class="detail-val">
+                ${fmtWeight(job.total_weight_g)}
+                <${FilamentSwatches} colors=${job.filament_colors} />
+              </div>
+            </div>
+            <div class="detail-item">
+              <label>Plates</label>
+              <div class="detail-val">${job.plate_count ?? "\u2014"}</div>
+            </div>
+            <div class="detail-item">
+              <label>Print Run</label>
+              <div class="detail-val">
+                ${job.print_run > 1 ? `Run #${job.print_run} of this design` : "1st print of this design"}
+              </div>
+            </div>
           </div>
           <${PricingSection} jobId=${job.id} key=${job.id + "-" + job.extra_labor_minutes} />
           <div class="modal-project-row">
             <label class="modal-project-label">Customer</label>
-            <input class="modal-project-select" type="text" placeholder="—"
+            <input
+              class="modal-project-select"
+              type="text"
+              placeholder="—"
               value=${localCustomer}
               onInput=${(e3) => setLocalCustomer(e3.target.value)}
               onBlur=${() => onPatch(job.id, { customer: localCustomer.trim() || null })}
-              onKeyDown=${(e3) => e3.key === "Enter" && e3.target.blur()} />
+              onKeyDown=${(e3) => e3.key === "Enter" && e3.target.blur()}
+            />
           </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Notes</label>
-            <textarea class="modal-project-select modal-notes" placeholder="—"
+            <textarea
+              class="modal-project-select modal-notes"
+              placeholder="—"
               value=${localNotes}
               onInput=${(e3) => setLocalNotes(e3.target.value)}
-              onBlur=${() => onPatch(job.id, { notes: localNotes.trim() || null })} />
+              onBlur=${() => onPatch(job.id, { notes: localNotes.trim() || null })}
+            />
           </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Price override</label>
-            <input class="modal-project-select" type="number" min="0" step="0.01" placeholder="Calculated"
+            <input
+              class="modal-project-select"
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="Calculated"
               value=${localPriceOverride}
               onInput=${(e3) => setLocalPriceOverride(e3.target.value)}
               onBlur=${() => {
     const v3 = localPriceOverride === "" ? null : Number(localPriceOverride);
     onPatch(job.id, { price_override: v3 });
   }}
-              onKeyDown=${(e3) => e3.key === "Enter" && e3.target.blur()} />
+              onKeyDown=${(e3) => e3.key === "Enter" && e3.target.blur()}
+            />
           </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Extra labor (min)</label>
-            <input type="number" class="modal-project-select" min="0" step="1"
+            <input
+              type="number"
+              class="modal-project-select"
+              min="0"
+              step="1"
               placeholder="0"
               value=${job.extra_labor_minutes ?? ""}
               onChange=${(e3) => {
     const v3 = e3.target.value === "" ? null : Number(e3.target.value);
     onJobExtraLaborChange(job.id, v3);
-  }} />
+  }}
+            />
           </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Status override</label>
-            <select class="modal-project-select" value=${job.status_override ?? ""} onChange=${handleStatusChange}>
+            <select
+              class="modal-project-select"
+              value=${job.status_override ?? ""}
+              onChange=${handleStatusChange}
+            >
               <option value="">Auto (from printer)</option>
               ${STATUS_OPTIONS.map((s3) => html4`<option key=${s3} value=${s3}>${s3}</option>`)}
             </select>
@@ -848,15 +918,24 @@ function Modal({ job, onClose, onPatch, projects, onJobProjectChange, onJobStatu
           ${projects && html4`
             <div class="modal-project-row">
               <label class="modal-project-label">Project</label>
-              <select class="modal-project-select" value=${job.project_id ?? ""} onChange=${handleProjectChange}>
+              <select
+                class="modal-project-select"
+                value=${job.project_id ?? ""}
+                onChange=${handleProjectChange}
+              >
                 <option value="">— None —</option>
                 ${projects.map((p3) => html4`<option key=${p3.id} value=${p3.id}>${p3.name}</option>`)}
               </select>
               ${job.project_id != null && html4`
-                <button class="btn-link" onClick=${() => {
+                <button
+                  class="btn-link"
+                  onClick=${() => {
     onClose();
     onNavigateToProject(job.project_id);
-  }}>View →</button>
+  }}
+                >
+                  View →
+                </button>
               `}
             </div>
           `}
@@ -915,24 +994,37 @@ async function errorMessage(res, fallback) {
     return fallback;
   }
 }
+function requestOptions(options) {
+  return { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options };
+}
+function toRequestError(err, fallback) {
+  if (err?.name === "TimeoutError") return new Error(`${fallback} (request timed out)`);
+  return new Error(`${fallback} (network error)`);
+}
 async function fetchJson(url, fallback, options) {
   let res;
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options });
+    res = await fetch(url, requestOptions(options));
   } catch (err) {
-    if (err?.name === "TimeoutError") throw new Error(`${fallback} (request timed out)`);
-    throw new Error(`${fallback} (network error)`);
+    throw toRequestError(err, fallback);
   }
   if (!res.ok) throw new Error(await errorMessage(res, fallback));
   return res.json();
 }
-async function fetchJsonOrToast(url, fallback, options) {
+async function fetchJsonResult(url, fallback, options) {
   try {
-    return await fetchJson(url, fallback, options);
+    return { data: await fetchJson(url, fallback, options), error: null };
   } catch (err) {
-    toast(err.message || fallback, "error");
+    return { data: null, error: err instanceof Error ? err : new Error(fallback) };
+  }
+}
+async function fetchJsonOrToast(url, fallback, options) {
+  const { data, error } = await fetchJsonResult(url, fallback, options);
+  if (error) {
+    toast(error.message || fallback, "error");
     return null;
   }
+  return data;
 }
 async function patchJsonOrToast(url, payload, fallback) {
   return fetchJsonOrToast(url, fallback, {
@@ -1328,6 +1420,18 @@ function LaborForm({ labor, saving, saved, onSave }) {
           step="1"
           onChange=${(val) => setV((x3) => ({ ...x3, profit_markup_pct: val / 100 }))}
         />
+        <${RateField}
+          label="Failure buffer (%)"
+          value=${Math.round(v3.failure_buffer_pct * 100)}
+          step="1"
+          onChange=${(val) => setV((x3) => ({ ...x3, failure_buffer_pct: val / 100 }))}
+        />
+        <${RateField}
+          label="Overhead buffer (%)"
+          value=${Math.round(v3.overhead_buffer_pct * 100)}
+          step="1"
+          onChange=${(val) => setV((x3) => ({ ...x3, overhead_buffer_pct: val / 100 }))}
+        />
       </div>
       <div class="admin-card-footer">
         <span class="admin-derived"
@@ -1413,7 +1517,8 @@ function MaterialForm({ material, saving, saved, onSave }) {
     </div>
   `;
 }
-function AdminView() {
+function AdminView({ onRatesChanged = () => {
+} }) {
   const [rates, setRates] = d2(null);
   const [saving, setSaving] = d2("");
   const [saved, setSaved] = d2("");
@@ -1433,6 +1538,7 @@ function AdminView() {
       if (!data?.labor_config) return;
       setRates((r3) => ({ ...r3, labor_config: data.labor_config }));
       flash("labor");
+      onRatesChanged();
     } finally {
       setSaving("");
     }
@@ -1454,6 +1560,7 @@ function AdminView() {
         )
       }));
       flash(device_model);
+      onRatesChanged();
     } finally {
       setSaving("");
     }
@@ -1475,6 +1582,7 @@ function AdminView() {
         )
       }));
       flash(filament_type);
+      onRatesChanged();
     } finally {
       setSaving("");
     }
@@ -1555,31 +1663,46 @@ function useDashboardBootstrap({
   const [loadProgress, setLoadProgress] = d2(0);
   const [error, setError] = d2(null);
   const [bootStatus, setBootStatus] = d2("Starting dashboard\u2026");
+  const loadOptional = q2(
+    async ({ url, fallback, onData, onFinally }) => {
+      const { data, error: error2 } = await fetchJsonResult(url, fallback);
+      if (error2) toast2(error2.message || fallback, "error");
+      if (data) onData(data);
+      if (onFinally) onFinally();
+    },
+    [toast2]
+  );
   const refreshProjectsAndPrices = q2(() => {
-    fetchJson("/projects", "Failed to load projects.").then((d3) => d3?.projects && setProjects(d3.projects)).catch((err) => toast2(err.message || "Failed to load projects.", "error")).finally(() => setProjectsLoading(false));
-    fetchJson("/projects/prices", "Failed to load project prices.").then((d3) => d3?.prices && setProjectPrices(d3.prices)).catch((err) => toast2(err.message || "Failed to load project prices.", "error"));
-  }, [setProjects, setProjectPrices, toast2]);
+    loadOptional({
+      url: "/projects",
+      fallback: "Failed to load projects.",
+      onData: (d3) => d3?.projects && setProjects(d3.projects),
+      onFinally: () => setProjectsLoading(false)
+    });
+    loadOptional({
+      url: "/projects/prices",
+      fallback: "Failed to load project prices.",
+      onData: (d3) => d3?.prices && setProjectPrices(d3.prices)
+    });
+  }, [loadOptional, setProjects, setProjectPrices]);
   const refreshJobPrices = q2(
     (merge = false) => {
-      fetchJson(
-        "/jobs/prices",
-        merge ? "Failed to refresh job prices." : "Failed to load job prices."
-      ).then((d3) => {
-        if (!d3?.prices) return;
-        setJobs(
-          (js) => js.map((j3) => ({
-            ...j3,
-            final_price: d3.prices[j3.id] ?? (merge ? j3.final_price : null) ?? null
-          }))
-        );
-      }).catch(
-        (err) => toast2(
-          err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."),
-          "error"
-        )
-      );
+      const fallback = merge ? "Failed to refresh job prices." : "Failed to load job prices.";
+      loadOptional({
+        url: "/jobs/prices",
+        fallback,
+        onData: (d3) => {
+          if (!d3?.prices) return;
+          setJobs(
+            (js) => js.map((j3) => ({
+              ...j3,
+              final_price: d3.prices[j3.id] ?? (merge ? j3.final_price : null) ?? null
+            }))
+          );
+        }
+      });
     },
-    [setJobs, toast2]
+    [loadOptional, setJobs]
   );
   y2(() => {
     const advanceProgress = () => setLoadProgress((p3) => Math.min(100, p3 + 100 / TOTAL_BOOT_REQUESTS));
@@ -1625,6 +1748,156 @@ function useDashboardBootstrap({
 
 // public/app.js
 var html8 = htm_module_default.bind(k);
+function filterJobs(jobs, q3, statusFilter, deviceFilter) {
+  return jobs.filter((j3) => {
+    const text = ((j3.designTitle || "") + " " + (j3.customer || "")).toLowerCase();
+    if (q3 && !text.includes(q3.toLowerCase())) return false;
+    if (statusFilter && (j3.status || "").toLowerCase() !== statusFilter) return false;
+    if (deviceFilter && j3.deviceModel !== deviceFilter) return false;
+    return true;
+  });
+}
+function sortJobs(filtered, sortCol, sortDir) {
+  return [...filtered].sort((a3, b2) => {
+    let av = a3[sortCol];
+    let bv = b2[sortCol];
+    if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
+    if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
+    if (typeof av === "string") {
+      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+    }
+    return sortDir === "asc" ? av - bv : bv - av;
+  });
+}
+function LoadingView({ bootStatus, loadProgress }) {
+  return html8` <div class="in-app-loading" role="status" aria-live="polite">
+    <section class="dashboard-loader-card">
+      <div class="dashboard-loader-copy">
+        <div class="loader-hero-row dashboard-loader-title-row">
+          <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
+          <div>
+            <p class="dashboard-loader-kicker">INTERNAL PRINT DASHBOARD</p>
+            <h1 class="dashboard-loader-title">loading workspace</h1>
+          </div>
+        </div>
+        <p class="dashboard-loader-copy-text">
+          Fetching jobs, projects, pricing, rates, and cover cache metadata…
+        </p>
+        <p class="dashboard-loader-copy-text">${bootStatus}</p>
+        <div class="dashboard-loader-steps" aria-hidden="true">
+          <span>jobs</span>
+          <span>projects</span>
+          <span>rates</span>
+          <span>covers</span>
+        </div>
+        <div
+          class="dashboard-loader-progress"
+          role="progressbar"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-valuenow=${Math.round(loadProgress)}
+        >
+          <span style=${`width:${Math.max(8, loadProgress)}%`}></span>
+        </div>
+      </div>
+      <div class="dashboard-loader-preview" aria-hidden="true">
+        <div class="dashboard-loader-stat"><span></span><strong></strong></div>
+        <div class="dashboard-loader-stat"><span></span><strong></strong></div>
+        <div class="dashboard-loader-table">
+          ${Array.from(
+    { length: 5 },
+    (_2, i3) => html8`
+              <div class="dashboard-loader-row" key=${i3}>
+                <span></span><span></span><span></span><span></span>
+              </div>
+            `
+  )}
+        </div>
+      </div>
+    </section>
+  </div>`;
+}
+function ErrorView({ error }) {
+  return html8`<div class="app-loading">
+    <div class="loader-shell">
+      <div class="loader-main loader-error">
+        <div class="loader-hero-row">
+          <div class="loader-cursor" aria-hidden="true"></div>
+          <h1 class="loader-title">failed to load</h1>
+        </div>
+        <p class="loader-copy">${error}</p>
+      </div>
+    </div>
+  </div>`;
+}
+function ProjectRouteView({
+  projectId,
+  projects,
+  jobs,
+  projectsLoading,
+  navigate,
+  setSelectedJob,
+  handleJobProjectChange
+}) {
+  const project = projects.find((p3) => p3.id === projectId);
+  const projectJobs = jobs.filter((j3) => j3.project_id === projectId);
+  if (!project) {
+    return projectsLoading ? html8`<div class="empty">Loading projects…</div>` : html8`<div class="empty">Project not found.</div>`;
+  }
+  const unassignedJobs = jobs.filter((j3) => j3.project_id == null);
+  return html8`<${ProjectDetail}
+    project=${project}
+    jobs=${projectJobs}
+    unassignedJobs=${unassignedJobs}
+    onBack=${() => navigate("/projects")}
+    onJobClick=${setSelectedJob}
+    onAddJob=${(jobId) => handleJobProjectChange(jobId, projectId)}
+    onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}
+  />`;
+}
+function JobsRouteView({
+  q: q3,
+  setQ,
+  statusFilter,
+  setStatusFilter,
+  deviceFilter,
+  setDeviceFilter,
+  devices,
+  view,
+  setView,
+  filtered,
+  jobs,
+  isFiltered,
+  sorted,
+  sortCol,
+  sortDir,
+  onSort,
+  onJobClick
+}) {
+  return html8`
+    <${Toolbar}
+      q=${q3}
+      setQ=${setQ}
+      statusFilter=${statusFilter}
+      setStatusFilter=${setStatusFilter}
+      deviceFilter=${deviceFilter}
+      setDeviceFilter=${setDeviceFilter}
+      devices=${devices}
+      view=${view}
+      setView=${setView}
+      filteredCount=${filtered.length}
+      totalCount=${jobs.length}
+    />
+    <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
+    ${sorted.length === 0 ? html8`<div class="empty">No jobs match your filters.</div>` : view === "table" ? html8`<${TableView}
+            sorted=${sorted}
+            sortCol=${sortCol}
+            sortDir=${sortDir}
+            onSort=${onSort}
+            onJobClick=${onJobClick}
+          />` : html8`<${GridView} sorted=${sorted} onJobClick=${onJobClick} />`}
+  `;
+}
 function App() {
   const [jobs, setJobs] = d2([]);
   const [projects, setProjects] = d2([]);
@@ -1659,26 +1932,10 @@ function App() {
   );
   const isFiltered = !!(q3 || statusFilter || deviceFilter);
   const filtered = T2(
-    () => jobs.filter((j3) => {
-      const text = ((j3.designTitle || "") + " " + (j3.customer || "")).toLowerCase();
-      if (q3 && !text.includes(q3.toLowerCase())) return false;
-      if (statusFilter && (j3.status || "").toLowerCase() !== statusFilter) return false;
-      if (deviceFilter && j3.deviceModel !== deviceFilter) return false;
-      return true;
-    }),
+    () => filterJobs(jobs, q3, statusFilter, deviceFilter),
     [jobs, q3, statusFilter, deviceFilter]
   );
-  const sorted = T2(
-    () => [...filtered].sort((a3, b2) => {
-      let av = a3[sortCol], bv = b2[sortCol];
-      if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
-      if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
-      if (typeof av === "string")
-        return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
-      return sortDir === "asc" ? av - bv : bv - av;
-    }),
-    [filtered, sortCol, sortDir]
-  );
+  const sorted = T2(() => sortJobs(filtered, sortCol, sortDir), [filtered, sortCol, sortDir]);
   const handleSort = q2(
     (col) => {
       if (sortCol === col) {
@@ -1707,17 +1964,23 @@ function App() {
     },
     [patchJob, refreshProjectsAndPrices]
   );
-  const handleJobStatusChange = q2(
-    (jobId, statusOverride) => {
-      patchJob(jobId, { status_override: statusOverride });
+  const patchJobField = q2(
+    (jobId, fields) => {
+      patchJob(jobId, fields);
     },
     [patchJob]
   );
+  const handleJobStatusChange = q2(
+    (jobId, statusOverride) => {
+      patchJobField(jobId, { status_override: statusOverride });
+    },
+    [patchJobField]
+  );
   const handleJobExtraLaborChange = q2(
     (jobId, minutes) => {
-      patchJob(jobId, { extra_labor_minutes: minutes });
+      patchJobField(jobId, { extra_labor_minutes: minutes });
     },
-    [patchJob]
+    [patchJobField]
   );
   const handleNavigateToProject = q2(
     (projectId) => {
@@ -1726,6 +1989,20 @@ function App() {
     },
     [navigate]
   );
+  const refreshSummary = q2(async () => {
+    const data = await fetchJson("/summary", "Failed to refresh summary.");
+    setSummary(data);
+  }, []);
+  const handleRatesChanged = q2(async () => {
+    refreshJobPrices(true);
+    refreshProjectsAndPrices();
+    try {
+      await refreshSummary();
+      toast("Pricing refreshed from updated rates.", "success");
+    } catch (err) {
+      toast(err?.message || "Updated rates saved, but summary refresh failed.", "error");
+    }
+  }, [refreshJobPrices, refreshProjectsAndPrices, refreshSummary]);
   const handleAutoGroup = q2(async () => {
     const [jobsData, projData] = await Promise.all([
       fetchJson("/ui/data", "Failed to refresh jobs."),
@@ -1737,84 +2014,23 @@ function App() {
     refreshProjectsAndPrices();
   }, [refreshJobPrices, refreshProjectsAndPrices]);
   if (loading)
-    return html8` <div class="in-app-loading" role="status" aria-live="polite">
-      <section class="dashboard-loader-card">
-        <div class="dashboard-loader-copy">
-          <div class="loader-hero-row dashboard-loader-title-row">
-            <div class="loader-cursor cursor-blink" aria-hidden="true"></div>
-            <div>
-              <p class="dashboard-loader-kicker">INTERNAL PRINT DASHBOARD</p>
-              <h1 class="dashboard-loader-title">loading workspace</h1>
-            </div>
-          </div>
-          <p class="dashboard-loader-copy-text">
-            Fetching jobs, projects, pricing, rates, and cover cache metadata…
-          </p>
-          <p class="dashboard-loader-copy-text">${bootStatus}</p>
-          <div class="dashboard-loader-steps" aria-hidden="true">
-            <span>jobs</span>
-            <span>projects</span>
-            <span>rates</span>
-            <span>covers</span>
-          </div>
-          <div
-            class="dashboard-loader-progress"
-            role="progressbar"
-            aria-valuemin="0"
-            aria-valuemax="100"
-            aria-valuenow=${Math.round(loadProgress)}
-          >
-            <span style=${`width:${Math.max(8, loadProgress)}%`}></span>
-          </div>
-        </div>
-        <div class="dashboard-loader-preview" aria-hidden="true">
-          <div class="dashboard-loader-stat"><span></span><strong></strong></div>
-          <div class="dashboard-loader-stat"><span></span><strong></strong></div>
-          <div class="dashboard-loader-table">
-            ${Array.from(
-      { length: 5 },
-      (_2, i3) => html8`
-                <div class="dashboard-loader-row" key=${i3}>
-                  <span></span><span></span><span></span><span></span>
-                </div>
-              `
-    )}
-          </div>
-        </div>
-      </section>
-    </div>`;
-  if (error)
-    return html8`<div class="app-loading">
-      <div class="loader-shell">
-        <div class="loader-main loader-error">
-          <div class="loader-hero-row">
-            <div class="loader-cursor" aria-hidden="true"></div>
-            <h1 class="loader-title">failed to load</h1>
-          </div>
-          <p class="loader-copy">${error}</p>
-        </div>
-      </div>
-    </div>`;
+    return html8`<${LoadingView} bootStatus=${bootStatus} loadProgress=${loadProgress} />`;
+  if (error) return html8`<${ErrorView} error=${error} />`;
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
   const isProjects = loc.startsWith("/projects");
-  const renderMain = () => {
-    if (loc.startsWith("/admin")) return html8`<${AdminView} />`;
+  const renderMainContent = () => {
+    if (loc.startsWith("/admin")) {
+      return html8`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
+    }
     if (projectDetailMatch) {
-      const id = Number(projectDetailMatch[1]);
-      const project = projects.find((p3) => p3.id === id);
-      const projectJobs = jobs.filter((j3) => j3.project_id === id);
-      if (!project) {
-        return projectsLoading ? html8`<div class="empty">Loading projects…</div>` : html8`<div class="empty">Project not found.</div>`;
-      }
-      const unassignedJobs = jobs.filter((j3) => j3.project_id == null);
-      return html8`<${ProjectDetail}
-        project=${project}
-        jobs=${projectJobs}
-        unassignedJobs=${unassignedJobs}
-        onBack=${() => navigate("/projects")}
-        onJobClick=${setSelectedJob}
-        onAddJob=${(jobId) => handleJobProjectChange(jobId, id)}
-        onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}
+      return html8`<${ProjectRouteView}
+        projectId=${Number(projectDetailMatch[1])}
+        projects=${projects}
+        jobs=${jobs}
+        projectsLoading=${projectsLoading}
+        navigate=${navigate}
+        setSelectedJob=${setSelectedJob}
+        handleJobProjectChange=${handleJobProjectChange}
       />`;
     }
     if (isProjects) {
@@ -1826,33 +2042,29 @@ function App() {
         loading=${projectsLoading}
       />`;
     }
-    return html8`
-      <${Toolbar}
-        q=${q3}
-        setQ=${setQ}
-        statusFilter=${statusFilter}
-        setStatusFilter=${setStatusFilter}
-        deviceFilter=${deviceFilter}
-        setDeviceFilter=${setDeviceFilter}
-        devices=${devices}
-        view=${view}
-        setView=${setView}
-        filteredCount=${filtered.length}
-        totalCount=${jobs.length}
-      />
-      <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
-      ${sorted.length === 0 ? html8`<div class="empty">No jobs match your filters.</div>` : view === "table" ? html8`<${TableView}
-              sorted=${sorted}
-              sortCol=${sortCol}
-              sortDir=${sortDir}
-              onSort=${handleSort}
-              onJobClick=${setSelectedJob}
-            />` : html8`<${GridView} sorted=${sorted} onJobClick=${setSelectedJob} />`}
-    `;
+    return html8`<${JobsRouteView}
+      q=${q3}
+      setQ=${setQ}
+      statusFilter=${statusFilter}
+      setStatusFilter=${setStatusFilter}
+      deviceFilter=${deviceFilter}
+      setDeviceFilter=${setDeviceFilter}
+      devices=${devices}
+      view=${view}
+      setView=${setView}
+      filtered=${filtered}
+      jobs=${jobs}
+      isFiltered=${isFiltered}
+      sorted=${sorted}
+      sortCol=${sortCol}
+      sortDir=${sortDir}
+      onSort=${handleSort}
+      onJobClick=${setSelectedJob}
+    />`;
   };
   return html8`
     <${Header} summary=${summary} />
-    ${renderMain()}
+    ${renderMainContent()}
     ${selectedJob && html8`<${Modal}
       key=${selectedJob.id}
       job=${selectedJob}

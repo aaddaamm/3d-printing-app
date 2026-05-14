@@ -134,6 +134,8 @@ export interface LaborConfig {
   hourly_rate: number;
   minimum_minutes: number;
   profit_markup_pct: number;
+  failure_buffer_pct: number;
+  overhead_buffer_pct: number;
 }
 
 export interface SyncLog {

@@ -20,21 +20,34 @@ rates.patch("/labor", async (c) => {
     return c.json({ error: "Invalid JSON" }, 400);
   }
 
-  const { hourly_rate, minimum_minutes, profit_markup_pct } = body;
+  const {
+    hourly_rate,
+    minimum_minutes,
+    profit_markup_pct,
+    failure_buffer_pct,
+    overhead_buffer_pct,
+  } = body;
   if (
     !Number.isFinite(hourly_rate) ||
     !Number.isFinite(minimum_minutes) ||
-    !Number.isFinite(profit_markup_pct)
+    !Number.isFinite(profit_markup_pct) ||
+    !Number.isFinite(failure_buffer_pct) ||
+    !Number.isFinite(overhead_buffer_pct)
   ) {
     return c.json(
-      { error: "hourly_rate, minimum_minutes, profit_markup_pct must be finite numbers" },
+      {
+        error:
+          "hourly_rate, minimum_minutes, profit_markup_pct, failure_buffer_pct, overhead_buffer_pct must be finite numbers",
+      },
       400,
     );
   }
   if (
     (hourly_rate as number) < 0 ||
     (minimum_minutes as number) < 0 ||
-    (profit_markup_pct as number) < 0
+    (profit_markup_pct as number) < 0 ||
+    (failure_buffer_pct as number) < 0 ||
+    (overhead_buffer_pct as number) < 0
   ) {
     return c.json({ error: "Values must be non-negative" }, 400);
   }
@@ -42,6 +55,8 @@ rates.patch("/labor", async (c) => {
     hourly_rate: hourly_rate as number,
     minimum_minutes: minimum_minutes as number,
     profit_markup_pct: profit_markup_pct as number,
+    failure_buffer_pct: failure_buffer_pct as number,
+    overhead_buffer_pct: overhead_buffer_pct as number,
   });
   return c.json({ labor_config });
 });

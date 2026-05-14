@@ -6,6 +6,7 @@ import {
   calcMachineCost,
   calcLaborCost,
   round2,
+  totalPricingMultiplier,
   type FilamentWeight,
 } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
@@ -170,7 +171,7 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
   // kicks in, same as a single job would bill.
   const labor_cost = calcLaborCost(0, laborConfig);
   const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
-  const final_price = Math.ceil(base_price * (1 + laborConfig.profit_markup_pct));
+  const final_price = Math.ceil(base_price * totalPricingMultiplier(laborConfig));
 
   return {
     material_cost: round2(material_cost),
@@ -240,7 +241,7 @@ export function getAllProjectPrices(): Record<number, number> {
       );
       const labor_cost = calcLaborCost(0, laborConfig);
       const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
-      prices[projectId] = Math.ceil(base_price * (1 + laborConfig.profit_markup_pct));
+      prices[projectId] = Math.ceil(base_price * totalPricingMultiplier(laborConfig));
     } catch {
       // skip — pricing config incomplete for this project
     }
