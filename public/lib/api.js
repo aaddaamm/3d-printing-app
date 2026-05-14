@@ -10,25 +10,41 @@ export async function errorMessage(res, fallback) {
   }
 }
 
+function requestOptions(options) {
+  return { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options };
+}
+
+function toRequestError(err, fallback) {
+  if (err?.name === "TimeoutError") return new Error(`${fallback} (request timed out)`);
+  return new Error(`${fallback} (network error)`);
+}
+
 export async function fetchJson(url, fallback, options) {
   let res;
   try {
-    res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options });
+    res = await fetch(url, requestOptions(options));
   } catch (err) {
-    if (err?.name === "TimeoutError") throw new Error(`${fallback} (request timed out)`);
-    throw new Error(`${fallback} (network error)`);
+    throw toRequestError(err, fallback);
   }
   if (!res.ok) throw new Error(await errorMessage(res, fallback));
   return res.json();
 }
 
-export async function fetchJsonOrToast(url, fallback, options) {
+export async function fetchJsonResult(url, fallback, options) {
   try {
-    return await fetchJson(url, fallback, options);
+    return { data: await fetchJson(url, fallback, options), error: null };
   } catch (err) {
-    toast(err.message || fallback, "error");
+    return { data: null, error: err instanceof Error ? err : new Error(fallback) };
+  }
+}
+
+export async function fetchJsonOrToast(url, fallback, options) {
+  const { data, error } = await fetchJsonResult(url, fallback, options);
+  if (error) {
+    toast(error.message || fallback, "error");
     return null;
   }
+  return data;
 }
 
 export async function patchJsonOrToast(url, payload, fallback) {

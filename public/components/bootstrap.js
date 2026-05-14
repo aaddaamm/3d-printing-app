@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "preact/hooks";
-import { fetchJson } from "../lib/api.js";
+import { fetchJson, fetchJsonResult } from "../lib/api.js";
 import { BOOT_FAILSAFE_MS, TOTAL_BOOT_REQUESTS } from "../lib/constants.js";
 
 export function useDashboardBootstrap({
@@ -15,24 +15,38 @@ export function useDashboardBootstrap({
   const [error, setError] = useState(null);
   const [bootStatus, setBootStatus] = useState("Starting dashboard…");
 
-  const refreshProjectsAndPrices = useCallback(() => {
-    fetchJson("/projects", "Failed to load projects.")
-      .then((d) => d?.projects && setProjects(d.projects))
-      .catch((err) => toast(err.message || "Failed to load projects.", "error"))
-      .finally(() => setProjectsLoading(false));
+  const loadOptional = useCallback(
+    async ({ url, fallback, onData, onFinally }) => {
+      const { data, error } = await fetchJsonResult(url, fallback);
+      if (error) toast(error.message || fallback, "error");
+      if (data) onData(data);
+      if (onFinally) onFinally();
+    },
+    [toast],
+  );
 
-    fetchJson("/projects/prices", "Failed to load project prices.")
-      .then((d) => d?.prices && setProjectPrices(d.prices))
-      .catch((err) => toast(err.message || "Failed to load project prices.", "error"));
-  }, [setProjects, setProjectPrices, toast]);
+  const refreshProjectsAndPrices = useCallback(() => {
+    loadOptional({
+      url: "/projects",
+      fallback: "Failed to load projects.",
+      onData: (d) => d?.projects && setProjects(d.projects),
+      onFinally: () => setProjectsLoading(false),
+    });
+
+    loadOptional({
+      url: "/projects/prices",
+      fallback: "Failed to load project prices.",
+      onData: (d) => d?.prices && setProjectPrices(d.prices),
+    });
+  }, [loadOptional, setProjects, setProjectPrices]);
 
   const refreshJobPrices = useCallback(
     (merge = false) => {
-      fetchJson(
-        "/jobs/prices",
-        merge ? "Failed to refresh job prices." : "Failed to load job prices.",
-      )
-        .then((d) => {
+      const fallback = merge ? "Failed to refresh job prices." : "Failed to load job prices.";
+      loadOptional({
+        url: "/jobs/prices",
+        fallback,
+        onData: (d) => {
           if (!d?.prices) return;
           setJobs((js) =>
             js.map((j) => ({
@@ -40,15 +54,10 @@ export function useDashboardBootstrap({
               final_price: d.prices[j.id] ?? (merge ? j.final_price : null) ?? null,
             })),
           );
-        })
-        .catch((err) =>
-          toast(
-            err.message || (merge ? "Failed to refresh job prices." : "Failed to load job prices."),
-            "error",
-          ),
-        );
+        },
+      });
     },
-    [setJobs, toast],
+    [loadOptional, setJobs],
   );
 
   useEffect(() => {
