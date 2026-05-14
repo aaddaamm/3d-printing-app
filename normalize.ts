@@ -2,6 +2,7 @@ import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
 import type { JobFilament } from "./lib/types.js";
 import { deriveJobStatus, detectSessions, type RawTask } from "./lib/session-detection.js";
+import { invalidateAllPriceCaches } from "./lib/price-cache.js";
 
 // ── normalize.ts ──────────────────────────────────────────────────────────────
 //
@@ -252,6 +253,9 @@ export function runNormalize(): void {
 
   const jobsDone = upsertJobs(sessionAccumulators);
   console.log(`  Upserted ${jobsDone} jobs.`);
+
+  invalidateAllPriceCaches();
+  console.log("  Invalidated job/project price caches.");
   console.log("");
   console.log("Done.");
 }

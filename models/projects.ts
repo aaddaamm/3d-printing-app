@@ -13,6 +13,10 @@ import { loadRatesConfig } from "./rates.js";
 import { invalidateProjectPriceCache } from "../lib/price-cache.js";
 import type { Project, Job, PriceBreakdown, MaterialRate, MachineRate } from "../lib/types.js";
 
+const ACTIVE_STATUSES = new Set(["running", "pause", "created"]);
+const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
+type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
+
 export type ProjectWithStats = Project & {
   job_count: number;
   total_weight_g: number | null;
@@ -92,21 +96,27 @@ export function getProjectJobs(id: number): Job[] {
 // This prevents a project with 10 small jobs from being billed 10× the labor
 // minimum when the user just pressed print once and walked away.
 
-function loadSessionFilaments(sessionIds: string[]): Map<string, FilamentWeight[]> {
+function loadSessionFilaments(
+  sessionIds: string[],
+  statuses: readonly string[],
+): Map<string, FilamentWeight[]> {
   if (sessionIds.length === 0) return new Map();
   const placeholders = sessionIds.map(() => "?").join(",");
+  const statusPlaceholders = statuses.map(() => "?").join(",");
   const filamentRows = db
     .prepare<string[], { session_id: string } & FilamentWeight>(
       `
     SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
     FROM job_filaments jf
     JOIN print_tasks pt ON jf.task_id = pt.id
-    WHERE pt.session_id IN (${placeholders}) AND jf.filament_type IS NOT NULL AND pt.status = 'finish'
+    WHERE pt.session_id IN (${placeholders})
+      AND jf.filament_type IS NOT NULL
+      AND pt.status IN (${statusPlaceholders})
     GROUP BY pt.session_id, jf.filament_type
     ORDER BY pt.session_id, total_weight DESC
   `,
     )
-    .all(...sessionIds);
+    .all(...sessionIds, ...statuses);
 
   const sessionFilaments = new Map<string, FilamentWeight[]>();
   for (const { session_id, ...row } of filamentRows) {
@@ -116,9 +126,37 @@ function loadSessionFilaments(sessionIds: string[]): Map<string, FilamentWeight[
   return sessionFilaments;
 }
 
+function isActiveJob(job: Job): boolean {
+  return ACTIVE_STATUSES.has((job.status_override ?? job.status ?? "").toLowerCase());
+}
+
+function loadSessionUsage(
+  sessionIds: string[],
+  statuses: readonly string[],
+): Map<string, SessionUsage> {
+  if (!sessionIds.length) return new Map();
+  const placeholders = sessionIds.map(() => "?").join(",");
+  const statusPlaceholders = statuses.map(() => "?").join(",");
+  const rows = db
+    .prepare<string[], SessionUsage>(
+      `
+    SELECT session_id,
+           SUM(COALESCE(weight, 0)) AS total_weight_g,
+           SUM(COALESCE(costTime, 0)) AS total_time_s
+    FROM print_tasks
+    WHERE session_id IN (${placeholders}) AND status IN (${statusPlaceholders})
+    GROUP BY session_id
+  `,
+    )
+    .all(...sessionIds, ...statuses);
+  return new Map(rows.map((row) => [row.session_id, row]));
+}
+
 function calculateProjectVariableCosts(
   jobs: Job[],
-  sessionFilaments: ReadonlyMap<string, FilamentWeight[]>,
+  finishedSessionFilaments: ReadonlyMap<string, FilamentWeight[]>,
+  activeSessionFilaments: ReadonlyMap<string, FilamentWeight[]>,
+  activeSessionUsage: ReadonlyMap<string, SessionUsage>,
   materialRates: ReadonlyMap<string, MaterialRate>,
   machineRates: ReadonlyMap<string, MachineRate>,
   fallbackMachine: MachineRate,
@@ -132,13 +170,20 @@ function calculateProjectVariableCosts(
 
   for (const job of jobs) {
     const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
+    const shouldUseEstimate =
+      (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+    const usage = shouldUseEstimate
+      ? activeSessionUsage.get(job.session_id)
+      : { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
+
     material_cost += calcWeightedMaterialCost(
-      job.total_weight_g ?? 0,
-      sessionFilaments.get(job.session_id) ?? [],
+      usage?.total_weight_g ?? 0,
+      (shouldUseEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ??
+        [],
       materialRates,
       fallbackMaterialRate,
     );
-    machine_cost += calcMachineCost(job.total_time_s ?? 0, machineRate);
+    machine_cost += calcMachineCost(usage?.total_time_s ?? 0, machineRate);
     if (job.extra_labor_minutes) {
       extra_labor_cost += (job.extra_labor_minutes / 60) * hourlyRate;
     }
@@ -155,11 +200,16 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
   const jobs = stmts.getProjectJobs.all(projectId);
   if (!jobs.length) return null;
 
-  const sessionFilaments = loadSessionFilaments(jobs.map((j) => j.session_id));
+  const sessionIds = jobs.map((j) => j.session_id);
+  const finishedSessionFilaments = loadSessionFilaments(sessionIds, ["finish"]);
+  const activeSessionFilaments = loadSessionFilaments(sessionIds, ESTIMATE_STATUSES);
+  const activeSessionUsage = loadSessionUsage(sessionIds, ESTIMATE_STATUSES);
 
   const { material_cost, machine_cost, extra_labor_cost } = calculateProjectVariableCosts(
     jobs,
-    sessionFilaments,
+    finishedSessionFilaments,
+    activeSessionFilaments,
+    activeSessionUsage,
     materialRates,
     machineRates,
     fallbackMachine,
@@ -190,6 +240,14 @@ export function getProjectPrice(id: number): PriceBreakdown | null {
 
 export function getAllProjectPrices(): Record<number, number> {
   try {
+    const hasActiveJobs = db
+      .prepare<
+        [],
+        { exists: number }
+      >("SELECT 1 AS exists FROM jobs WHERE project_id IS NOT NULL AND lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1")
+      .get();
+    if (hasActiveJobs?.exists) throw new Error("bypass-cache-for-active-jobs");
+
     const targetCount = (
       db
         .prepare("SELECT COUNT(DISTINCT project_id) AS n FROM jobs WHERE project_id IS NOT NULL")
@@ -226,14 +284,19 @@ export function getAllProjectPrices(): Record<number, number> {
     jobsByProject.get(pid)!.push(job);
   }
 
-  const sessionFilaments = loadSessionFilaments([...new Set(allJobs.map((j) => j.session_id))]);
+  const allSessionIds = [...new Set(allJobs.map((j) => j.session_id))];
+  const finishedSessionFilaments = loadSessionFilaments(allSessionIds, ["finish"]);
+  const activeSessionFilaments = loadSessionFilaments(allSessionIds, ESTIMATE_STATUSES);
+  const activeSessionUsage = loadSessionUsage(allSessionIds, ESTIMATE_STATUSES);
 
   const prices: Record<number, number> = {};
   for (const [projectId, jobs] of jobsByProject) {
     try {
       const { material_cost, machine_cost, extra_labor_cost } = calculateProjectVariableCosts(
         jobs,
-        sessionFilaments,
+        finishedSessionFilaments,
+        activeSessionFilaments,
+        activeSessionUsage,
         materialRates,
         machineRates,
         fallbackMachine,

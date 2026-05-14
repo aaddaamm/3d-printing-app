@@ -10,6 +10,11 @@ import { loadRatesConfig } from "./rates.js";
 import { invalidateJobPriceCache, invalidateProjectPriceCache } from "../lib/price-cache.js";
 import type { Job, PrintTask, JobFilament, PriceBreakdown } from "../lib/types.js";
 
+const ACTIVE_STATUSES = new Set(["running", "pause", "created"]);
+const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
+
+type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
+
 export interface ListJobsFilter {
   status?: string | undefined;
   device?: string | undefined;
@@ -82,66 +87,61 @@ export function getJobWithDetails(
   return { job, plates, filaments };
 }
 
-export function getJobPrice(
-  id: number,
-): ({ id: number; filament_type: string } & PriceBreakdown) | null {
-  const job = stmts.getJobById.get(id);
-  if (!job) return null;
+function isActiveJob(job: Job): boolean {
+  return ACTIVE_STATUSES.has((job.status_override ?? job.status ?? "").toLowerCase());
+}
 
-  const filamentTotals = db
-    .prepare<[string], FilamentWeight>(
-      `SELECT jf.filament_type, SUM(jf.weight_g) AS total_weight
-       FROM job_filaments jf
-       JOIN print_tasks pt ON jf.task_id = pt.id
-       WHERE pt.session_id = ? AND jf.filament_type IS NOT NULL AND pt.status = 'finish'
-       GROUP BY jf.filament_type ORDER BY total_weight DESC`,
+function loadSessionFilaments(statuses: readonly string[]): Map<string, FilamentWeight[]> {
+  const placeholders = statuses.map(() => "?").join(",");
+  const filamentRows = db
+    .prepare<string[], { session_id: string } & FilamentWeight>(
+      `
+    SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
+    FROM job_filaments jf
+    JOIN print_tasks pt ON jf.task_id = pt.id
+    WHERE jf.filament_type IS NOT NULL AND pt.status IN (${placeholders})
+    GROUP BY pt.session_id, jf.filament_type
+    ORDER BY pt.session_id, total_weight DESC
+  `,
     )
-    .all(job.session_id);
+    .all(...statuses);
 
-  const filamentType = filamentTotals[0]?.filament_type ?? "PLA";
-  const config = loadRatesConfig();
-  if (!config) throw new Error("No labor config found — configure rates first");
-  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
-
-  const fallbackMaterialRate = materialRates.get("PLA");
-  const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-
-  if (!fallbackMaterialRate) throw new Error('No material rate for fallback filament type "PLA"');
-
-  const breakdown = calcPrice({
-    total_weight_g: 0,
-    total_time_s: job.total_time_s ?? 0,
-    extra_labor_minutes: job.extra_labor_minutes ?? null,
-    price_override: job.price_override ?? null,
-    machineRate,
-    materialRate: fallbackMaterialRate,
-    laborConfig,
-  });
-  breakdown.material_cost = round2(
-    calcWeightedMaterialCost(
-      job.total_weight_g ?? 0,
-      filamentTotals,
-      materialRates,
-      fallbackMaterialRate,
-    ),
-  );
-  breakdown.base_price = round2(
-    breakdown.material_cost +
-      breakdown.machine_cost +
-      breakdown.labor_cost +
-      breakdown.extra_labor_cost,
-  );
-  if (!breakdown.is_override) {
-    breakdown.final_price = round2(
-      Math.ceil(breakdown.base_price * totalPricingMultiplier(laborConfig)),
-    );
+  const sessionFilaments = new Map<string, FilamentWeight[]>();
+  for (const { session_id, ...row } of filamentRows) {
+    if (!sessionFilaments.has(session_id)) sessionFilaments.set(session_id, []);
+    sessionFilaments.get(session_id)!.push(row);
   }
+  return sessionFilaments;
+}
 
-  return { id, filament_type: filamentType, ...breakdown };
+function loadSessionUsageByStatuses(statuses: readonly string[]): Map<string, SessionUsage> {
+  const placeholders = statuses.map(() => "?").join(",");
+  const rows = db
+    .prepare<string[], SessionUsage>(
+      `
+    SELECT session_id,
+           SUM(COALESCE(weight, 0)) AS total_weight_g,
+           SUM(COALESCE(costTime, 0)) AS total_time_s
+    FROM print_tasks
+    WHERE status IN (${placeholders})
+    GROUP BY session_id
+  `,
+    )
+    .all(...statuses);
+
+  return new Map(rows.map((row) => [row.session_id, row]));
 }
 
 function getCachedJobPrices(): Record<number, number> | null {
   try {
+    const hasActiveJobs = db
+      .prepare<
+        [],
+        { exists: number }
+      >("SELECT 1 AS exists FROM jobs WHERE lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1")
+      .get();
+    if (hasActiveJobs?.exists) return null;
+
     const totalJobs = (db.prepare("SELECT COUNT(*) AS n FROM jobs").get() as { n: number }).n;
     const cachedCount = (
       db.prepare("SELECT COUNT(*) AS n FROM job_price_cache").get() as { n: number }
@@ -161,28 +161,6 @@ function getCachedJobPrices(): Record<number, number> | null {
   }
 }
 
-function getSessionFilaments(): Map<string, FilamentWeight[]> {
-  const filamentRows = db
-    .prepare<[], { session_id: string } & FilamentWeight>(
-      `
-    SELECT pt.session_id, jf.filament_type, SUM(jf.weight_g) AS total_weight
-    FROM job_filaments jf
-    JOIN print_tasks pt ON jf.task_id = pt.id
-    WHERE jf.filament_type IS NOT NULL AND pt.status = 'finish'
-    GROUP BY pt.session_id, jf.filament_type
-    ORDER BY pt.session_id, total_weight DESC
-  `,
-    )
-    .all();
-
-  const sessionFilaments = new Map<string, FilamentWeight[]>();
-  for (const { session_id, ...row } of filamentRows) {
-    if (!sessionFilaments.has(session_id)) sessionFilaments.set(session_id, []);
-    sessionFilaments.get(session_id)!.push(row);
-  }
-  return sessionFilaments;
-}
-
 function writeJobPriceCache(prices: Record<number, number>): void {
   try {
     const now = new Date().toISOString();
@@ -199,6 +177,81 @@ function writeJobPriceCache(prices: Record<number, number>): void {
   }
 }
 
+export function getJobPrice(
+  id: number,
+): ({ id: number; filament_type: string } & PriceBreakdown) | null {
+  const job = stmts.getJobById.get(id);
+  if (!job) return null;
+
+  const shouldUseEstimate =
+    (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+  const eligibleStatuses = shouldUseEstimate ? ESTIMATE_STATUSES : (["finish"] as const);
+  const placeholders = eligibleStatuses.map(() => "?").join(",");
+
+  const filamentTotals = db
+    .prepare<[string, ...string[]], FilamentWeight>(
+      `SELECT jf.filament_type, SUM(jf.weight_g) AS total_weight
+       FROM job_filaments jf
+       JOIN print_tasks pt ON jf.task_id = pt.id
+       WHERE pt.session_id = ? AND jf.filament_type IS NOT NULL AND pt.status IN (${placeholders})
+       GROUP BY jf.filament_type ORDER BY total_weight DESC`,
+    )
+    .all(job.session_id, ...eligibleStatuses);
+
+  const filamentType = filamentTotals[0]?.filament_type ?? "PLA";
+  const config = loadRatesConfig();
+  if (!config) throw new Error("No labor config found — configure rates first");
+  const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
+
+  const fallbackMaterialRate = materialRates.get("PLA");
+  const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
+
+  if (!fallbackMaterialRate) throw new Error('No material rate for fallback filament type "PLA"');
+
+  let totalWeightG = job.total_weight_g ?? 0;
+  let totalTimeS = job.total_time_s ?? 0;
+  if (shouldUseEstimate) {
+    const estimate = db
+      .prepare<[string], { total_weight_g: number; total_time_s: number }>(
+        `SELECT SUM(COALESCE(weight, 0)) AS total_weight_g,
+                SUM(COALESCE(costTime, 0)) AS total_time_s
+         FROM print_tasks
+         WHERE session_id = ? AND status IN ('finish', 'running', 'pause', 'created')`,
+      )
+      .get(job.session_id);
+    if (estimate) {
+      totalWeightG = estimate.total_weight_g ?? 0;
+      totalTimeS = estimate.total_time_s ?? 0;
+    }
+  }
+
+  const breakdown = calcPrice({
+    total_weight_g: 0,
+    total_time_s: totalTimeS,
+    extra_labor_minutes: job.extra_labor_minutes ?? null,
+    price_override: job.price_override ?? null,
+    machineRate,
+    materialRate: fallbackMaterialRate,
+    laborConfig,
+  });
+  breakdown.material_cost = round2(
+    calcWeightedMaterialCost(totalWeightG, filamentTotals, materialRates, fallbackMaterialRate),
+  );
+  breakdown.base_price = round2(
+    breakdown.material_cost +
+      breakdown.machine_cost +
+      breakdown.labor_cost +
+      breakdown.extra_labor_cost,
+  );
+  if (!breakdown.is_override) {
+    breakdown.final_price = round2(
+      Math.ceil(breakdown.base_price * totalPricingMultiplier(laborConfig)),
+    );
+  }
+
+  return { id, filament_type: filamentType, ...breakdown };
+}
+
 export function getAllJobPrices(): Record<number, number> {
   const cached = getCachedJobPrices();
   if (cached) return cached;
@@ -209,15 +262,22 @@ export function getAllJobPrices(): Record<number, number> {
   const fallbackMaterialRate = materialRates.get("PLA");
   if (!fallbackMaterialRate) return {};
 
-  const sessionFilaments = getSessionFilaments();
+  const finishedSessionFilaments = loadSessionFilaments(["finish"]);
+  const activeSessionFilaments = loadSessionFilaments(ESTIMATE_STATUSES);
+  const activeSessionUsage = loadSessionUsageByStatuses(ESTIMATE_STATUSES);
   const prices: Record<number, number> = {};
 
   for (const job of listJobs()) {
     try {
       const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
+      const shouldUseEstimate =
+        (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+      const usage = shouldUseEstimate
+        ? activeSessionUsage.get(job.session_id)
+        : { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
       const breakdown = calcPrice({
         total_weight_g: 0,
-        total_time_s: job.total_time_s ?? 0,
+        total_time_s: usage?.total_time_s ?? 0,
         extra_labor_minutes: job.extra_labor_minutes ?? null,
         price_override: job.price_override ?? null,
         machineRate,
@@ -225,8 +285,10 @@ export function getAllJobPrices(): Record<number, number> {
         laborConfig,
       });
       const materialCost = calcWeightedMaterialCost(
-        job.total_weight_g ?? 0,
-        sessionFilaments.get(job.session_id) ?? [],
+        usage?.total_weight_g ?? 0,
+        (shouldUseEstimate ? activeSessionFilaments : finishedSessionFilaments).get(
+          job.session_id,
+        ) ?? [],
         materialRates,
         fallbackMaterialRate,
       );
