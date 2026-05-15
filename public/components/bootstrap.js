@@ -7,6 +7,7 @@ export function useDashboardBootstrap({
   setProjects,
   setProjectPrices,
   setSummary,
+  setDataRange,
   toast,
 }) {
   const [loading, setLoading] = useState(true);
@@ -82,10 +83,12 @@ export function useDashboardBootstrap({
     Promise.all([
       trackedFetchJson("/ui/data", "Failed to load jobs."),
       trackedFetchJson("/summary", "Failed to load summary."),
+      trackedFetchJson("/health/data-range", "Failed to load print history range."),
     ])
-      .then(([data, sum]) => {
+      .then(([data, sum, range]) => {
         setJobs(data.jobs);
         setSummary(sum);
+        setDataRange(range);
         setLoading(false);
         setBootStatus("Loading optional data…");
         refreshJobPrices(false);
@@ -99,7 +102,7 @@ export function useDashboardBootstrap({
       .finally(() => clearTimeout(failsafe));
 
     return () => clearTimeout(failsafe);
-  }, [setJobs, setSummary, refreshJobPrices, refreshProjectsAndPrices]);
+  }, [setJobs, setSummary, setDataRange, refreshJobPrices, refreshProjectsAndPrices]);
 
   return {
     loading,

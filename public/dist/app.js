@@ -536,13 +536,19 @@ function FilamentSwatches({ colors }) {
 
 // public/components/jobs-view.js
 var html3 = htm_module_default.bind(k);
-function Header({ summary }) {
+function Header({ summary, dataRange }) {
   const [loc, navigate] = useLocation();
   const t4 = summary?.totals;
   return html3`
     <header>
       <div class="header-left">
         <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
+        ${dataRange?.min_start && dataRange?.max_start && html3`
+          <div class="header-range">
+            History: ${fmtDateShort(dataRange.min_start)} → ${fmtDateShort(dataRange.max_start)}
+            (${(dataRange.task_count || 0).toLocaleString()} tasks)
+          </div>
+        `}
         <nav class="top-nav">
           <button class=${"nav-btn" + (!loc.startsWith("/projects") && !loc.startsWith("/admin") ? " active" : "")}
             onClick=${() => navigate("/")}>Jobs</button>
@@ -1656,6 +1662,7 @@ function useDashboardBootstrap({
   setProjects,
   setProjectPrices,
   setSummary,
+  setDataRange,
   toast: toast2
 }) {
   const [loading, setLoading] = d2(true);
@@ -1720,10 +1727,12 @@ function useDashboardBootstrap({
     }, BOOT_FAILSAFE_MS);
     Promise.all([
       trackedFetchJson("/ui/data", "Failed to load jobs."),
-      trackedFetchJson("/summary", "Failed to load summary.")
-    ]).then(([data, sum]) => {
+      trackedFetchJson("/summary", "Failed to load summary."),
+      trackedFetchJson("/health/data-range", "Failed to load print history range.")
+    ]).then(([data, sum, range]) => {
       setJobs(data.jobs);
       setSummary(sum);
+      setDataRange(range);
       setLoading(false);
       setBootStatus("Loading optional data\u2026");
       refreshJobPrices(false);
@@ -1734,7 +1743,7 @@ function useDashboardBootstrap({
       setProjectsLoading(false);
     }).finally(() => clearTimeout(failsafe));
     return () => clearTimeout(failsafe);
-  }, [setJobs, setSummary, refreshJobPrices, refreshProjectsAndPrices]);
+  }, [setJobs, setSummary, setDataRange, refreshJobPrices, refreshProjectsAndPrices]);
   return {
     loading,
     projectsLoading,
@@ -1903,6 +1912,7 @@ function App() {
   const [projects, setProjects] = d2([]);
   const [projectPrices, setProjectPrices] = d2({});
   const [summary, setSummary] = d2(null);
+  const [dataRange, setDataRange] = d2(null);
   const [view, setView] = d2("table");
   const [q3, setQ] = d2("");
   const [statusFilter, setStatusFilter] = d2("");
@@ -1924,6 +1934,7 @@ function App() {
     setProjects,
     setProjectPrices,
     setSummary,
+    setDataRange,
     toast
   });
   const devices = T2(
@@ -2063,7 +2074,7 @@ function App() {
     />`;
   };
   return html8`
-    <${Header} summary=${summary} />
+    <${Header} summary=${summary} dataRange=${dataRange} />
     ${renderMainContent()}
     ${selectedJob && html8`<${Modal}
       key=${selectedJob.id}

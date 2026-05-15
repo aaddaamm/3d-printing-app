@@ -184,6 +184,7 @@ function App() {
   const [projects, setProjects] = useState([]);
   const [projectPrices, setProjectPrices] = useState({});
   const [summary, setSummary] = useState(null);
+  const [dataRange, setDataRange] = useState(null);
 
   const [view, setView] = useState("table");
   const [q, setQ] = useState("");
@@ -207,6 +208,7 @@ function App() {
     setProjects,
     setProjectPrices,
     setSummary,
+    setDataRange,
     toast,
   });
 
@@ -370,7 +372,7 @@ function App() {
   };
 
   return html`
-    <${Header} summary=${summary} />
+    <${Header} summary=${summary} dataRange=${dataRange} />
     ${renderMainContent()}
     ${selectedJob &&
     html`<${Modal}

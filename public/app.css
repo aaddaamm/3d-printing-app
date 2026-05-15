@@ -123,6 +123,11 @@ header h1 span:last-child {
 .header-left h1 {
   order: 0;
 }
+.header-range {
+  color: var(--subtext);
+  font-size: 12px;
+  order: 1;
+}
 .header-left .top-nav {
   order: 2;
 }
