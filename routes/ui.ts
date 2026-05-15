@@ -6,14 +6,14 @@ import { localCoverPath, localCoverExists } from "../lib/covers.js";
 import { listUiJobs } from "../models/ui.js";
 import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 
-const INDEX_HTML_PATH = fileURLToPath(new URL("../public/index.html", import.meta.url));
-const APP_JS_PATH = fileURLToPath(new URL("../public/dist/app.js", import.meta.url));
-const APP_CSS_PATH = fileURLToPath(new URL("../public/app.css", import.meta.url));
+const INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
+const APP_JS_PATH = fileURLToPath(new URL("../frontend/dist/app.js", import.meta.url));
+const APP_CSS_PATH = fileURLToPath(new URL("../frontend/app.css", import.meta.url));
 const INTER_FONT_PATH = fileURLToPath(
-  new URL("../public/fonts/Inter-VariableFont_slnt,wght.woff2", import.meta.url),
+  new URL("../frontend/fonts/Inter-VariableFont_slnt,wght.woff2", import.meta.url),
 );
 const JETBRAINS_FONT_PATH = fileURLToPath(
-  new URL("../public/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
+  new URL("../frontend/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
 );
 
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";

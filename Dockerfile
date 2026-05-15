@@ -9,7 +9,7 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-RUN npm run build && cp -r public dist/public
+RUN npm run build && cp -r frontend dist/frontend
 
 ENV PORT=3000
 EXPOSE 3000

@@ -33,7 +33,7 @@ lib/
   session-detection.ts  — Shared session grouping logic used by normalization
   types.ts              — Shared TypeScript interfaces
   util.ts               — Route/model utility helpers
-public/                 — Frontend (Preact + htm, no build step)
+frontend/               — Frontend (Preact + htm, no build step)
   index.html            — Shell HTML (API_KEY injected server-side)
   app.js                — Root component, routing, data fetching
   app.css               — All styles
@@ -94,7 +94,7 @@ npm test             # vitest run
 
 **Always run `npm run lint`, `npm run typecheck`, and `npm test` before committing.**
 The ESLint config (`eslint.config.js`) uses flat config with `typescript-eslint/recommended`
-and defers formatting to Prettier. The `public/` directory is excluded from ESLint (plain
+and defers formatting to Prettier. The `frontend/` directory is excluded from ESLint (plain
 JS, no TypeScript).
 
 Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas,
@@ -121,14 +121,14 @@ The UI uses **Preact 10 + htm** via ESM imports from `https://esm.sh` — no bui
 no bundler. Browser caches modules after first load; requires internet on first load.
 
 - `routes/ui.ts` is a thin server: injects `window.API_KEY` into the HTML shell,
-  serves static files from `public/`, provides `/data` and `/covers/:taskId` endpoints.
-- Components live in `public/components/` as plain `.js` modules.
-- Use `toast()` from `public/components/toast.js` for user feedback — **never use
+  serves static files from `frontend/`, provides `/data` and `/covers/:taskId` endpoints.
+- Components live in `frontend/components/` as plain `.js` modules.
+- Use `toast()` from `frontend/components/toast.js` for user feedback — **never use
   `alert()` or `confirm()`** in the frontend.
 
 **Adding new pages / features:**
 
-- Add new components to `public/components/`
+- Add new components to `frontend/components/`
 - Add new API endpoints in `routes/` and `models/` as needed
 - Do NOT add React/Vue/Svelte/Vite — build pipeline overhead isn't worth it
 

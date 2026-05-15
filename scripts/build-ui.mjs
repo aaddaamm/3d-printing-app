@@ -4,12 +4,12 @@ import * as esbuild from "esbuild";
 const watch = process.argv.includes("--watch");
 
 const options = {
-  entryPoints: ["public/app.js"],
+  entryPoints: ["frontend/app.js"],
   bundle: true,
   format: "esm",
   platform: "browser",
   target: ["es2022"],
-  outfile: "public/dist/app.js",
+  outfile: "frontend/dist/app.js",
   sourcemap: watch,
   logLevel: "info",
 };

@@ -453,7 +453,7 @@ function htm_module_default(s3) {
   })(s3)), r3), arguments, [])).length > 1 ? r3 : r3[0];
 }
 
-// public/components/router.js
+// frontend/components/router.js
 var html = htm_module_default.bind(k);
 var LocationContext = X(null);
 function RouterProvider({ base, children }) {
@@ -474,7 +474,7 @@ function useLocation() {
   return x2(LocationContext);
 }
 
-// public/components/helpers.js
+// frontend/components/helpers.js
 function fmtTime(s3) {
   if (!s3) return "\u2014";
   const h3 = Math.floor(s3 / 3600), m3 = Math.floor(s3 % 3600 / 60);
@@ -504,7 +504,7 @@ function fmtWeightTotal(g2) {
   return g2 >= 1e3 ? `${(g2 / 1e3).toFixed(2)} kg` : `${Math.round(g2)} g`;
 }
 
-// public/components/atoms.js
+// frontend/components/atoms.js
 var html2 = htm_module_default.bind(k);
 var BADGE_CLS = {
   finish: "badge badge-finish",
@@ -534,7 +534,7 @@ function FilamentSwatches({ colors }) {
   return html2`<span class="swatches">${hexes.map((h3) => html2`<span class="swatch" style=${"background:#" + h3} title=${"#" + h3} />`)}</span>`;
 }
 
-// public/components/jobs-view.js
+// frontend/components/jobs-view.js
 var html3 = htm_module_default.bind(k);
 function Header({ summary, dataRange }) {
   const [loc, navigate] = useLocation();
@@ -550,12 +550,24 @@ function Header({ summary, dataRange }) {
           </div>
         `}
         <nav class="top-nav">
-          <button class=${"nav-btn" + (!loc.startsWith("/projects") && !loc.startsWith("/admin") ? " active" : "")}
-            onClick=${() => navigate("/")}>Jobs</button>
-          <button class=${"nav-btn" + (loc.startsWith("/projects") ? " active" : "")}
-            onClick=${() => navigate("/projects")}>Projects</button>
-          <button class=${"nav-btn" + (loc.startsWith("/admin") ? " active" : "")}
-            onClick=${() => navigate("/admin")}>Rates</button>
+          <button
+            class=${"nav-btn" + (!loc.startsWith("/projects") && !loc.startsWith("/admin") ? " active" : "")}
+            onClick=${() => navigate("/")}
+          >
+            Jobs
+          </button>
+          <button
+            class=${"nav-btn" + (loc.startsWith("/projects") ? " active" : "")}
+            onClick=${() => navigate("/projects")}
+          >
+            Projects
+          </button>
+          <button
+            class=${"nav-btn" + (loc.startsWith("/admin") ? " active" : "")}
+            onClick=${() => navigate("/admin")}
+          >
+            Rates
+          </button>
         </nav>
       </div>
       <div class="stats">
@@ -579,7 +591,19 @@ function Header({ summary, dataRange }) {
     </header>
   `;
 }
-function Toolbar({ q: q3, setQ, statusFilter, setStatusFilter, deviceFilter, setDeviceFilter, devices, view, setView, filteredCount, totalCount }) {
+function Toolbar({
+  q: q3,
+  setQ,
+  statusFilter,
+  setStatusFilter,
+  deviceFilter,
+  setDeviceFilter,
+  devices,
+  view,
+  setView,
+  filteredCount,
+  totalCount
+}) {
   const csvUrl = T2(() => {
     const p3 = new URLSearchParams();
     if (statusFilter) p3.set("status", statusFilter);
@@ -589,8 +613,12 @@ function Toolbar({ q: q3, setQ, statusFilter, setStatusFilter, deviceFilter, set
   }, [statusFilter, deviceFilter]);
   return html3`
     <div class="toolbar">
-      <input type="search" placeholder="Search title or customer…"
-        value=${q3} onInput=${(e3) => setQ(e3.target.value)} />
+      <input
+        type="search"
+        placeholder="Search title or customer…"
+        value=${q3}
+        onInput=${(e3) => setQ(e3.target.value)}
+      />
       <select value=${statusFilter} onChange=${(e3) => setStatusFilter(e3.target.value)}>
         <option value="">All Statuses</option>
         <option value="finish">Finished</option>
@@ -604,10 +632,18 @@ function Toolbar({ q: q3, setQ, statusFilter, setStatusFilter, deviceFilter, set
         ${devices.map((d3) => html3`<option key=${d3} value=${d3}>${d3}</option>`)}
       </select>
       <div class="view-toggle">
-        <button class=${"view-btn" + (view === "table" ? " active" : "")}
-          onClick=${() => setView("table")}>☰ Table</button>
-        <button class=${"view-btn" + (view === "grid" ? " active" : "")}
-          onClick=${() => setView("grid")}>⊞ Grid</button>
+        <button
+          class=${"view-btn" + (view === "table" ? " active" : "")}
+          onClick=${() => setView("table")}
+        >
+          ☰ Table
+        </button>
+        <button
+          class=${"view-btn" + (view === "grid" ? " active" : "")}
+          onClick=${() => setView("grid")}
+        >
+          ⊞ Grid
+        </button>
       </div>
       <div class="toolbar-right">
         <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
@@ -656,7 +692,9 @@ function JobRow({ job, onJobClick }) {
       <td><${Badge} status=${job.status} /></td>
       <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
       <td class="td-num">${fmtTime(job.total_time_s)}</td>
-      <td class="td-num">${job.final_price != null ? html3`<strong>${fmtCurrency(job.final_price)}</strong>` : "\u2014"}</td>
+      <td class="td-num">
+        ${job.final_price != null ? html3`<strong>${fmtCurrency(job.final_price)}</strong>` : "\u2014"}
+      </td>
       <td class="td-num">${job.plate_count ?? "\u2014"}</td>
       <td>${job.customer && html3`<span class="customer-pill">${job.customer}</span>`}</td>
     </tr>
@@ -673,14 +711,21 @@ function TableView({ sorted, sortCol, sortDir, onSort, onJobClick }) {
     const active = col && col === sortCol;
     const thCls = [cls, active ? `sort-${sortDir}` : ""].filter(Boolean).join(" ");
     return html3`
-                <th key=${label} class=${thCls || void 0}
-                  onClick=${col ? () => onSort(col) : void 0}>${label}</th>
+                <th
+                  key=${label}
+                  class=${thCls || void 0}
+                  onClick=${col ? () => onSort(col) : void 0}
+                >
+                  ${label}
+                </th>
               `;
   })}
           </tr>
         </thead>
         <tbody>
-          ${sorted.map((job) => html3`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
+          ${sorted.map(
+    (job) => html3`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`
+  )}
         </tbody>
       </table>
     </div>
@@ -717,7 +762,7 @@ function GridView({ sorted, onJobClick }) {
   `;
 }
 
-// public/hooks/use-escape-close.js
+// frontend/hooks/use-escape-close.js
 function useEscapeClose(onClose) {
   y2(() => {
     const handler = (e3) => {
@@ -728,7 +773,7 @@ function useEscapeClose(onClose) {
   }, [onClose]);
 }
 
-// public/components/modal.js
+// frontend/components/modal.js
 var html4 = htm_module_default.bind(k);
 function PricingSection({ jobId }) {
   const [price, setPrice] = d2(null);
@@ -951,7 +996,7 @@ function Modal({
   `;
 }
 
-// public/components/toast.js
+// frontend/components/toast.js
 var html5 = htm_module_default.bind(k);
 var _addToast = () => {
 };
@@ -986,12 +1031,12 @@ function ToastContainer() {
   `;
 }
 
-// public/lib/constants.js
+// frontend/lib/constants.js
 var FETCH_TIMEOUT_MS = 15e3;
 var BOOT_FAILSAFE_MS = 2e4;
 var TOTAL_BOOT_REQUESTS = 5;
 
-// public/lib/api.js
+// frontend/lib/api.js
 async function errorMessage(res, fallback) {
   try {
     const data = await res.json();
@@ -1047,7 +1092,7 @@ async function postJsonOrToast(url, payload, fallback) {
   });
 }
 
-// public/components/projects-view.js
+// frontend/components/projects-view.js
 var html6 = htm_module_default.bind(k);
 function NewProjectModal({ onClose, onCreate }) {
   const [name, setName] = d2("");
@@ -1385,7 +1430,7 @@ function ProjectsView({
   `;
 }
 
-// public/components/admin-view.js
+// frontend/components/admin-view.js
 var html7 = htm_module_default.bind(k);
 function RateField({ label, value, onChange, step = "0.01", min = "0" }) {
   return html7`
@@ -1656,7 +1701,7 @@ function AdminView({ onRatesChanged = () => {
   `;
 }
 
-// public/components/bootstrap.js
+// frontend/components/bootstrap.js
 function useDashboardBootstrap({
   setJobs,
   setProjects,
@@ -1755,7 +1800,7 @@ function useDashboardBootstrap({
   };
 }
 
-// public/app.js
+// frontend/app.js
 var html8 = htm_module_default.bind(k);
 function filterJobs(jobs, q3, statusFilter, deviceFilter) {
   return jobs.filter((j3) => {

@@ -42,7 +42,7 @@ lib/
   types.ts              Shared TypeScript interfaces
   constants.ts          SESSION_GAP_S and other shared constants
   util.ts               Route/model utility helpers
-public/                 Preact 10 + htm frontend — no build step, ESM from esm.sh
+frontend/               Preact 10 + htm frontend — no build step, ESM from esm.sh
   app.js                Root component, routing, data fetching
   components/           Preact components (atoms, modal, views, toast, router)
 ```
@@ -58,8 +58,8 @@ public/                 Preact 10 + htm frontend — no build step, ESM from esm
 ## Important conventions
 
 - `better-sqlite3` is synchronous — no `await` on DB calls.
-- Frontend uses `toast()` from `public/components/toast.js` — never `alert()`/`confirm()`.
-- `public/` is excluded from ESLint (plain JS, no TypeScript).
+- Frontend uses `toast()` from `frontend/components/toast.js` — never `alert()`/`confirm()`.
+- `frontend/` is excluded from ESLint (plain JS, no TypeScript).
 - Do not add React/Vue/Svelte/Vite to the frontend.
 - Pricing: per-project applies one labor charge across all jobs; only **finished** plates count toward weight/time.
 - GitHub Issues are the source of truth for deferred work; check relevant open issues before significant changes.
