@@ -145,7 +145,15 @@ function NewProjectModal({
   `;
 }
 
-function ProjectCard({ project, totalPrice, onClick }: { project: Project; totalPrice: number | null; onClick: () => void }) {
+function ProjectCard({
+  project,
+  totalPrice,
+  onClick,
+}: {
+  project: Project;
+  totalPrice: number | null;
+  onClick: () => void;
+}) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
   return html`
@@ -253,11 +261,12 @@ function ProjectDetail({
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetchJsonOrToast<ProjectPrice>(`/projects/${project.id}/price`, "Failed to load project price.").then(
-      (d) => {
-        if (d) setPrice(d);
-      },
-    );
+    fetchJsonOrToast<ProjectPrice>(
+      `/projects/${project.id}/price`,
+      "Failed to load project price.",
+    ).then((d) => {
+      if (d) setPrice(d);
+    });
   }, [project.id, jobs.length]);
 
   const handleAdd = useCallback(

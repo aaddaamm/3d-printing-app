@@ -444,5 +444,6 @@ function App() {
   `;
 }
 
-const rootVNode = html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>` as ComponentChild;
+const rootVNode =
+  html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>` as ComponentChild;
 render(rootVNode, document.getElementById("app")!);

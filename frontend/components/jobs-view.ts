@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Jobs view — Header, Toolbar, TotalsBar, Table, Grid ──────────────────────
 
 import { h } from "preact";
@@ -22,7 +21,21 @@ const html = (
   }
 ).bind(h);
 
-type Job = Record<string, any>;
+type Job = {
+  id: number;
+  designTitle?: string;
+  customer?: string | null;
+  status?: string;
+  deviceModel?: string;
+  startTime?: string;
+  total_weight_g?: number | null;
+  total_time_s?: number | null;
+  final_price?: number | null;
+  plate_count?: number | null;
+  print_run?: number;
+  cover_url?: string | null;
+  filament_colors?: string[];
+};
 
 type Summary = { totals?: Record<string, number> | null } | null;
 type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
@@ -201,7 +214,7 @@ function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void 
         <span class="row-title" title=${job.designTitle || "Untitled"}>
           ${job.designTitle || "Untitled Job"}
         </span>
-        ${job.print_run > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+        ${(job.print_run ?? 1) > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
         <${FilamentSwatches} colors=${job.filament_colors} />
       </td>
       <td>${job.deviceModel || "—"}</td>
@@ -277,7 +290,7 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
         </div>
         <div class="card-footer">
           <${Badge} status=${job.status} />
-          ${job.print_run > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+          ${(job.print_run ?? 1) > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
           ${job.customer && html`<span class="customer-pill">${job.customer}</span>`}
           <${FilamentSwatches} colors=${job.filament_colors} />
         </div>
