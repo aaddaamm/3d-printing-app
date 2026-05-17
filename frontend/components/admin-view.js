@@ -5,7 +5,7 @@ import { useState, useEffect } from "preact/hooks";
 import htm from "htm";
 
 import { fmtCurrency } from "./helpers.js";
-import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.js";
+import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.ts";
 
 const html = htm.bind(h);
 

@@ -2,12 +2,12 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback } from "preact/hooks";
-import { useEscapeClose } from "../hooks/use-escape-close.js";
+import { useEscapeClose } from "../hooks/use-escape-close.ts";
 import htm from "htm";
 
-import { fetchJsonResult } from "../lib/api.js";
+import { fetchJsonResult } from "../lib/api.ts";
 import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.js";
-import { Badge, CoverImg, FilamentSwatches } from "./atoms.js";
+import { Badge, FilamentSwatches } from "./atoms.js";
 
 const html = htm.bind(h);
 

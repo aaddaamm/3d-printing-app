@@ -8,8 +8,8 @@ import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
 import { toast, ToastContainer } from "./components/toast.js";
-import { fetchJson, patchJsonOrToast } from "./lib/api.js";
-import { useDashboardBootstrap } from "./components/bootstrap.js";
+import { fetchJson, patchJsonOrToast } from "./lib/api.ts";
+import { useDashboardBootstrap } from "./components/bootstrap.ts";
 
 const html = htm.bind(h);
 

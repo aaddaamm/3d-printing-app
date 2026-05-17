@@ -15,8 +15,8 @@ import {
 import { Badge, RowThumb } from "./atoms.js";
 import { toast } from "./toast.js";
 import { useLocation } from "./router.js";
-import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.js";
-import { useEscapeClose } from "../hooks/use-escape-close.js";
+import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.ts";
+import { useEscapeClose } from "../hooks/use-escape-close.ts";
 
 const html = htm.bind(h);
 

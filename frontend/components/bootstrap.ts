@@ -2,6 +2,18 @@ import { useEffect, useState, useCallback } from "preact/hooks";
 import { fetchJson, fetchJsonResult } from "../lib/api.js";
 import { BOOT_FAILSAFE_MS, TOTAL_BOOT_REQUESTS } from "../lib/constants.js";
 
+type JobRow = { id: number; final_price?: number | null; [key: string]: unknown };
+type PricesResponse = { prices?: Record<number, number> };
+
+type BootstrapArgs = {
+  setJobs: (updater: JobRow[] | ((jobs: JobRow[]) => JobRow[])) => void;
+  setProjects: (projects: unknown[]) => void;
+  setProjectPrices: (prices: Record<number, number>) => void;
+  setSummary: (summary: unknown) => void;
+  setDataRange: (range: unknown) => void;
+  toast: (message: string, kind: "error" | "success") => void;
+};
+
 export function useDashboardBootstrap({
   setJobs,
   setProjects,
@@ -9,15 +21,25 @@ export function useDashboardBootstrap({
   setSummary,
   setDataRange,
   toast,
-}) {
+}: BootstrapArgs) {
   const [loading, setLoading] = useState(true);
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [loadProgress, setLoadProgress] = useState(0);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState<string | null>(null);
   const [bootStatus, setBootStatus] = useState("Starting dashboard…");
 
   const loadOptional = useCallback(
-    async ({ url, fallback, onData, onFinally }) => {
+    async ({
+      url,
+      fallback,
+      onData,
+      onFinally,
+    }: {
+      url: string;
+      fallback: string;
+      onData: (data: any) => void;
+      onFinally?: () => void;
+    }) => {
       const { data, error } = await fetchJsonResult(url, fallback);
       if (error) toast(error.message || fallback, "error");
       if (data) onData(data);
@@ -47,12 +69,12 @@ export function useDashboardBootstrap({
       loadOptional({
         url: "/jobs/prices",
         fallback,
-        onData: (d) => {
+        onData: (d: PricesResponse) => {
           if (!d?.prices) return;
           setJobs((js) =>
             js.map((j) => ({
               ...j,
-              final_price: d.prices[j.id] ?? (merge ? j.final_price : null) ?? null,
+              final_price: d.prices?.[j.id] ?? (merge ? j.final_price : null) ?? null,
             })),
           );
         },
@@ -62,9 +84,8 @@ export function useDashboardBootstrap({
   );
 
   useEffect(() => {
-    const advanceProgress = () =>
-      setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
-    const trackedFetchJson = (url, fallback) => {
+    const advanceProgress = () => setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
+    const trackedFetchJson = (url: string, fallback: string) => {
       setBootStatus(`Loading ${url}…`);
       return fetchJson(url, fallback)
         .catch((err) => {
@@ -85,7 +106,7 @@ export function useDashboardBootstrap({
       trackedFetchJson("/summary", "Failed to load summary."),
       trackedFetchJson("/health/data-range", "Failed to load print history range."),
     ])
-      .then(([data, sum, range]) => {
+      .then(([data, sum, range]: any[]) => {
         setJobs(data.jobs);
         setSummary(sum);
         setDataRange(range);
@@ -94,7 +115,7 @@ export function useDashboardBootstrap({
         refreshJobPrices(false);
         refreshProjectsAndPrices();
       })
-      .catch((err) => {
+      .catch((err: Error) => {
         setError(err.message);
         setLoading(false);
         setProjectsLoading(false);
