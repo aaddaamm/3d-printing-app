@@ -7,7 +7,14 @@ import {
   getJobPrice,
   getAllJobPrices,
 } from "../models/jobs.js";
-import { parseId, parseJsonBody, unknownFields } from "../lib/util.js";
+import {
+  parseJsonBody,
+  unknownFields,
+  jsonError,
+  requireId,
+  isNullableString,
+  isNullableFiniteNumber,
+} from "../lib/util.js";
 import { getProjectById } from "../models/projects.js";
 
 export const jobs = new Hono();
@@ -83,50 +90,50 @@ jobs.get("/export.csv", (c) => {
 });
 
 jobs.get("/:id", (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
-  const result = getJobWithDetails(id);
-  if (!result) return c.json({ error: "Not found" }, 404);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  const result = getJobWithDetails(idOrError);
+  if (!result) return jsonError(c, "Not found", 404);
   return c.json(result);
 });
 
 jobs.patch("/:id", async (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
-  if (!getJobById(id)) return c.json({ error: "Not found" }, 404);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!getJobById(idOrError)) return jsonError(c, "Not found", 404);
 
   const body = await parseJsonBody(c);
-  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+  if (!body) return jsonError(c, "Invalid JSON body", 400);
 
   const unknown = unknownFields(body, ALL_FIELDS as readonly string[]);
-  if (unknown.length) return c.json({ error: `Unknown fields: ${unknown.join(", ")}` }, 400);
+  if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
 
   for (const field of NUMERIC_FIELDS) {
     if (!(field in body)) continue;
     const v = body[field];
-    if (v !== null && (typeof v !== "number" || !Number.isFinite(v))) {
-      return c.json({ error: `${field} must be a finite number or null` }, 400);
+    if (!isNullableFiniteNumber(v)) {
+      return jsonError(c, `${field} must be a finite number or null`, 400);
     }
   }
   for (const field of TEXT_FIELDS) {
     if (!(field in body)) continue;
     const v = body[field];
-    if (v !== null && typeof v !== "string") {
-      return c.json({ error: `${field} must be a string or null` }, 400);
+    if (!isNullableString(v)) {
+      return jsonError(c, `${field} must be a string or null`, 400);
     }
   }
 
   if (body["project_id"] != null) {
     const projectId = body["project_id"] as number;
     if (!Number.isInteger(projectId)) {
-      return c.json({ error: "project_id must be an integer or null" }, 400);
+      return jsonError(c, "project_id must be an integer or null", 400);
     }
     if (!getProjectById(projectId)) {
-      return c.json({ error: "project_id does not reference an existing project" }, 400);
+      return jsonError(c, "project_id does not reference an existing project", 400);
     }
   }
 
-  const job = patchJob(id, {
+  const job = patchJob(idOrError, {
     customer: body["customer"] as string | null | undefined,
     notes: body["notes"] as string | null | undefined,
     price_override: body["price_override"] as number | null | undefined,
@@ -138,13 +145,13 @@ jobs.patch("/:id", async (c) => {
 });
 
 jobs.get("/:id/price", (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
   try {
-    const result = getJobPrice(id);
-    if (!result) return c.json({ error: "Not found" }, 404);
+    const result = getJobPrice(idOrError);
+    if (!result) return jsonError(c, "Not found", 404);
     return c.json(result);
   } catch (e) {
-    return c.json({ error: e instanceof Error ? e.message : String(e) }, 500);
+    return jsonError(c, e instanceof Error ? e.message : String(e), 500);
   }
 });

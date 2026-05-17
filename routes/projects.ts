@@ -11,7 +11,13 @@ import {
   getProjectPrice,
   getAllProjectPrices,
 } from "../models/projects.js";
-import { parseId, parseJsonBody, unknownFields } from "../lib/util.js";
+import {
+  requireId,
+  parseJsonBody,
+  unknownFields,
+  jsonError,
+  isNullableString,
+} from "../lib/util.js";
 
 export const projects = new Hono();
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
@@ -51,18 +57,18 @@ projects.post("/cleanup-junk", (c) => {
 
 projects.post("/", async (c) => {
   const body = await parseJsonBody(c);
-  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+  if (!body) return jsonError(c, "Invalid JSON body", 400);
   const name = body.name;
   const customer = body.customer;
   const notes = body.notes;
 
   if (!name || typeof name !== "string" || !name.trim()) {
-    return c.json({ error: "name is required" }, 400);
+    return jsonError(c, "name is required", 400);
   }
   for (const field of ["customer", "notes"] as const) {
     const value = body[field];
-    if (field in body && value !== null && typeof value !== "string") {
-      return c.json({ error: `${field} must be a string or null` }, 400);
+    if (field in body && !isNullableString(value)) {
+      return jsonError(c, `${field} must be a string or null`, 400);
     }
   }
   const project = createProject({
@@ -74,49 +80,49 @@ projects.post("/", async (c) => {
 });
 
 projects.get("/:id/price", (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
-  if (!getProjectById(id)) return c.json({ error: "Not found" }, 404);
-  const breakdown = getProjectPrice(id);
-  if (!breakdown) return c.json({ error: "Pricing config unavailable" }, 422);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!getProjectById(idOrError)) return jsonError(c, "Not found", 404);
+  const breakdown = getProjectPrice(idOrError);
+  if (!breakdown) return jsonError(c, "Pricing config unavailable", 422);
   return c.json(breakdown);
 });
 
 projects.get("/:id", (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
-  const project = getProjectById(id);
-  if (!project) return c.json({ error: "Not found" }, 404);
-  const jobs = getProjectJobs(id);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  const project = getProjectById(idOrError);
+  if (!project) return jsonError(c, "Not found", 404);
+  const jobs = getProjectJobs(idOrError);
   return c.json({ project, jobs });
 });
 
 projects.patch("/:id", async (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
-  if (!getProjectById(id)) return c.json({ error: "Not found" }, 404);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!getProjectById(idOrError)) return jsonError(c, "Not found", 404);
 
   const body = await parseJsonBody(c);
-  if (!body) return c.json({ error: "Invalid JSON body" }, 400);
+  if (!body) return jsonError(c, "Invalid JSON body", 400);
 
   const unknown = unknownFields(body, ["name", "customer", "notes"]);
-  if (unknown.length) return c.json({ error: `Unknown fields: ${unknown.join(", ")}` }, 400);
+  if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
 
   const name = body.name;
   const customer = body.customer;
   const notes = body.notes;
 
   if ("name" in body && (typeof name !== "string" || !name.trim())) {
-    return c.json({ error: "name must be a non-empty string" }, 400);
+    return jsonError(c, "name must be a non-empty string", 400);
   }
   for (const field of ["customer", "notes"] as const) {
     const value = body[field];
-    if (field in body && value !== null && typeof value !== "string") {
-      return c.json({ error: `${field} must be a string or null` }, 400);
+    if (field in body && !isNullableString(value)) {
+      return jsonError(c, `${field} must be a string or null`, 400);
     }
   }
 
-  const project = patchProject(id, {
+  const project = patchProject(idOrError, {
     ...("name" in body ? { name: (name as string).trim() } : {}),
     ...("customer" in body ? { customer: (customer ?? null) as string | null } : {}),
     ...("notes" in body ? { notes: (notes ?? null) as string | null } : {}),
@@ -125,8 +131,8 @@ projects.patch("/:id", async (c) => {
 });
 
 projects.delete("/:id", (c) => {
-  const id = parseId(c);
-  if (id === null) return c.json({ error: "Invalid id" }, 400);
-  if (!deleteProject(id)) return c.json({ error: "Not found" }, 404);
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!deleteProject(idOrError)) return jsonError(c, "Not found", 404);
   return c.json({ ok: true });
 });

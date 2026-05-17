@@ -5,6 +5,7 @@ import { useState, useEffect, useCallback } from "preact/hooks";
 import { useEscapeClose } from "../hooks/use-escape-close.js";
 import htm from "htm";
 
+import { fetchJsonResult } from "../lib/api.js";
 import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.js";
 import { Badge, CoverImg, FilamentSwatches } from "./atoms.js";
 
@@ -13,11 +14,19 @@ const html = htm.bind(h);
 function PricingSection({ jobId }) {
   const [price, setPrice] = useState(null); // null = loading, false = unavailable
   useEffect(() => {
+    let active = true;
     setPrice(null);
-    fetch(`/jobs/${jobId}/price`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setPrice(d ?? false))
-      .catch(() => setPrice(false));
+    fetchJsonResult(`/jobs/${jobId}/price`, "Pricing not configured")
+      .then(({ data }) => {
+        if (active) setPrice(data ?? false);
+      })
+      .catch(() => {
+        if (active) setPrice(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [jobId]);
 
   if (price === null) return html`<div class="pricing-row pricing-loading">Loading price…</div>`;
