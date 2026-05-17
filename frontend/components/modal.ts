@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Modal ────────────────────────────────────────────────────────────────────
 
 import { h } from "preact";
@@ -16,7 +15,25 @@ const html = (
   }
 ).bind(h);
 
-type Job = Record<string, any>;
+type Job = {
+  id: number;
+  designTitle?: string;
+  cover_url?: string | null;
+  status?: string;
+  status_override?: string | null;
+  deviceModel?: string;
+  startTime?: string;
+  total_time_s?: number | null;
+  total_weight_g?: number | null;
+  filament_colors?: string[];
+  plate_count?: number | null;
+  print_run?: number;
+  extra_labor_minutes?: number | null;
+  customer?: string | null;
+  notes?: string | null;
+  price_override?: number | null;
+  project_id?: number | null;
+};
 type Project = { id: number; name: string };
 
 type Price = {
@@ -98,7 +115,7 @@ const STATUS_OPTIONS = ["finish", "failed", "cancel", "running", "pause"];
 type ModalProps = {
   job: Job;
   onClose: () => void;
-  onPatch: (jobId: number, patch: Record<string, any>) => void;
+  onPatch: (jobId: number, patch: Record<string, unknown>) => void;
   projects?: Project[];
   onJobProjectChange: (jobId: number, projectId: number | null) => void;
   onJobStatusChange: (jobId: number, statusOverride: string | null) => void;
@@ -183,7 +200,7 @@ export function Modal({
             <div class="detail-item">
               <label>Print Run</label>
               <div class="detail-val">
-                ${job.print_run > 1
+                ${(job.print_run ?? 1) > 1
                   ? `Run #${job.print_run} of this design`
                   : "1st print of this design"}
               </div>
@@ -278,7 +295,7 @@ export function Modal({
                   class="btn-link"
                   onClick=${() => {
                     onClose();
-                    onNavigateToProject(job.project_id);
+                    onNavigateToProject(Number(job.project_id));
                   }}
                 >
                   View →
