@@ -7,7 +7,7 @@ import htm from "htm";
 
 import { fetchJsonResult } from "../lib/api.ts";
 import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.ts";
-import { Badge, FilamentSwatches } from "./atoms.js";
+import { Badge, FilamentSwatches } from "./atoms.ts";
 
 const html = htm.bind(h);
 

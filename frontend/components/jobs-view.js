@@ -12,7 +12,7 @@ import {
   fmtWeight,
   fmtWeightTotal,
 } from "./helpers.ts";
-import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.js";
+import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.ts";
 import { useLocation } from "./router.ts";
 
 const html = htm.bind(h);
