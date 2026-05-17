@@ -13,7 +13,7 @@
     onError=${()=>r(!0)}
   />`}function Wt({colors:t}){if(!(t!=null&&t.length))return null;const e=[...new Set(t.map(n=>n.slice(0,6).toUpperCase()))].filter(n=>n!=="FFFFFF");return e.length?Q`<span class="swatches"
     >${e.map(n=>Q`<span class="swatch" style=${"background:#"+n} title=${"#"+n} />`)}</span
-  >`:null}const A=V.bind(H);function an({summary:t,dataRange:e}){const[n,r]=Ot(),s=t==null?void 0:t.totals;return A`
+  >`:null}const A=V.bind(H);function an({summary:t,dataRange:e}){var a,o;const[n,r]=Ot(),s=t==null?void 0:t.totals;return A`
     <header>
       <div class="header-left">
         <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
@@ -46,19 +46,19 @@
       </div>
       <div class="stats">
         <div class="stat">
-          <div class="stat-val">${s?s.total_jobs.toLocaleString():"—"}</div>
+          <div class="stat-val">${s?(a=s.total_jobs)==null?void 0:a.toLocaleString():"—"}</div>
           <div class="stat-lbl">Total Jobs</div>
         </div>
         <div class="stat">
-          <div class="stat-val">${s?(s.total_weight_g/1e3).toFixed(2):"—"}</div>
+          <div class="stat-val">${s?((s.total_weight_g??0)/1e3).toFixed(2):"—"}</div>
           <div class="stat-lbl">Filament kg</div>
         </div>
         <div class="stat">
-          <div class="stat-val">${s?(s.total_time_s/3600).toFixed(1):"—"}</div>
+          <div class="stat-val">${s?((s.total_time_s??0)/3600).toFixed(1):"—"}</div>
           <div class="stat-lbl">Print Hours</div>
         </div>
         <div class="stat">
-          <div class="stat-val">${s?s.total_plates.toLocaleString():"—"}</div>
+          <div class="stat-val">${s?(o=s.total_plates)==null?void 0:o.toLocaleString():"—"}</div>
           <div class="stat-lbl">Plates</div>
         </div>
       </div>
@@ -84,18 +84,8 @@
         ${o.map(u=>A`<option key=${u} value=${u}>${u}</option>`)}
       </select>
       <div class="view-toggle">
-        <button
-          class=${"view-btn"+(l==="table"?" active":"")}
-          onClick=${()=>d("table")}
-        >
-          ☰ Table
-        </button>
-        <button
-          class=${"view-btn"+(l==="grid"?" active":"")}
-          onClick=${()=>d("grid")}
-        >
-          ⊞ Grid
-        </button>
+        <button class=${"view-btn"+(l==="table"?" active":"")} onClick=${()=>d("table")}>☰ Table</button>
+        <button class=${"view-btn"+(l==="grid"?" active":"")} onClick=${()=>d("grid")}>⊞ Grid</button>
       </div>
       <div class="toolbar-right">
         <a class="btn-csv" href=${i} download>↓ CSV</a>
@@ -212,7 +202,9 @@
         </div>
       `}
       <div class="pricing-row pricing-final">
-        <span>Final${e.is_override?D`<span class="override-tag">override</span>`:""}</span>
+        <span
+          >Final${e.is_override?D`<span class="override-tag">override</span>`:""}</span
+        >
         <span>${j(e.final_price)}</span>
       </div>
     </div>
@@ -233,17 +225,34 @@
                 ${t.status_override&&D`<span class="override-tag">override</span>`}
               </div>
             </div>
-            <div class="detail-item"><label>Printer</label><div class="detail-val">${t.deviceModel||"—"}</div></div>
-            <div class="detail-item"><label>Started</label><div class="detail-val">${Ht(t.startTime)}</div></div>
-            <div class="detail-item"><label>Duration</label><div class="detail-val">${G(t.total_time_s)}</div></div>
+            <div class="detail-item">
+              <label>Printer</label>
+              <div class="detail-val">${t.deviceModel||"—"}</div>
+            </div>
+            <div class="detail-item">
+              <label>Started</label>
+              <div class="detail-val">${Ht(t.startTime)}</div>
+            </div>
+            <div class="detail-item">
+              <label>Duration</label>
+              <div class="detail-val">${G(t.total_time_s)}</div>
+            </div>
             <div class="detail-item">
               <label>Filament</label>
-              <div class="detail-val">${yt(t.total_weight_g)} <${Wt} colors=${t.filament_colors} /></div>
+              <div class="detail-val">
+                ${yt(t.total_weight_g)}
+                <${Wt} colors=${t.filament_colors} />
+              </div>
             </div>
-            <div class="detail-item"><label>Plates</label><div class="detail-val">${t.plate_count??"—"}</div></div>
+            <div class="detail-item">
+              <label>Plates</label>
+              <div class="detail-val">${t.plate_count??"—"}</div>
+            </div>
             <div class="detail-item">
               <label>Print Run</label>
-              <div class="detail-val">${t.print_run>1?`Run #${t.print_run} of this design`:"1st print of this design"}</div>
+              <div class="detail-val">
+                ${t.print_run>1?`Run #${t.print_run} of this design`:"1st print of this design"}
+              </div>
             </div>
           </div>
           <${gn} jobId=${t.id} key=${t.id+"-"+t.extra_labor_minutes} />
@@ -297,7 +306,11 @@
           </div>
           <div class="modal-project-row">
             <label class="modal-project-label">Status override</label>
-            <select class="modal-project-select" value=${t.status_override??""} onChange=${m}>
+            <select
+              class="modal-project-select"
+              value=${t.status_override??""}
+              onChange=${m}
+            >
               <option value="">Auto (from printer)</option>
               ${bn.map(p=>D`<option key=${p} value=${p}>${p}</option>`)}
             </select>
@@ -305,7 +318,11 @@
           ${r&&D`
             <div class="modal-project-row">
               <label class="modal-project-label">Project</label>
-              <select class="modal-project-select" value=${t.project_id??""} onChange=${_}>
+              <select
+                class="modal-project-select"
+                value=${t.project_id??""}
+                onChange=${_}
+              >
                 <option value="">— None —</option>
                 ${r.map(p=>D`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
               </select>

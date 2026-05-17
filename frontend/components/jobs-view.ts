@@ -11,15 +11,24 @@ import {
   fmtCurrency,
   fmtWeight,
   fmtWeightTotal,
-} from "./helpers.ts";
-import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.ts";
-import { useLocation } from "./router.ts";
+} from "./helpers.js";
+import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.js";
+import { useLocation } from "./router.js";
 
-const html = htm.bind(h);
+const html = (
+  htm as unknown as {
+    bind: (
+      renderer: typeof h,
+    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+  }
+).bind(h);
 
-// ── Header ───────────────────────────────────────────────────────────────────
+type Job = Record<string, any>;
 
-export function Header({ summary, dataRange }) {
+type Summary = { totals?: Record<string, number> | null } | null;
+type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
+
+export function Header({ summary, dataRange }: { summary: Summary; dataRange: DataRange }) {
   const [loc, navigate] = useLocation();
   const t = summary?.totals;
   return html`
@@ -58,27 +67,25 @@ export function Header({ summary, dataRange }) {
       </div>
       <div class="stats">
         <div class="stat">
-          <div class="stat-val">${t ? t.total_jobs.toLocaleString() : "—"}</div>
+          <div class="stat-val">${t ? t.total_jobs?.toLocaleString() : "—"}</div>
           <div class="stat-lbl">Total Jobs</div>
         </div>
         <div class="stat">
-          <div class="stat-val">${t ? (t.total_weight_g / 1000).toFixed(2) : "—"}</div>
+          <div class="stat-val">${t ? ((t.total_weight_g ?? 0) / 1000).toFixed(2) : "—"}</div>
           <div class="stat-lbl">Filament kg</div>
         </div>
         <div class="stat">
-          <div class="stat-val">${t ? (t.total_time_s / 3600).toFixed(1) : "—"}</div>
+          <div class="stat-val">${t ? ((t.total_time_s ?? 0) / 3600).toFixed(1) : "—"}</div>
           <div class="stat-lbl">Print Hours</div>
         </div>
         <div class="stat">
-          <div class="stat-val">${t ? t.total_plates.toLocaleString() : "—"}</div>
+          <div class="stat-val">${t ? t.total_plates?.toLocaleString() : "—"}</div>
           <div class="stat-lbl">Plates</div>
         </div>
       </div>
     </header>
   `;
 }
-
-// ── Toolbar ──────────────────────────────────────────────────────────────────
 
 export function Toolbar({
   q,
@@ -92,6 +99,18 @@ export function Toolbar({
   setView,
   filteredCount,
   totalCount,
+}: {
+  q: string;
+  setQ: (q: string) => void;
+  statusFilter: string;
+  setStatusFilter: (v: string) => void;
+  deviceFilter: string;
+  setDeviceFilter: (v: string) => void;
+  devices: string[];
+  view: string;
+  setView: (v: string) => void;
+  filteredCount: number;
+  totalCount: number;
 }) {
   const csvUrl = useMemo(() => {
     const p = new URLSearchParams();
@@ -107,9 +126,9 @@ export function Toolbar({
         type="search"
         placeholder="Search title or customer…"
         value=${q}
-        onInput=${(e) => setQ(e.target.value)}
+        onInput=${(e: Event) => setQ((e.target as HTMLInputElement).value)}
       />
-      <select value=${statusFilter} onChange=${(e) => setStatusFilter(e.target.value)}>
+      <select value=${statusFilter} onChange=${(e: Event) => setStatusFilter((e.target as HTMLSelectElement).value)}>
         <option value="">All Statuses</option>
         <option value="finish">Finished</option>
         <option value="cancel">Cancelled</option>
@@ -117,23 +136,13 @@ export function Toolbar({
         <option value="failed">Failed</option>
         <option value="pause">Paused</option>
       </select>
-      <select value=${deviceFilter} onChange=${(e) => setDeviceFilter(e.target.value)}>
+      <select value=${deviceFilter} onChange=${(e: Event) => setDeviceFilter((e.target as HTMLSelectElement).value)}>
         <option value="">All Printers</option>
         ${devices.map((d) => html`<option key=${d} value=${d}>${d}</option>`)}
       </select>
       <div class="view-toggle">
-        <button
-          class=${"view-btn" + (view === "table" ? " active" : "")}
-          onClick=${() => setView("table")}
-        >
-          ☰ Table
-        </button>
-        <button
-          class=${"view-btn" + (view === "grid" ? " active" : "")}
-          onClick=${() => setView("grid")}
-        >
-          ⊞ Grid
-        </button>
+        <button class=${"view-btn" + (view === "table" ? " active" : "")} onClick=${() => setView("table")}>☰ Table</button>
+        <button class=${"view-btn" + (view === "grid" ? " active" : "")} onClick=${() => setView("grid")}>⊞ Grid</button>
       </div>
       <div class="toolbar-right">
         <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
@@ -143,9 +152,7 @@ export function Toolbar({
   `;
 }
 
-// ── Totals bar ───────────────────────────────────────────────────────────────
-
-export function TotalsBar({ filtered, isFiltered }) {
+export function TotalsBar({ filtered, isFiltered }: { filtered: Job[]; isFiltered: boolean }) {
   if (!isFiltered || !filtered.length) return null;
   const totW = filtered.reduce((s, j) => s + (j.total_weight_g || 0), 0);
   const totT = filtered.reduce((s, j) => s + (j.total_time_s || 0), 0);
@@ -159,9 +166,7 @@ export function TotalsBar({ filtered, isFiltered }) {
   `;
 }
 
-// ── Table ────────────────────────────────────────────────────────────────────
-
-const TABLE_COLS = [
+const TABLE_COLS: Array<{ col: string | null; label: string; cls: string }> = [
   { col: "designTitle", label: "Title", cls: "sortable td-title" },
   { col: "deviceModel", label: "Printer", cls: "sortable" },
   { col: "startTime", label: "Date", cls: "sortable" },
@@ -173,7 +178,7 @@ const TABLE_COLS = [
   { col: null, label: "Customer", cls: "" },
 ];
 
-function JobRow({ job, onJobClick }) {
+function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
   return html`
     <tr onClick=${() => onJobClick(job)}>
       <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
@@ -198,7 +203,19 @@ function JobRow({ job, onJobClick }) {
   `;
 }
 
-export function TableView({ sorted, sortCol, sortDir, onSort, onJobClick }) {
+export function TableView({
+  sorted,
+  sortCol,
+  sortDir,
+  onSort,
+  onJobClick,
+}: {
+  sorted: Job[];
+  sortCol: string;
+  sortDir: "asc" | "desc";
+  onSort: (col: string) => void;
+  onJobClick: (job: Job) => void;
+}) {
   return html`
     <div class="table-wrap">
       <table>
@@ -230,9 +247,7 @@ export function TableView({ sorted, sortCol, sortDir, onSort, onJobClick }) {
   `;
 }
 
-// ── Grid ─────────────────────────────────────────────────────────────────────
-
-function JobCard({ job, onJobClick }) {
+function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
   return html`
     <div class="card" onClick=${() => onJobClick(job)}>
       <${CoverImg} url=${job.cover_url} className="cover" />
@@ -256,7 +271,7 @@ function JobCard({ job, onJobClick }) {
   `;
 }
 
-export function GridView({ sorted, onJobClick }) {
+export function GridView({ sorted, onJobClick }: { sorted: Job[]; onJobClick: (job: Job) => void }) {
   return html`
     <div class="grid-view">
       ${sorted.map((job) => html`<${JobCard} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
