@@ -11,10 +11,10 @@ import {
   fmtDateShort,
   fmtDate,
   fmtWeight,
-} from "./helpers.js";
+} from "./helpers.ts";
 import { Badge, RowThumb } from "./atoms.js";
-import { toast } from "./toast.js";
-import { useLocation } from "./router.js";
+import { toast } from "./toast.ts";
+import { useLocation } from "./router.ts";
 import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.ts";
 import { useEscapeClose } from "../hooks/use-escape-close.ts";
 

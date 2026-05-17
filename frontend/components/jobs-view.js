@@ -11,9 +11,9 @@ import {
   fmtCurrency,
   fmtWeight,
   fmtWeightTotal,
-} from "./helpers.js";
+} from "./helpers.ts";
 import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.js";
-import { useLocation } from "./router.js";
+import { useLocation } from "./router.ts";
 
 const html = htm.bind(h);
 

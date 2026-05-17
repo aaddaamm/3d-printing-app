@@ -84,7 +84,8 @@ export function useDashboardBootstrap({
   );
 
   useEffect(() => {
-    const advanceProgress = () => setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
+    const advanceProgress = () =>
+      setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
     const trackedFetchJson = (url: string, fallback: string) => {
       setBootStatus(`Loading ${url}…`);
       return fetchJson(url, fallback)

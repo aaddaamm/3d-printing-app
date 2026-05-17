@@ -2,12 +2,12 @@ import { h, render } from "preact";
 import { useState, useMemo, useCallback } from "preact/hooks";
 import htm from "htm";
 
-import { RouterProvider, useLocation } from "./components/router.js";
+import { RouterProvider, useLocation } from "./components/router.ts";
 import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";
 import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
-import { toast, ToastContainer } from "./components/toast.js";
+import { toast, ToastContainer } from "./components/toast.ts";
 import { fetchJson, patchJsonOrToast } from "./lib/api.ts";
 import { useDashboardBootstrap } from "./components/bootstrap.ts";
 

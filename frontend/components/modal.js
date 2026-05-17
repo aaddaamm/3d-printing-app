@@ -6,7 +6,7 @@ import { useEscapeClose } from "../hooks/use-escape-close.ts";
 import htm from "htm";
 
 import { fetchJsonResult } from "../lib/api.ts";
-import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.js";
+import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.ts";
 import { Badge, FilamentSwatches } from "./atoms.js";
 
 const html = htm.bind(h);
