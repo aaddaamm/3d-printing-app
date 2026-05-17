@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { h, render } from "preact";
+import { h, render, type ComponentChild } from "preact";
 import { useState, useMemo, useCallback } from "preact/hooks";
 import htm from "htm";
 
@@ -18,9 +17,26 @@ const html = (
   }
 ).bind(h);
 
-type AnyObj = Record<string, any>;
+type Summary = { totals?: Record<string, number> | null } | null;
+type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
 
-function filterJobs(jobs: AnyObj[], q: string, statusFilter: string, deviceFilter: string) {
+type Job = {
+  id: number;
+  project_id?: number | null;
+  deviceModel?: string;
+  status?: string;
+  startTime?: string;
+  designTitle?: string;
+  customer?: string;
+  [key: string]: unknown;
+};
+
+type Project = {
+  id: number;
+  [key: string]: unknown;
+};
+
+function filterJobs(jobs: Job[], q: string, statusFilter: string, deviceFilter: string) {
   return jobs.filter((j) => {
     const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
     if (q && !text.includes(q.toLowerCase())) return false;
@@ -30,16 +46,19 @@ function filterJobs(jobs: AnyObj[], q: string, statusFilter: string, deviceFilte
   });
 }
 
-function sortJobs(filtered: AnyObj[], sortCol: string, sortDir: "asc" | "desc") {
+function sortJobs(filtered: Job[], sortCol: string, sortDir: "asc" | "desc") {
   return [...filtered].sort((a, b) => {
-    let av = a[sortCol];
-    let bv = b[sortCol];
+    let av = a[sortCol] as string | number | null | undefined;
+    let bv = b[sortCol] as string | number | null | undefined;
     if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
     if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
     if (typeof av === "string") {
-      return sortDir === "asc" ? av.localeCompare(bv) : bv.localeCompare(av);
+      const bvs = typeof bv === "string" ? bv : String(bv);
+      return sortDir === "asc" ? av.localeCompare(bvs) : bvs.localeCompare(av);
     }
-    return sortDir === "asc" ? av - bv : bv - av;
+    const avn = Number(av);
+    const bvn = Number(bv);
+    return sortDir === "asc" ? avn - bvn : bvn - avn;
   });
 }
 
@@ -114,9 +133,17 @@ function ProjectRouteView({
   navigate,
   setSelectedJob,
   handleJobProjectChange,
-}: AnyObj) {
-  const project = projects.find((p: AnyObj) => p.id === projectId);
-  const projectJobs = jobs.filter((j: AnyObj) => j.project_id === projectId);
+}: {
+  projectId: number;
+  projects: Project[];
+  jobs: Job[];
+  projectsLoading: boolean;
+  navigate: (path: string) => void;
+  setSelectedJob: (job: Job | null) => void;
+  handleJobProjectChange: (jobId: number, projectId: number | null) => void;
+}) {
+  const project = projects.find((p) => p.id === projectId);
+  const projectJobs = jobs.filter((j) => j.project_id === projectId);
 
   if (!project) {
     return projectsLoading
@@ -124,7 +151,7 @@ function ProjectRouteView({
       : html`<div class="empty">Project not found.</div>`;
   }
 
-  const unassignedJobs = jobs.filter((j: AnyObj) => j.project_id == null);
+  const unassignedJobs = jobs.filter((j) => j.project_id == null);
   return html`<${ProjectDetail}
     project=${project}
     jobs=${projectJobs}
@@ -154,7 +181,25 @@ function JobsRouteView({
   sortDir,
   onSort,
   onJobClick,
-}: AnyObj) {
+}: {
+  q: string;
+  setQ: (q: string) => void;
+  statusFilter: string;
+  setStatusFilter: (v: string) => void;
+  deviceFilter: string;
+  setDeviceFilter: (v: string) => void;
+  devices: string[];
+  view: string;
+  setView: (view: string) => void;
+  filtered: Job[];
+  jobs: Job[];
+  isFiltered: boolean;
+  sorted: Job[];
+  sortCol: string;
+  sortDir: "asc" | "desc";
+  onSort: (col: string) => void;
+  onJobClick: (job: Job) => void;
+}) {
   return html`
     <${Toolbar}
       q=${q}
@@ -187,11 +232,11 @@ function JobsRouteView({
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [jobs, setJobs] = useState<AnyObj[]>([]);
-  const [projects, setProjects] = useState<AnyObj[]>([]);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [projectPrices, setProjectPrices] = useState<Record<number, number>>({});
-  const [summary, setSummary] = useState<any>(null);
-  const [dataRange, setDataRange] = useState<any>(null);
+  const [summary, setSummary] = useState<Summary>(null);
+  const [dataRange, setDataRange] = useState<DataRange>(null);
 
   const [view, setView] = useState("table");
   const [q, setQ] = useState("");
@@ -199,7 +244,7 @@ function App() {
   const [deviceFilter, setDeviceFilter] = useState("");
   const [sortCol, setSortCol] = useState("startTime");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [selectedJob, setSelectedJob] = useState<AnyObj | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [loc, navigate] = useLocation();
 
   const {
@@ -211,11 +256,11 @@ function App() {
     refreshProjectsAndPrices,
     refreshJobPrices,
   } = useDashboardBootstrap({
-    setJobs: setJobs as any,
-    setProjects: setProjects as any,
+    setJobs,
+    setProjects: (items) => setProjects(items as Project[]),
     setProjectPrices,
-    setSummary: setSummary as any,
-    setDataRange: setDataRange as any,
+    setSummary: (next) => setSummary(next as Summary),
+    setDataRange: (next) => setDataRange(next as DataRange),
     toast,
   });
 
@@ -307,18 +352,20 @@ function App() {
     try {
       await refreshSummary();
       toast("Pricing refreshed from updated rates.", "success");
-    } catch (err: any) {
-      toast(err?.message || "Updated rates saved, but summary refresh failed.", "error");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Updated rates saved, but summary refresh failed.";
+      toast(message, "error");
     }
   }, [refreshJobPrices, refreshProjectsAndPrices, refreshSummary]);
 
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
-      fetchJson<any>("/ui/data", "Failed to refresh jobs."),
-      fetchJson<any>("/projects", "Failed to refresh projects."),
+      fetchJson<{ jobs: Job[] }>("/ui/data", "Failed to refresh jobs."),
+      fetchJson<{ projects: Project[] }>("/projects", "Failed to refresh projects."),
     ]);
-    setJobs(jobsData.jobs as AnyObj[]);
-    setProjects(projData.projects as AnyObj[]);
+    setJobs(jobsData.jobs);
+    setProjects(projData.projects);
     refreshJobPrices(true);
     refreshProjectsAndPrices();
   }, [refreshJobPrices, refreshProjectsAndPrices]);
@@ -397,5 +444,5 @@ function App() {
   `;
 }
 
-const rootVNode = html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>` as any;
+const rootVNode = html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>` as ComponentChild;
 render(rootVNode, document.getElementById("app")!);
