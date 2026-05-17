@@ -2,21 +2,38 @@
 
 import { h } from "preact";
 import { useState, useEffect, useCallback } from "preact/hooks";
-import { useEscapeClose } from "../hooks/use-escape-close.ts";
+import { useEscapeClose } from "../hooks/use-escape-close.js";
 import htm from "htm";
 
-import { fetchJsonResult } from "../lib/api.ts";
-import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.ts";
-import { Badge, FilamentSwatches } from "./atoms.ts";
+import { fetchJsonResult } from "../lib/api.js";
+import { fmtTime, fmtDate, fmtWeight, fmtCurrency } from "./helpers.js";
+import { Badge, FilamentSwatches } from "./atoms.js";
 
-const html = htm.bind(h);
+const html = (
+  htm as unknown as {
+    bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+  }
+).bind(h);
 
-function PricingSection({ jobId }) {
-  const [price, setPrice] = useState(null); // null = loading, false = unavailable
+type Job = Record<string, any>;
+type Project = { id: number; name: string };
+
+type Price = {
+  final_price: number;
+  base_price: number;
+  material_cost: number;
+  machine_cost: number;
+  labor_cost: number;
+  extra_labor_cost: number;
+  is_override?: boolean;
+};
+
+function PricingSection({ jobId }: { jobId: number }) {
+  const [price, setPrice] = useState<Price | false | null>(null);
   useEffect(() => {
     let active = true;
     setPrice(null);
-    fetchJsonResult(`/jobs/${jobId}/price`, "Pricing not configured")
+    fetchJsonResult<Price>(`/jobs/${jobId}/price`, "Pricing not configured")
       .then(({ data }) => {
         if (active) setPrice(data ?? false);
       })
@@ -77,6 +94,17 @@ function PricingSection({ jobId }) {
 
 const STATUS_OPTIONS = ["finish", "failed", "cancel", "running", "pause"];
 
+type ModalProps = {
+  job: Job;
+  onClose: () => void;
+  onPatch: (jobId: number, patch: Record<string, unknown>) => void;
+  projects?: Project[];
+  onJobProjectChange: (jobId: number, projectId: number | null) => void;
+  onJobStatusChange: (jobId: number, statusOverride: string | null) => void;
+  onJobExtraLaborChange: (jobId: number, minutes: number | null) => void;
+  onNavigateToProject: (projectId: number) => void;
+};
+
 export function Modal({
   job,
   onClose,
@@ -86,7 +114,7 @@ export function Modal({
   onJobStatusChange,
   onJobExtraLaborChange,
   onNavigateToProject,
-}) {
+}: ModalProps) {
   const [localCustomer, setLocalCustomer] = useState(job.customer ?? "");
   const [localNotes, setLocalNotes] = useState(job.notes ?? "");
   const [localPriceOverride, setLocalPriceOverride] = useState(
@@ -96,23 +124,23 @@ export function Modal({
   useEscapeClose(onClose);
 
   const handleProjectChange = useCallback(
-    (e) => {
-      const val = e.target.value;
+    (e: Event) => {
+      const val = (e.target as HTMLSelectElement).value;
       onJobProjectChange(job.id, val === "" ? null : Number(val));
     },
     [job.id, onJobProjectChange],
   );
 
   const handleStatusChange = useCallback(
-    (e) => {
-      const val = e.target.value;
+    (e: Event) => {
+      const val = (e.target as HTMLSelectElement).value;
       onJobStatusChange(job.id, val === "" ? null : val);
     },
     [job.id, onJobStatusChange],
   );
 
   return html`
-    <div class="overlay" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${(e: MouseEvent) => e.target === e.currentTarget && onClose()}>
       <div class="modal">
         <div class="modal-header">
           <h2>${job.designTitle || "Untitled Job"}</h2>
@@ -168,9 +196,10 @@ export function Modal({
               type="text"
               placeholder="—"
               value=${localCustomer}
-              onInput=${(e) => setLocalCustomer(e.target.value)}
+              onInput=${(e: Event) => setLocalCustomer((e.target as HTMLInputElement).value)}
               onBlur=${() => onPatch(job.id, { customer: localCustomer.trim() || null })}
-              onKeyDown=${(e) => e.key === "Enter" && e.target.blur()}
+              onKeyDown=${(e: KeyboardEvent) =>
+                e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             />
           </div>
           <div class="modal-project-row">
@@ -179,7 +208,7 @@ export function Modal({
               class="modal-project-select modal-notes"
               placeholder="—"
               value=${localNotes}
-              onInput=${(e) => setLocalNotes(e.target.value)}
+              onInput=${(e: Event) => setLocalNotes((e.target as HTMLTextAreaElement).value)}
               onBlur=${() => onPatch(job.id, { notes: localNotes.trim() || null })}
             />
           </div>
@@ -192,12 +221,13 @@ export function Modal({
               step="0.01"
               placeholder="Calculated"
               value=${localPriceOverride}
-              onInput=${(e) => setLocalPriceOverride(e.target.value)}
+              onInput=${(e: Event) => setLocalPriceOverride((e.target as HTMLInputElement).value)}
               onBlur=${() => {
                 const v = localPriceOverride === "" ? null : Number(localPriceOverride);
                 onPatch(job.id, { price_override: v });
               }}
-              onKeyDown=${(e) => e.key === "Enter" && e.target.blur()}
+              onKeyDown=${(e: KeyboardEvent) =>
+                e.key === "Enter" && (e.target as HTMLInputElement).blur()}
             />
           </div>
           <div class="modal-project-row">
@@ -209,8 +239,11 @@ export function Modal({
               step="1"
               placeholder="0"
               value=${job.extra_labor_minutes ?? ""}
-              onChange=${(e) => {
-                const v = e.target.value === "" ? null : Number(e.target.value);
+              onChange=${(e: Event) => {
+                const v =
+                  (e.target as HTMLInputElement).value === ""
+                    ? null
+                    : Number((e.target as HTMLInputElement).value);
                 onJobExtraLaborChange(job.id, v);
               }}
             />

@@ -4,7 +4,7 @@ import htm from "htm";
 
 import { RouterProvider, useLocation } from "./components/router.ts";
 import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";
-import { Modal } from "./components/modal.js";
+import { Modal } from "./components/modal.ts";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
 import { toast, ToastContainer } from "./components/toast.ts";

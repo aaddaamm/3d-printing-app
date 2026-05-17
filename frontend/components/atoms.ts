@@ -6,9 +6,7 @@ import htm from "htm";
 
 const html = (
   htm as unknown as {
-    bind: (
-      renderer: typeof h,
-    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+    bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
 
@@ -28,19 +26,25 @@ export function Badge({ status }: { status?: string | null }) {
 export function RowThumb({ url }: { url?: string | null }) {
   const [err, setErr] = useState(false);
   if (!url || err) return html`<div class="row-thumb-ph">🖨</div>`;
-  return html`<img class="row-thumb" src=${url} alt="" loading="lazy" onError=${() => setErr(true)} />`;
+  return html`<img
+    class="row-thumb"
+    src=${url}
+    alt=""
+    loading="lazy"
+    onError=${() => setErr(true)}
+  />`;
 }
 
-export function CoverImg({
-  url,
-  className,
-}: {
-  url?: string | null;
-  className?: string;
-}) {
+export function CoverImg({ url, className }: { url?: string | null; className?: string }) {
   const [err, setErr] = useState(false);
   if (!url || err) return html`<div class="cover-placeholder">🖨</div>`;
-  return html`<img class=${className} src=${url} alt="" loading="lazy" onError=${() => setErr(true)} />`;
+  return html`<img
+    class=${className}
+    src=${url}
+    alt=""
+    loading="lazy"
+    onError=${() => setErr(true)}
+  />`;
 }
 
 export function FilamentSwatches({ colors }: { colors?: string[] | null }) {
@@ -49,7 +53,9 @@ export function FilamentSwatches({ colors }: { colors?: string[] | null }) {
     (c) => c !== "FFFFFF",
   );
   if (!hexes.length) return null;
-  return html`<span class="swatches">${hexes.map(
-    (hex) => html`<span class="swatch" style=${"background:#" + hex} title=${"#" + hex} />`,
-  )}</span>`;
+  return html`<span class="swatches"
+    >${hexes.map(
+      (hex) => html`<span class="swatch" style=${"background:#" + hex} title=${"#" + hex} />`,
+    )}</span
+  >`;
 }
