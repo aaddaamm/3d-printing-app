@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Modal ────────────────────────────────────────────────────────────────────
 
 import { h } from "preact";
@@ -97,7 +98,7 @@ const STATUS_OPTIONS = ["finish", "failed", "cancel", "running", "pause"];
 type ModalProps = {
   job: Job;
   onClose: () => void;
-  onPatch: (jobId: number, patch: Record<string, unknown>) => void;
+  onPatch: (jobId: number, patch: Record<string, any>) => void;
   projects?: Project[];
   onJobProjectChange: (jobId: number, projectId: number | null) => void;
   onJobStatusChange: (jobId: number, statusOverride: string | null) => void;

@@ -4,6 +4,7 @@ import { BOOT_FAILSAFE_MS, TOTAL_BOOT_REQUESTS } from "../lib/constants.js";
 
 type JobRow = { id: number; final_price?: number | null; [key: string]: unknown };
 type PricesResponse = { prices?: Record<number, number> };
+type UiDataResponse = { jobs: JobRow[] };
 
 type BootstrapArgs = {
   setJobs: (updater: JobRow[] | ((jobs: JobRow[]) => JobRow[])) => void;
@@ -29,7 +30,7 @@ export function useDashboardBootstrap({
   const [bootStatus, setBootStatus] = useState("Starting dashboard…");
 
   const loadOptional = useCallback(
-    async ({
+    async <T>({
       url,
       fallback,
       onData,
@@ -37,10 +38,10 @@ export function useDashboardBootstrap({
     }: {
       url: string;
       fallback: string;
-      onData: (data: any) => void;
+      onData: (data: T) => void;
       onFinally?: () => void;
     }) => {
-      const { data, error } = await fetchJsonResult(url, fallback);
+      const { data, error } = await fetchJsonResult<T>(url, fallback);
       if (error) toast(error.message || fallback, "error");
       if (data) onData(data);
       if (onFinally) onFinally();
@@ -52,14 +53,14 @@ export function useDashboardBootstrap({
     loadOptional({
       url: "/projects",
       fallback: "Failed to load projects.",
-      onData: (d) => d?.projects && setProjects(d.projects),
+      onData: (d: { projects?: unknown[] }) => d.projects && setProjects(d.projects),
       onFinally: () => setProjectsLoading(false),
     });
 
     loadOptional({
       url: "/projects/prices",
       fallback: "Failed to load project prices.",
-      onData: (d) => d?.prices && setProjectPrices(d.prices),
+      onData: (d: PricesResponse) => d.prices && setProjectPrices(d.prices),
     });
   }, [loadOptional, setProjects, setProjectPrices]);
 
@@ -103,11 +104,11 @@ export function useDashboardBootstrap({
     }, BOOT_FAILSAFE_MS);
 
     Promise.all([
-      trackedFetchJson("/ui/data", "Failed to load jobs."),
+      trackedFetchJson("/ui/data", "Failed to load jobs.") as Promise<UiDataResponse>,
       trackedFetchJson("/summary", "Failed to load summary."),
       trackedFetchJson("/health/data-range", "Failed to load print history range."),
     ])
-      .then(([data, sum, range]: any[]) => {
+      .then(([data, sum, range]) => {
         setJobs(data.jobs);
         setSummary(sum);
         setDataRange(range);

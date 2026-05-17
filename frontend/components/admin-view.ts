@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Admin / Rates view ────────────────────────────────────────────────────────
 
 import { h } from "preact";
@@ -9,9 +10,7 @@ import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.js";
 
 const html = (
   htm as unknown as {
-    bind: (
-      renderer: typeof h,
-    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+    bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
 
@@ -27,7 +26,7 @@ function RateField({ label, value, onChange, step = "0.01", min = "0" }: AnyObj)
         step=${step}
         min=${min}
         value=${value}
-        onInput=${(e: any) => onChange(Number(e.target.value))}
+        onInput=${(e: Event) => onChange(Number((e.target as HTMLInputElement).value))}
       />
     </label>
   `;
@@ -61,13 +60,15 @@ function LaborForm({ labor, saving, saved, onSave }: AnyObj) {
           label="Failure buffer (%)"
           value=${Math.round(v.failure_buffer_pct * 100)}
           step="1"
-          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, failure_buffer_pct: val / 100 }))}
+          onChange=${(val: number) =>
+            setV((x: AnyObj) => ({ ...x, failure_buffer_pct: val / 100 }))}
         />
         <${RateField}
           label="Overhead buffer (%)"
           value=${Math.round(v.overhead_buffer_pct * 100)}
           step="1"
-          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, overhead_buffer_pct: val / 100 }))}
+          onChange=${(val: number) =>
+            setV((x: AnyObj) => ({ ...x, overhead_buffer_pct: val / 100 }))}
         />
       </div>
       <div class="admin-card-footer">
@@ -176,7 +177,11 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
   const saveLaborConfig = async (labor: AnyObj) => {
     setSaving("labor");
     try {
-      const data = await patchJsonOrToast<AnyObj>("/rates/labor", labor, "Failed to save labor rates.");
+      const data = await patchJsonOrToast<AnyObj>(
+        "/rates/labor",
+        labor,
+        "Failed to save labor rates.",
+      );
       if (!data?.labor_config) return;
       setRates((r) => (r ? { ...r, labor_config: data.labor_config } : r));
       flash("labor");
@@ -188,7 +193,8 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
 
   const saveMachine = async (machine: AnyObj) => {
     setSaving(machine.device_model);
-    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = machine;
+    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } =
+      machine;
     try {
       const data = await patchJsonOrToast<AnyObj>(
         `/rates/machines/${encodeURIComponent(device_model)}`,

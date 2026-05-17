@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Jobs view — Header, Toolbar, TotalsBar, Table, Grid ──────────────────────
 
 import { h } from "preact";

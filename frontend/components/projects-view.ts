@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Projects view ─────────────────────────────────────────────────────────────
 
 import { h } from "preact";
@@ -20,15 +21,19 @@ import { useEscapeClose } from "../hooks/use-escape-close.js";
 
 const html = (
   htm as unknown as {
-    bind: (
-      renderer: typeof h,
-    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+    bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
 
 type AnyObj = Record<string, any>;
 
-function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p: AnyObj) => void }) {
+function NewProjectModal({
+  onClose,
+  onCreate,
+}: {
+  onClose: () => void;
+  onCreate: (p: AnyObj) => void;
+}) {
   const [name, setName] = useState("");
   const [customer, setCustomer] = useState("");
   const [notes, setNotes] = useState("");
@@ -37,7 +42,7 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
   useEscapeClose(onClose);
 
   const handleSubmit = useCallback(
-    async (e: any) => {
+    async (e: Event) => {
       e.preventDefault();
       if (!name.trim()) return;
       setSaving(true);
@@ -58,7 +63,7 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
   );
 
   return html`
-    <div class="overlay" onClick=${(e: any) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${(e: MouseEvent) => e.target === e.currentTarget && onClose()}>
       <div class="modal">
         <div class="modal-header">
           <h2>New Project</h2>
@@ -72,7 +77,7 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
                 class="form-input"
                 type="text"
                 value=${name}
-                onInput=${(e: any) => setName(e.target.value)}
+                onInput=${(e: Event) => setName((e.target as HTMLInputElement).value)}
                 placeholder="Project name"
                 required
               />
@@ -83,7 +88,7 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
                 class="form-input"
                 type="text"
                 value=${customer}
-                onInput=${(e: any) => setCustomer(e.target.value)}
+                onInput=${(e: Event) => setCustomer((e.target as HTMLInputElement).value)}
                 placeholder="Optional"
               />
             </label>
@@ -92,7 +97,7 @@ function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate:
               <textarea
                 class="form-input form-textarea"
                 value=${notes}
-                onInput=${(e: any) => setNotes(e.target.value)}
+                onInput=${(e: Event) => setNotes((e.target as HTMLInputElement).value)}
                 placeholder="Optional"
               />
             </label>
@@ -125,7 +130,8 @@ function ProjectCard({ project, totalPrice, onClick }: AnyObj) {
         <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? "s" : ""}</span>
         ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
         ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
-        ${totalPrice != null && html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
+        ${totalPrice != null &&
+        html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
     </div>
@@ -143,7 +149,7 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }: AnyObj) {
     );
   }, [unassignedJobs, q]);
   return html`
-    <div class="overlay" onClick=${(e: any) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${(e: MouseEvent) => e.target === e.currentTarget && onClose()}>
       <div class="modal">
         <div class="modal-header">
           <h2>Add Jobs to Project</h2>
@@ -155,7 +161,7 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }: AnyObj) {
             class="add-jobs-search"
             placeholder="Search…"
             value=${q}
-            onInput=${(e: any) => setQ(e.target.value)}
+            onInput=${(e: Event) => setQ((e.target as HTMLInputElement).value)}
           />
           ${filtered.length === 0
             ? html`<div class="empty" style="padding:16px 0">
@@ -183,7 +189,15 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }: AnyObj) {
   `;
 }
 
-function ProjectDetail({ project, jobs, unassignedJobs, onBack, onJobClick, onAddJob, onRemoveJob }: AnyObj) {
+function ProjectDetail({
+  project,
+  jobs,
+  unassignedJobs,
+  onBack,
+  onJobClick,
+  onAddJob,
+  onRemoveJob,
+}: AnyObj) {
   const [showAddJobs, setShowAddJobs] = useState(false);
   const [price, setPrice] = useState<AnyObj | null>(null);
   const totW = jobs.reduce((s: number, j: AnyObj) => s + (j.total_weight_g || 0), 0);
@@ -192,9 +206,11 @@ function ProjectDetail({ project, jobs, unassignedJobs, onBack, onJobClick, onAd
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetchJsonOrToast<AnyObj>(`/projects/${project.id}/price`, "Failed to load project price.").then((d) => {
-      if (d) setPrice(d);
-    });
+    fetchJsonOrToast<AnyObj>(`/projects/${project.id}/price`, "Failed to load project price.").then(
+      (d) => {
+        if (d) setPrice(d);
+      },
+    );
   }, [project.id, jobs.length]);
 
   const handleAdd = useCallback(
@@ -272,7 +288,7 @@ function ProjectDetail({ project, jobs, unassignedJobs, onBack, onJobClick, onAd
                           <button
                             class="btn-remove-job"
                             title="Remove from project"
-                            onClick=${(e: any) => {
+                            onClick=${(e: MouseEvent) => {
                               e.stopPropagation();
                               onRemoveJob(job.id);
                             }}
@@ -358,7 +374,7 @@ export function ProjectsView({
         class="proj-search"
         placeholder="Search projects…"
         value=${q}
-        onInput=${(e: any) => setQ(e.target.value)}
+        onInput=${(e: Event) => setQ((e.target as HTMLInputElement).value)}
       />
       <span class="proj-list-count">
         ${q ? `${filtered.length} of ${projects.length}` : projects.length}

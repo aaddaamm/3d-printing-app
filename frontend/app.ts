@@ -14,9 +14,7 @@ import { useDashboardBootstrap } from "./components/bootstrap.js";
 
 const html = (
   htm as unknown as {
-    bind: (
-      renderer: typeof h,
-    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+    bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
 
