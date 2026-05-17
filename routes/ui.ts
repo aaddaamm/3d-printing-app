@@ -6,9 +6,13 @@ import { localCoverPath, localCoverExists } from "../lib/covers.js";
 import { listUiJobs } from "../models/ui.js";
 import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
 
-const INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
-const APP_JS_PATH = fileURLToPath(new URL("../frontend/dist/app.js", import.meta.url));
-const APP_CSS_PATH = fileURLToPath(new URL("../frontend/app.css", import.meta.url));
+const SOURCE_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
+const DIST_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/dist/index.html", import.meta.url));
+const DIST_APP_JS_PATH = fileURLToPath(new URL("../frontend/dist/app.js", import.meta.url));
+const DIST_APP_CSS_PATH = fileURLToPath(new URL("../frontend/dist/app.css", import.meta.url));
+const SOURCE_APP_CSS_PATH = fileURLToPath(new URL("../frontend/app.css", import.meta.url));
+const DIST_ASSETS_PATH = fileURLToPath(new URL("../frontend/dist/assets", import.meta.url));
+const DIST_CHUNKS_PATH = fileURLToPath(new URL("../frontend/dist/chunks", import.meta.url));
 const INTER_FONT_PATH = fileURLToPath(
   new URL("../frontend/fonts/Inter-VariableFont_slnt,wght.woff2", import.meta.url),
 );
@@ -121,7 +125,10 @@ export function createUiApp(apiKey: string): Hono {
   });
 
   const serveShell = (c: Context) => {
-    const content = readTextFile(INDEX_HTML_PATH);
+    const htmlPath = existsSync(DIST_INDEX_HTML_PATH)
+      ? DIST_INDEX_HTML_PATH
+      : SOURCE_INDEX_HTML_PATH;
+    const content = readTextFile(htmlPath);
     return c.html(content);
   };
   ui.get("/", (c) => serveShell(c));
@@ -129,13 +136,34 @@ export function createUiApp(apiKey: string): Hono {
 
   // Static assets — served without auth (no sensitive data).
   ui.get("/app.js", (_c) => {
-    if (!existsSync(APP_JS_PATH)) {
+    if (!existsSync(DIST_APP_JS_PATH)) {
       return new Response("UI bundle missing. Run npm run build:ui.", { status: 500 });
     }
-    return textResponse(readTextFile(APP_JS_PATH), "application/javascript");
+    return textResponse(readTextFile(DIST_APP_JS_PATH), "application/javascript");
   });
 
-  ui.get("/app.css", (_c) => textResponse(readTextFile(APP_CSS_PATH), "text/css"));
+  ui.get("/app.css", (_c) => {
+    const cssPath = existsSync(DIST_APP_CSS_PATH) ? DIST_APP_CSS_PATH : SOURCE_APP_CSS_PATH;
+    return textResponse(readTextFile(cssPath), "text/css");
+  });
+
+  ui.get("/assets/:file", (c) => {
+    const file = c.req.param("file");
+    if (!/^[\w.-]+$/.test(file)) return notFound(c);
+    const filePath = `${DIST_ASSETS_PATH}/${file}`;
+    if (!existsSync(filePath)) return notFound(c);
+    if (file.endsWith(".css")) return textResponse(readTextFile(filePath), "text/css");
+    if (file.endsWith(".js")) return textResponse(readTextFile(filePath), "application/javascript");
+    return binaryResponse(readFileSync(filePath), "application/octet-stream");
+  });
+
+  ui.get("/chunks/:file", (c) => {
+    const file = c.req.param("file");
+    if (!/^[\w.-]+$/.test(file)) return notFound(c);
+    const filePath = `${DIST_CHUNKS_PATH}/${file}`;
+    if (!existsSync(filePath)) return notFound(c);
+    return textResponse(readTextFile(filePath), "application/javascript");
+  });
 
   ui.get("/fonts/:file", (c) => {
     const file = c.req.param("file");
