@@ -1,5 +1,5 @@
-(function(){const e=document.createElement("link").relList;if(e&&e.supports&&e.supports("modulepreload"))return;for(const s of document.querySelectorAll('link[rel="modulepreload"]'))r(s);new MutationObserver(s=>{for(const a of s)if(a.type==="childList")for(const o of a.addedNodes)o.tagName==="LINK"&&o.rel==="modulepreload"&&r(o)}).observe(document,{childList:!0,subtree:!0});function n(s){const a={};return s.integrity&&(a.integrity=s.integrity),s.referrerPolicy&&(a.referrerPolicy=s.referrerPolicy),s.crossOrigin==="use-credentials"?a.credentials="include":s.crossOrigin==="anonymous"?a.credentials="omit":a.credentials="same-origin",a}function r(s){if(s.ep)return;s.ep=!0;const a=n(s);fetch(s.href,a)}})();var $t,k,ue,W,Yt,_e,pe,Tt,ct,at,ve,Et,xt,Lt,fe,vt={},ft=[],Ie=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i,ht=Array.isArray;function O(t,e){for(var n in e)t[n]=e[n];return t}function Jt(t){t&&t.parentNode&&t.parentNode.removeChild(t)}function H(t,e,n){var r,s,a,o={};for(a in e)a=="key"?r=e[a]:a=="ref"?s=e[a]:o[a]=e[a];if(arguments.length>2&&(o.children=arguments.length>3?$t.call(arguments,2):n),typeof t=="function"&&t.defaultProps!=null)for(a in t.defaultProps)o[a]===void 0&&(o[a]=t.defaultProps[a]);return dt(t,o,r,s,null)}function dt(t,e,n,r,s){var a={type:t,props:e,key:n,ref:r,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:s??++ue,__i:-1,__u:0};return s==null&&k.vnode!=null&&k.vnode(a),a}function gt(t){return t.children}function ut(t,e){this.props=t,this.context=e}function X(t,e){if(e==null)return t.__?X(t.__,t.__i+1):null;for(var n;e<t.__k.length;e++)if((n=t.__k[e])!=null&&n.__e!=null)return n.__e;return typeof t.type=="function"?X(t):null}function Re(t){if(t.__P&&t.__d){var e=t.__v,n=e.__e,r=[],s=[],a=O({},e);a.__v=e.__v+1,k.vnode&&k.vnode(a),Dt(t.__P,a,e,t.__n,t.__P.namespaceURI,32&e.__u?[n]:null,r,n??X(e),!!(32&e.__u),s),a.__v=e.__v,a.__.__k[a.__i]=a,ge(r,a,s),e.__e=e.__=null,a.__e!=n&&me(a)}}function me(t){if((t=t.__)!=null&&t.__c!=null)return t.__e=t.__c.base=null,t.__k.some(function(e){if(e!=null&&e.__e!=null)return t.__e=t.__c.base=e.__e}),me(t)}function Mt(t){(!t.__d&&(t.__d=!0)&&W.push(t)&&!mt.__r++||Yt!=k.debounceRendering)&&((Yt=k.debounceRendering)||_e)(mt)}function mt(){try{for(var t,e=1;W.length;)W.length>e&&W.sort(pe),t=W.shift(),e=W.length,Re(t)}finally{W.length=mt.__r=0}}function $e(t,e,n,r,s,a,o,l,d,c,v){var i,u,f,_,m,p,$,h=r&&r.__k||ft,b=e.length;for(d=We(n,e,h,d,b),i=0;i<b;i++)(f=n.__k[i])!=null&&(u=f.__i!=-1&&h[f.__i]||vt,f.__i=i,p=Dt(t,f,u,s,a,o,l,d,c,v),_=f.__e,f.ref&&u.ref!=f.ref&&(u.ref&&Ut(u.ref,null,f),v.push(f.ref,f.__c||_,f)),m==null&&_!=null&&(m=_),($=!!(4&f.__u))||u.__k===f.__k?(d=he(f,d,t,$),$&&u.__e&&(u.__e=null)):typeof f.type=="function"&&p!==void 0?d=p:_&&(d=_.nextSibling),f.__u&=-7);return n.__e=m,d}function We(t,e,n,r,s){var a,o,l,d,c,v=n.length,i=v,u=0;for(t.__k=new Array(s),a=0;a<s;a++)(o=e[a])!=null&&typeof o!="boolean"&&typeof o!="function"?(typeof o=="string"||typeof o=="number"||typeof o=="bigint"||o.constructor==String?o=t.__k[a]=dt(null,o,null,null,null):ht(o)?o=t.__k[a]=dt(gt,{children:o},null,null,null):o.constructor===void 0&&o.__b>0?o=t.__k[a]=dt(o.type,o.props,o.key,o.ref?o.ref:null,o.__v):t.__k[a]=o,d=a+u,o.__=t,o.__b=t.__b+1,l=null,(c=o.__i=Be(o,n,d,i))!=-1&&(i--,(l=n[c])&&(l.__u|=2)),l==null||l.__v==null?(c==-1&&(s>v?u--:s<v&&u++),typeof o.type!="function"&&(o.__u|=4)):c!=d&&(c==d-1?u--:c==d+1?u++:(c>d?u--:u++,o.__u|=4))):t.__k[a]=null;if(i)for(a=0;a<v;a++)(l=n[a])!=null&&(2&l.__u)==0&&(l.__e==r&&(r=X(l)),ye(l,l));return r}function he(t,e,n,r){var s,a;if(typeof t.type=="function"){for(s=t.__k,a=0;s&&a<s.length;a++)s[a]&&(s[a].__=t,e=he(s[a],e,n,r));return e}t.__e!=e&&(r&&(e&&t.type&&!e.parentNode&&(e=X(t)),n.insertBefore(t.__e,e||null)),e=t.__e);do e=e&&e.nextSibling;while(e!=null&&e.nodeType==8);return e}function Be(t,e,n,r){var s,a,o,l=t.key,d=t.type,c=e[n],v=c!=null&&(2&c.__u)==0;if(c===null&&l==null||v&&l==c.key&&d==c.type)return n;if(r>(v?1:0)){for(s=n-1,a=n+1;s>=0||a<e.length;)if((c=e[o=s>=0?s--:a++])!=null&&(2&c.__u)==0&&l==c.key&&d==c.type)return o}return-1}function Xt(t,e,n){e[0]=="-"?t.setProperty(e,n??""):t[e]=n==null?"":typeof n!="number"||Ie.test(e)?n:n+"px"}function lt(t,e,n,r,s){var a,o;t:if(e=="style")if(typeof n=="string")t.style.cssText=n;else{if(typeof r=="string"&&(t.style.cssText=r=""),r)for(e in r)n&&e in n||Xt(t.style,e,"");if(n)for(e in n)r&&n[e]==r[e]||Xt(t.style,e,n[e])}else if(e[0]=="o"&&e[1]=="n")a=e!=(e=e.replace(ve,"$1")),o=e.toLowerCase(),e=o in t||e=="onFocusOut"||e=="onFocusIn"?o.slice(2):e.slice(2),t.l||(t.l={}),t.l[e+a]=n,n?r?n[at]=r[at]:(n[at]=Et,t.addEventListener(e,a?Lt:xt,a)):t.removeEventListener(e,a?Lt:xt,a);else{if(s=="http://www.w3.org/2000/svg")e=e.replace(/xlink(H|:h)/,"h").replace(/sName$/,"s");else if(e!="width"&&e!="height"&&e!="href"&&e!="list"&&e!="form"&&e!="tabIndex"&&e!="download"&&e!="rowSpan"&&e!="colSpan"&&e!="role"&&e!="popover"&&e in t)try{t[e]=n??"";break t}catch{}typeof n=="function"||(n==null||n===!1&&e[4]!="-"?t.removeAttribute(e):t.setAttribute(e,e=="popover"&&n==1?"":n))}}function Zt(t){return function(e){if(this.l){var n=this.l[e.type+t];if(e[ct]==null)e[ct]=Et++;else if(e[ct]<n[at])return;return n(k.event?k.event(e):e)}}}function Dt(t,e,n,r,s,a,o,l,d,c){var v,i,u,f,_,m,p,$,h,b,w,F,S,x,N,E=e.type;if(e.constructor!==void 0)return null;128&n.__u&&(d=!!(32&n.__u),a=[l=e.__e=n.__e]),(v=k.__b)&&v(e);t:if(typeof E=="function")try{if($=e.props,h=E.prototype&&E.prototype.render,b=(v=E.contextType)&&r[v.__c],w=v?b?b.props.value:v.__:r,n.__c?p=(i=e.__c=n.__c).__=i.__E:(h?e.__c=i=new E($,w):(e.__c=i=new ut($,w),i.constructor=E,i.render=Ve),b&&b.sub(i),i.state||(i.state={}),i.__n=r,u=i.__d=!0,i.__h=[],i._sb=[]),h&&i.__s==null&&(i.__s=i.state),h&&E.getDerivedStateFromProps!=null&&(i.__s==i.state&&(i.__s=O({},i.__s)),O(i.__s,E.getDerivedStateFromProps($,i.__s))),f=i.props,_=i.state,i.__v=e,u)h&&E.getDerivedStateFromProps==null&&i.componentWillMount!=null&&i.componentWillMount(),h&&i.componentDidMount!=null&&i.__h.push(i.componentDidMount);else{if(h&&E.getDerivedStateFromProps==null&&$!==f&&i.componentWillReceiveProps!=null&&i.componentWillReceiveProps($,w),e.__v==n.__v||!i.__e&&i.shouldComponentUpdate!=null&&i.shouldComponentUpdate($,i.__s,w)===!1){e.__v!=n.__v&&(i.props=$,i.state=i.__s,i.__d=!1),e.__e=n.__e,e.__k=n.__k,e.__k.some(function(R){R&&(R.__=e)}),ft.push.apply(i.__h,i._sb),i._sb=[],i.__h.length&&o.push(i);break t}i.componentWillUpdate!=null&&i.componentWillUpdate($,i.__s,w),h&&i.componentDidUpdate!=null&&i.__h.push(function(){i.componentDidUpdate(f,_,m)})}if(i.context=w,i.props=$,i.__P=t,i.__e=!1,F=k.__r,S=0,h)i.state=i.__s,i.__d=!1,F&&F(e),v=i.render(i.props,i.state,i.context),ft.push.apply(i.__h,i._sb),i._sb=[];else do i.__d=!1,F&&F(e),v=i.render(i.props,i.state,i.context),i.state=i.__s;while(i.__d&&++S<25);i.state=i.__s,i.getChildContext!=null&&(r=O(O({},r),i.getChildContext())),h&&!u&&i.getSnapshotBeforeUpdate!=null&&(m=i.getSnapshotBeforeUpdate(f,_)),x=v!=null&&v.type===gt&&v.key==null?be(v.props.children):v,l=$e(t,ht(x)?x:[x],e,n,r,s,a,o,l,d,c),i.base=e.__e,e.__u&=-161,i.__h.length&&o.push(i),p&&(i.__E=i.__=null)}catch(R){if(e.__v=null,d||a!=null)if(R.then){for(e.__u|=d?160:128;l&&l.nodeType==8&&l.nextSibling;)l=l.nextSibling;a[a.indexOf(l)]=null,e.__e=l}else{for(N=a.length;N--;)Jt(a[N]);Nt(e)}else e.__e=n.__e,e.__k=n.__k,R.then||Nt(e);k.__e(R,e,n)}else a==null&&e.__v==n.__v?(e.__k=n.__k,e.__e=n.__e):l=e.__e=qe(n.__e,e,n,r,s,a,o,d,c);return(v=k.diffed)&&v(e),128&e.__u?void 0:l}function Nt(t){t&&(t.__c&&(t.__c.__e=!0),t.__k&&t.__k.some(Nt))}function ge(t,e,n){for(var r=0;r<n.length;r++)Ut(n[r],n[++r],n[++r]);k.__c&&k.__c(e,t),t.some(function(s){try{t=s.__h,s.__h=[],t.some(function(a){a.call(s)})}catch(a){k.__e(a,s.__v)}})}function be(t){return typeof t!="object"||t==null||t.__b>0?t:ht(t)?t.map(be):O({},t)}function qe(t,e,n,r,s,a,o,l,d){var c,v,i,u,f,_,m,p=n.props||vt,$=e.props,h=e.type;if(h=="svg"?s="http://www.w3.org/2000/svg":h=="math"?s="http://www.w3.org/1998/Math/MathML":s||(s="http://www.w3.org/1999/xhtml"),a!=null){for(c=0;c<a.length;c++)if((f=a[c])&&"setAttribute"in f==!!h&&(h?f.localName==h:f.nodeType==3)){t=f,a[c]=null;break}}if(t==null){if(h==null)return document.createTextNode($);t=document.createElementNS(s,h,$.is&&$),l&&(k.__m&&k.__m(e,a),l=!1),a=null}if(h==null)p===$||l&&t.data==$||(t.data=$);else{if(a=a&&$t.call(t.childNodes),!l&&a!=null)for(p={},c=0;c<t.attributes.length;c++)p[(f=t.attributes[c]).name]=f.value;for(c in p)f=p[c],c=="dangerouslySetInnerHTML"?i=f:c=="children"||c in $||c=="value"&&"defaultValue"in $||c=="checked"&&"defaultChecked"in $||lt(t,c,null,f,s);for(c in $)f=$[c],c=="children"?u=f:c=="dangerouslySetInnerHTML"?v=f:c=="value"?_=f:c=="checked"?m=f:l&&typeof f!="function"||p[c]===f||lt(t,c,f,p[c],s);if(v)l||i&&(v.__html==i.__html||v.__html==t.innerHTML)||(t.innerHTML=v.__html),e.__k=[];else if(i&&(t.innerHTML=""),$e(e.type=="template"?t.content:t,ht(u)?u:[u],e,n,r,h=="foreignObject"?"http://www.w3.org/1999/xhtml":s,a,o,a?a[0]:n.__k&&X(n,0),l,d),a!=null)for(c=a.length;c--;)Jt(a[c]);l||(c="value",h=="progress"&&_==null?t.removeAttribute("value"):_!=null&&(_!==t[c]||h=="progress"&&!_||h=="option"&&_!=p[c])&&lt(t,c,_,p[c],s),c="checked",m!=null&&m!=t[c]&&lt(t,c,m,p[c],s))}return t}function Ut(t,e,n){try{if(typeof t=="function"){var r=typeof t.__u=="function";r&&t.__u(),r&&e==null||(t.__u=t(e))}else t.current=e}catch(s){k.__e(s,n)}}function ye(t,e,n){var r,s;if(k.unmount&&k.unmount(t),(r=t.ref)&&(r.current&&r.current!=t.__e||Ut(r,null,e)),(r=t.__c)!=null){if(r.componentWillUnmount)try{r.componentWillUnmount()}catch(a){k.__e(a,e)}r.base=r.__P=null}if(r=t.__k)for(s=0;s<r.length;s++)r[s]&&ye(r[s],e,n||typeof t.type!="function");n||Jt(t.__e),t.__c=t.__=t.__e=void 0}function Ve(t,e,n){return this.constructor(t,n)}function Ge(t,e,n){var r,s,a,o;e==document&&(e=document.documentElement),k.__&&k.__(t,e),s=(r=!1)?null:e.__k,a=[],o=[],Dt(e,t=e.__k=H(gt,null,[t]),s||vt,vt,e.namespaceURI,s?null:e.firstChild?$t.call(e.childNodes):null,a,s?s.__e:e.firstChild,r,o),ge(a,t,o)}function Qe(t){function e(n){var r,s;return this.getChildContext||(r=new Set,(s={})[e.__c]=this,this.getChildContext=function(){return s},this.componentWillUnmount=function(){r=null},this.shouldComponentUpdate=function(a){this.props.value!=a.value&&r.forEach(function(o){o.__e=!0,Mt(o)})},this.sub=function(a){r.add(a);var o=a.componentWillUnmount;a.componentWillUnmount=function(){r&&r.delete(a),o&&o.call(a)}}),n.children}return e.__c="__cC"+fe++,e.__=t,e.Provider=e.__l=(e.Consumer=function(n,r){return n.children(r)}).contextType=e,e}$t=ft.slice,k={__e:function(t,e,n,r){for(var s,a,o;e=e.__;)if((s=e.__c)&&!s.__)try{if((a=s.constructor)&&a.getDerivedStateFromError!=null&&(s.setState(a.getDerivedStateFromError(t)),o=s.__d),s.componentDidCatch!=null&&(s.componentDidCatch(t,r||{}),o=s.__d),o)return s.__E=s}catch(l){t=l}throw t}},ue=0,ut.prototype.setState=function(t,e){var n;n=this.__s!=null&&this.__s!=this.state?this.__s:this.__s=O({},this.state),typeof t=="function"&&(t=t(O({},n),this.props)),t&&O(n,t),t!=null&&this.__v&&(e&&this._sb.push(e),Mt(this))},ut.prototype.forceUpdate=function(t){this.__v&&(this.__e=!0,t&&this.__h.push(t),Mt(this))},ut.prototype.render=gt,W=[],_e=typeof Promise=="function"?Promise.prototype.then.bind(Promise.resolve()):setTimeout,pe=function(t,e){return t.__v.__b-e.__v.__b},mt.__r=0,Tt=Math.random().toString(8),ct="__d"+Tt,at="__a"+Tt,ve=/(PointerCapture)$|Capture$/i,Et=0,xt=Zt(!1),Lt=Zt(!0),fe=0;var Z,T,Ft,te,rt=0,we=[],L=k,ee=L.__b,ne=L.__r,ae=L.diffed,se=L.__c,re=L.unmount,oe=L.__;function bt(t,e){L.__h&&L.__h(T,t,rt||e),rt=0;var n=T.__H||(T.__H={__:[],__h:[]});return t>=n.__.length&&n.__.push({}),n.__[t]}function g(t){return rt=1,ze(ke,t)}function ze(t,e,n){var r=bt(Z++,2);if(r.t=t,!r.__c&&(r.__=[ke(void 0,e),function(l){var d=r.__N?r.__N[0]:r.__[0],c=r.t(d,l);d!==c&&(r.__N=[c,r.__[1]],r.__c.setState({}))}],r.__c=T,!T.__f)){var s=function(l,d,c){if(!r.__c.__H)return!0;var v=r.__c.__H.__.filter(function(u){return u.__c});if(v.every(function(u){return!u.__N}))return!a||a.call(this,l,d,c);var i=r.__c.props!==l;return v.some(function(u){if(u.__N){var f=u.__[0];u.__=u.__N,u.__N=void 0,f!==u.__[0]&&(i=!0)}}),a&&a.call(this,l,d,c)||i};T.__f=!0;var a=T.shouldComponentUpdate,o=T.componentWillUpdate;T.componentWillUpdate=function(l,d,c){if(this.__e){var v=a;a=void 0,s(l,d,c),a=v}o&&o.call(this,l,d,c)},T.shouldComponentUpdate=s}return r.__N||r.__}function I(t,e){var n=bt(Z++,3);!L.__s&&Ce(n.__H,e)&&(n.__=t,n.u=e,T.__H.__h.push(n))}function Ke(t){return rt=5,q(function(){return{current:t}},[])}function q(t,e){var n=bt(Z++,7);return Ce(n.__H,e)&&(n.__=t(),n.__H=e,n.__h=t),n.__}function P(t,e){return rt=8,q(function(){return t},e)}function Ye(t){var e=T.context[t.__c],n=bt(Z++,9);return n.c=t,e?(n.__==null&&(n.__=!0,e.sub(T)),e.props.value):t.__}function Xe(){for(var t;t=we.shift();){var e=t.__H;if(t.__P&&e)try{e.__h.some(_t),e.__h.some(jt),e.__h=[]}catch(n){e.__h=[],L.__e(n,t.__v)}}}L.__b=function(t){T=null,ee&&ee(t)},L.__=function(t,e){t&&e.__k&&e.__k.__m&&(t.__m=e.__k.__m),oe&&oe(t,e)},L.__r=function(t){ne&&ne(t),Z=0;var e=(T=t.__c).__H;e&&(Ft===T?(e.__h=[],T.__h=[],e.__.some(function(n){n.__N&&(n.__=n.__N),n.u=n.__N=void 0})):(e.__h.some(_t),e.__h.some(jt),e.__h=[],Z=0)),Ft=T},L.diffed=function(t){ae&&ae(t);var e=t.__c;e&&e.__H&&(e.__H.__h.length&&(we.push(e)!==1&&te===L.requestAnimationFrame||((te=L.requestAnimationFrame)||Ze)(Xe)),e.__H.__.some(function(n){n.u&&(n.__H=n.u),n.u=void 0})),Ft=T=null},L.__c=function(t,e){e.some(function(n){try{n.__h.some(_t),n.__h=n.__h.filter(function(r){return!r.__||jt(r)})}catch(r){e.some(function(s){s.__h&&(s.__h=[])}),e=[],L.__e(r,n.__v)}}),se&&se(t,e)},L.unmount=function(t){re&&re(t);var e,n=t.__c;n&&n.__H&&(n.__H.__.some(function(r){try{_t(r)}catch(s){e=s}}),n.__H=void 0,e&&L.__e(e,n.__v))};var ie=typeof requestAnimationFrame=="function";function Ze(t){var e,n=function(){clearTimeout(r),ie&&cancelAnimationFrame(e),setTimeout(t)},r=setTimeout(n,35);ie&&(e=requestAnimationFrame(n))}function _t(t){var e=T,n=t.__c;typeof n=="function"&&(t.__c=void 0,n()),T=e}function jt(t){var e=T;t.__c=t.__(),T=e}function Ce(t,e){return!t||t.length!==e.length||e.some(function(n,r){return n!==t[r]})}function ke(t,e){return typeof e=="function"?e(t):e}var Se=function(t,e,n,r){var s;e[0]=0;for(var a=1;a<e.length;a++){var o=e[a++],l=e[a]?(e[0]|=o?1:2,n[e[a++]]):e[++a];o===3?r[0]=l:o===4?r[1]=Object.assign(r[1]||{},l):o===5?(r[1]=r[1]||{})[e[++a]]=l:o===6?r[1][e[++a]]+=l+"":o?(s=t.apply(l,Se(t,l,n,["",null])),r.push(s),l[0]?e[0]|=2:(e[a-2]=0,e[a]=s)):r.push(l)}return r},le=new Map;function V(t){var e=le.get(this);return e||(e=new Map,le.set(this,e)),(e=Se(this,e.get(t)||(e.set(t,e=(function(n){for(var r,s,a=1,o="",l="",d=[0],c=function(u){a===1&&(u||(o=o.replace(/^\s*\n\s*|\s*\n\s*$/g,"")))?d.push(0,u,o):a===3&&(u||o)?(d.push(3,u,o),a=2):a===2&&o==="..."&&u?d.push(4,u,0):a===2&&o&&!u?d.push(5,0,!0,o):a>=5&&((o||!u&&a===5)&&(d.push(a,0,o,s),a=6),u&&(d.push(a,u,0,s),a=6)),o=""},v=0;v<n.length;v++){v&&(a===1&&c(),c(v));for(var i=0;i<n[v].length;i++)r=n[v][i],a===1?r==="<"?(c(),d=[d],a=3):o+=r:a===4?o==="--"&&r===">"?(a=1,o=""):o=r+o[0]:l?r===l?l="":o+=r:r==='"'||r==="'"?l=r:r===">"?(c(),a=1):a&&(r==="="?(a=5,s=o,o=""):r==="/"&&(a<5||n[v][i+1]===">")?(c(),a===3&&(d=d[0]),a=d,(d=d[0]).push(2,0,a),a=0):r===" "||r==="	"||r===`
-`||r==="\r"?(c(),a=2):o+=r),a===3&&o==="!--"&&(a=4,d=d[0])}return c(),d})(t)),e),arguments,[])).length>1?e:e[0]}const tn=V.bind(H),At=Qe(null);function ce({base:t,children:e}){const n=o=>o.startsWith(t)?o.slice(t.length)||"/":o,[r,s]=g(()=>n(location.pathname));I(()=>{const o=()=>s(n(location.pathname));return window.addEventListener("popstate",o),()=>window.removeEventListener("popstate",o)},[t]);const a=P(o=>{history.pushState(null,"",t+(o==="/"?"":o)),s(o)},[t]);return tn`<${At.Provider} value=${[r,a]}>${e}</${At.Provider}>`}function Ot(){const t=Ye(At);if(!t)throw new Error("useLocation must be used within RouterProvider");return t}function G(t){if(!t)return"—";const e=Math.floor(t/3600),n=Math.floor(t%3600/60);return e===0?`${n}m`:`${e}h${n>0?` ${n}m`:""}`}function Ht(t){if(!t)return"—";const e=new Date(t),n=new Date,r=e.getFullYear()===n.getFullYear()?{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}:{month:"short",day:"numeric",year:"2-digit",hour:"numeric",minute:"2-digit"};return e.toLocaleString(void 0,r)}function tt(t){if(!t)return"—";const e=new Date(t),n=new Date,r=e.getFullYear()===n.getFullYear()?{month:"short",day:"numeric"}:{month:"short",day:"numeric",year:"2-digit"};return e.toLocaleDateString(void 0,r)}function j(t){return"$"+t.toFixed(2)}function yt(t){return t==null?"—":t>=1e3?`${(t/1e3).toFixed(2)} kg`:`${t.toFixed(1)} g`}function It(t){return t?t>=1e3?`${(t/1e3).toFixed(2)} kg`:`${Math.round(t)} g`:"0 g"}const Q=V.bind(H),en={finish:"badge badge-finish",running:"badge badge-running",failed:"badge badge-failed",cancel:"badge badge-cancel",pause:"badge badge-pause"};function wt({status:t}){const e=(t||"").toLowerCase();return Q`<span class=${en[e]||"badge badge-default"}>${e||"unknown"}</span>`}function Rt({url:t}){const[e,n]=g(!1);return!t||e?Q`<div class="row-thumb-ph">🖨</div>`:Q`<img
+(function(){const e=document.createElement("link").relList;if(e&&e.supports&&e.supports("modulepreload"))return;for(const s of document.querySelectorAll('link[rel="modulepreload"]'))r(s);new MutationObserver(s=>{for(const a of s)if(a.type==="childList")for(const o of a.addedNodes)o.tagName==="LINK"&&o.rel==="modulepreload"&&r(o)}).observe(document,{childList:!0,subtree:!0});function n(s){const a={};return s.integrity&&(a.integrity=s.integrity),s.referrerPolicy&&(a.referrerPolicy=s.referrerPolicy),s.crossOrigin==="use-credentials"?a.credentials="include":s.crossOrigin==="anonymous"?a.credentials="omit":a.credentials="same-origin",a}function r(s){if(s.ep)return;s.ep=!0;const a=n(s);fetch(s.href,a)}})();var $t,k,ue,W,Yt,_e,pe,Tt,ct,at,ve,Et,xt,Lt,fe,vt={},ft=[],Ie=/acit|ex(?:s|g|n|p|$)|rph|grid|ows|mnc|ntw|ine[ch]|zoo|^ord|itera/i,ht=Array.isArray;function O(t,e){for(var n in e)t[n]=e[n];return t}function Jt(t){t&&t.parentNode&&t.parentNode.removeChild(t)}function H(t,e,n){var r,s,a,o={};for(a in e)a=="key"?r=e[a]:a=="ref"?s=e[a]:o[a]=e[a];if(arguments.length>2&&(o.children=arguments.length>3?$t.call(arguments,2):n),typeof t=="function"&&t.defaultProps!=null)for(a in t.defaultProps)o[a]===void 0&&(o[a]=t.defaultProps[a]);return dt(t,o,r,s,null)}function dt(t,e,n,r,s){var a={type:t,props:e,key:n,ref:r,__k:null,__:null,__b:0,__e:null,__c:null,constructor:void 0,__v:s??++ue,__i:-1,__u:0};return s==null&&k.vnode!=null&&k.vnode(a),a}function gt(t){return t.children}function ut(t,e){this.props=t,this.context=e}function X(t,e){if(e==null)return t.__?X(t.__,t.__i+1):null;for(var n;e<t.__k.length;e++)if((n=t.__k[e])!=null&&n.__e!=null)return n.__e;return typeof t.type=="function"?X(t):null}function Re(t){if(t.__P&&t.__d){var e=t.__v,n=e.__e,r=[],s=[],a=O({},e);a.__v=e.__v+1,k.vnode&&k.vnode(a),Dt(t.__P,a,e,t.__n,t.__P.namespaceURI,32&e.__u?[n]:null,r,n??X(e),!!(32&e.__u),s),a.__v=e.__v,a.__.__k[a.__i]=a,ge(r,a,s),e.__e=e.__=null,a.__e!=n&&me(a)}}function me(t){if((t=t.__)!=null&&t.__c!=null)return t.__e=t.__c.base=null,t.__k.some(function(e){if(e!=null&&e.__e!=null)return t.__e=t.__c.base=e.__e}),me(t)}function Mt(t){(!t.__d&&(t.__d=!0)&&W.push(t)&&!mt.__r++||Yt!=k.debounceRendering)&&((Yt=k.debounceRendering)||_e)(mt)}function mt(){try{for(var t,e=1;W.length;)W.length>e&&W.sort(pe),t=W.shift(),e=W.length,Re(t)}finally{W.length=mt.__r=0}}function $e(t,e,n,r,s,a,o,l,d,c,v){var i,u,f,p,m,_,$,h=r&&r.__k||ft,b=e.length;for(d=We(n,e,h,d,b),i=0;i<b;i++)(f=n.__k[i])!=null&&(u=f.__i!=-1&&h[f.__i]||vt,f.__i=i,_=Dt(t,f,u,s,a,o,l,d,c,v),p=f.__e,f.ref&&u.ref!=f.ref&&(u.ref&&Ut(u.ref,null,f),v.push(f.ref,f.__c||p,f)),m==null&&p!=null&&(m=p),($=!!(4&f.__u))||u.__k===f.__k?(d=he(f,d,t,$),$&&u.__e&&(u.__e=null)):typeof f.type=="function"&&_!==void 0?d=_:p&&(d=p.nextSibling),f.__u&=-7);return n.__e=m,d}function We(t,e,n,r,s){var a,o,l,d,c,v=n.length,i=v,u=0;for(t.__k=new Array(s),a=0;a<s;a++)(o=e[a])!=null&&typeof o!="boolean"&&typeof o!="function"?(typeof o=="string"||typeof o=="number"||typeof o=="bigint"||o.constructor==String?o=t.__k[a]=dt(null,o,null,null,null):ht(o)?o=t.__k[a]=dt(gt,{children:o},null,null,null):o.constructor===void 0&&o.__b>0?o=t.__k[a]=dt(o.type,o.props,o.key,o.ref?o.ref:null,o.__v):t.__k[a]=o,d=a+u,o.__=t,o.__b=t.__b+1,l=null,(c=o.__i=Be(o,n,d,i))!=-1&&(i--,(l=n[c])&&(l.__u|=2)),l==null||l.__v==null?(c==-1&&(s>v?u--:s<v&&u++),typeof o.type!="function"&&(o.__u|=4)):c!=d&&(c==d-1?u--:c==d+1?u++:(c>d?u--:u++,o.__u|=4))):t.__k[a]=null;if(i)for(a=0;a<v;a++)(l=n[a])!=null&&(2&l.__u)==0&&(l.__e==r&&(r=X(l)),ye(l,l));return r}function he(t,e,n,r){var s,a;if(typeof t.type=="function"){for(s=t.__k,a=0;s&&a<s.length;a++)s[a]&&(s[a].__=t,e=he(s[a],e,n,r));return e}t.__e!=e&&(r&&(e&&t.type&&!e.parentNode&&(e=X(t)),n.insertBefore(t.__e,e||null)),e=t.__e);do e=e&&e.nextSibling;while(e!=null&&e.nodeType==8);return e}function Be(t,e,n,r){var s,a,o,l=t.key,d=t.type,c=e[n],v=c!=null&&(2&c.__u)==0;if(c===null&&l==null||v&&l==c.key&&d==c.type)return n;if(r>(v?1:0)){for(s=n-1,a=n+1;s>=0||a<e.length;)if((c=e[o=s>=0?s--:a++])!=null&&(2&c.__u)==0&&l==c.key&&d==c.type)return o}return-1}function Xt(t,e,n){e[0]=="-"?t.setProperty(e,n??""):t[e]=n==null?"":typeof n!="number"||Ie.test(e)?n:n+"px"}function lt(t,e,n,r,s){var a,o;t:if(e=="style")if(typeof n=="string")t.style.cssText=n;else{if(typeof r=="string"&&(t.style.cssText=r=""),r)for(e in r)n&&e in n||Xt(t.style,e,"");if(n)for(e in n)r&&n[e]==r[e]||Xt(t.style,e,n[e])}else if(e[0]=="o"&&e[1]=="n")a=e!=(e=e.replace(ve,"$1")),o=e.toLowerCase(),e=o in t||e=="onFocusOut"||e=="onFocusIn"?o.slice(2):e.slice(2),t.l||(t.l={}),t.l[e+a]=n,n?r?n[at]=r[at]:(n[at]=Et,t.addEventListener(e,a?Lt:xt,a)):t.removeEventListener(e,a?Lt:xt,a);else{if(s=="http://www.w3.org/2000/svg")e=e.replace(/xlink(H|:h)/,"h").replace(/sName$/,"s");else if(e!="width"&&e!="height"&&e!="href"&&e!="list"&&e!="form"&&e!="tabIndex"&&e!="download"&&e!="rowSpan"&&e!="colSpan"&&e!="role"&&e!="popover"&&e in t)try{t[e]=n??"";break t}catch{}typeof n=="function"||(n==null||n===!1&&e[4]!="-"?t.removeAttribute(e):t.setAttribute(e,e=="popover"&&n==1?"":n))}}function Zt(t){return function(e){if(this.l){var n=this.l[e.type+t];if(e[ct]==null)e[ct]=Et++;else if(e[ct]<n[at])return;return n(k.event?k.event(e):e)}}}function Dt(t,e,n,r,s,a,o,l,d,c){var v,i,u,f,p,m,_,$,h,b,w,P,S,x,N,E=e.type;if(e.constructor!==void 0)return null;128&n.__u&&(d=!!(32&n.__u),a=[l=e.__e=n.__e]),(v=k.__b)&&v(e);t:if(typeof E=="function")try{if($=e.props,h=E.prototype&&E.prototype.render,b=(v=E.contextType)&&r[v.__c],w=v?b?b.props.value:v.__:r,n.__c?_=(i=e.__c=n.__c).__=i.__E:(h?e.__c=i=new E($,w):(e.__c=i=new ut($,w),i.constructor=E,i.render=qe),b&&b.sub(i),i.state||(i.state={}),i.__n=r,u=i.__d=!0,i.__h=[],i._sb=[]),h&&i.__s==null&&(i.__s=i.state),h&&E.getDerivedStateFromProps!=null&&(i.__s==i.state&&(i.__s=O({},i.__s)),O(i.__s,E.getDerivedStateFromProps($,i.__s))),f=i.props,p=i.state,i.__v=e,u)h&&E.getDerivedStateFromProps==null&&i.componentWillMount!=null&&i.componentWillMount(),h&&i.componentDidMount!=null&&i.__h.push(i.componentDidMount);else{if(h&&E.getDerivedStateFromProps==null&&$!==f&&i.componentWillReceiveProps!=null&&i.componentWillReceiveProps($,w),e.__v==n.__v||!i.__e&&i.shouldComponentUpdate!=null&&i.shouldComponentUpdate($,i.__s,w)===!1){e.__v!=n.__v&&(i.props=$,i.state=i.__s,i.__d=!1),e.__e=n.__e,e.__k=n.__k,e.__k.some(function(R){R&&(R.__=e)}),ft.push.apply(i.__h,i._sb),i._sb=[],i.__h.length&&o.push(i);break t}i.componentWillUpdate!=null&&i.componentWillUpdate($,i.__s,w),h&&i.componentDidUpdate!=null&&i.__h.push(function(){i.componentDidUpdate(f,p,m)})}if(i.context=w,i.props=$,i.__P=t,i.__e=!1,P=k.__r,S=0,h)i.state=i.__s,i.__d=!1,P&&P(e),v=i.render(i.props,i.state,i.context),ft.push.apply(i.__h,i._sb),i._sb=[];else do i.__d=!1,P&&P(e),v=i.render(i.props,i.state,i.context),i.state=i.__s;while(i.__d&&++S<25);i.state=i.__s,i.getChildContext!=null&&(r=O(O({},r),i.getChildContext())),h&&!u&&i.getSnapshotBeforeUpdate!=null&&(m=i.getSnapshotBeforeUpdate(f,p)),x=v!=null&&v.type===gt&&v.key==null?be(v.props.children):v,l=$e(t,ht(x)?x:[x],e,n,r,s,a,o,l,d,c),i.base=e.__e,e.__u&=-161,i.__h.length&&o.push(i),_&&(i.__E=i.__=null)}catch(R){if(e.__v=null,d||a!=null)if(R.then){for(e.__u|=d?160:128;l&&l.nodeType==8&&l.nextSibling;)l=l.nextSibling;a[a.indexOf(l)]=null,e.__e=l}else{for(N=a.length;N--;)Jt(a[N]);Nt(e)}else e.__e=n.__e,e.__k=n.__k,R.then||Nt(e);k.__e(R,e,n)}else a==null&&e.__v==n.__v?(e.__k=n.__k,e.__e=n.__e):l=e.__e=Ve(n.__e,e,n,r,s,a,o,d,c);return(v=k.diffed)&&v(e),128&e.__u?void 0:l}function Nt(t){t&&(t.__c&&(t.__c.__e=!0),t.__k&&t.__k.some(Nt))}function ge(t,e,n){for(var r=0;r<n.length;r++)Ut(n[r],n[++r],n[++r]);k.__c&&k.__c(e,t),t.some(function(s){try{t=s.__h,s.__h=[],t.some(function(a){a.call(s)})}catch(a){k.__e(a,s.__v)}})}function be(t){return typeof t!="object"||t==null||t.__b>0?t:ht(t)?t.map(be):O({},t)}function Ve(t,e,n,r,s,a,o,l,d){var c,v,i,u,f,p,m,_=n.props||vt,$=e.props,h=e.type;if(h=="svg"?s="http://www.w3.org/2000/svg":h=="math"?s="http://www.w3.org/1998/Math/MathML":s||(s="http://www.w3.org/1999/xhtml"),a!=null){for(c=0;c<a.length;c++)if((f=a[c])&&"setAttribute"in f==!!h&&(h?f.localName==h:f.nodeType==3)){t=f,a[c]=null;break}}if(t==null){if(h==null)return document.createTextNode($);t=document.createElementNS(s,h,$.is&&$),l&&(k.__m&&k.__m(e,a),l=!1),a=null}if(h==null)_===$||l&&t.data==$||(t.data=$);else{if(a=a&&$t.call(t.childNodes),!l&&a!=null)for(_={},c=0;c<t.attributes.length;c++)_[(f=t.attributes[c]).name]=f.value;for(c in _)f=_[c],c=="dangerouslySetInnerHTML"?i=f:c=="children"||c in $||c=="value"&&"defaultValue"in $||c=="checked"&&"defaultChecked"in $||lt(t,c,null,f,s);for(c in $)f=$[c],c=="children"?u=f:c=="dangerouslySetInnerHTML"?v=f:c=="value"?p=f:c=="checked"?m=f:l&&typeof f!="function"||_[c]===f||lt(t,c,f,_[c],s);if(v)l||i&&(v.__html==i.__html||v.__html==t.innerHTML)||(t.innerHTML=v.__html),e.__k=[];else if(i&&(t.innerHTML=""),$e(e.type=="template"?t.content:t,ht(u)?u:[u],e,n,r,h=="foreignObject"?"http://www.w3.org/1999/xhtml":s,a,o,a?a[0]:n.__k&&X(n,0),l,d),a!=null)for(c=a.length;c--;)Jt(a[c]);l||(c="value",h=="progress"&&p==null?t.removeAttribute("value"):p!=null&&(p!==t[c]||h=="progress"&&!p||h=="option"&&p!=_[c])&&lt(t,c,p,_[c],s),c="checked",m!=null&&m!=t[c]&&lt(t,c,m,_[c],s))}return t}function Ut(t,e,n){try{if(typeof t=="function"){var r=typeof t.__u=="function";r&&t.__u(),r&&e==null||(t.__u=t(e))}else t.current=e}catch(s){k.__e(s,n)}}function ye(t,e,n){var r,s;if(k.unmount&&k.unmount(t),(r=t.ref)&&(r.current&&r.current!=t.__e||Ut(r,null,e)),(r=t.__c)!=null){if(r.componentWillUnmount)try{r.componentWillUnmount()}catch(a){k.__e(a,e)}r.base=r.__P=null}if(r=t.__k)for(s=0;s<r.length;s++)r[s]&&ye(r[s],e,n||typeof t.type!="function");n||Jt(t.__e),t.__c=t.__=t.__e=void 0}function qe(t,e,n){return this.constructor(t,n)}function Ge(t,e,n){var r,s,a,o;e==document&&(e=document.documentElement),k.__&&k.__(t,e),s=(r=!1)?null:e.__k,a=[],o=[],Dt(e,t=e.__k=H(gt,null,[t]),s||vt,vt,e.namespaceURI,s?null:e.firstChild?$t.call(e.childNodes):null,a,s?s.__e:e.firstChild,r,o),ge(a,t,o)}function Qe(t){function e(n){var r,s;return this.getChildContext||(r=new Set,(s={})[e.__c]=this,this.getChildContext=function(){return s},this.componentWillUnmount=function(){r=null},this.shouldComponentUpdate=function(a){this.props.value!=a.value&&r.forEach(function(o){o.__e=!0,Mt(o)})},this.sub=function(a){r.add(a);var o=a.componentWillUnmount;a.componentWillUnmount=function(){r&&r.delete(a),o&&o.call(a)}}),n.children}return e.__c="__cC"+fe++,e.__=t,e.Provider=e.__l=(e.Consumer=function(n,r){return n.children(r)}).contextType=e,e}$t=ft.slice,k={__e:function(t,e,n,r){for(var s,a,o;e=e.__;)if((s=e.__c)&&!s.__)try{if((a=s.constructor)&&a.getDerivedStateFromError!=null&&(s.setState(a.getDerivedStateFromError(t)),o=s.__d),s.componentDidCatch!=null&&(s.componentDidCatch(t,r||{}),o=s.__d),o)return s.__E=s}catch(l){t=l}throw t}},ue=0,ut.prototype.setState=function(t,e){var n;n=this.__s!=null&&this.__s!=this.state?this.__s:this.__s=O({},this.state),typeof t=="function"&&(t=t(O({},n),this.props)),t&&O(n,t),t!=null&&this.__v&&(e&&this._sb.push(e),Mt(this))},ut.prototype.forceUpdate=function(t){this.__v&&(this.__e=!0,t&&this.__h.push(t),Mt(this))},ut.prototype.render=gt,W=[],_e=typeof Promise=="function"?Promise.prototype.then.bind(Promise.resolve()):setTimeout,pe=function(t,e){return t.__v.__b-e.__v.__b},mt.__r=0,Tt=Math.random().toString(8),ct="__d"+Tt,at="__a"+Tt,ve=/(PointerCapture)$|Capture$/i,Et=0,xt=Zt(!1),Lt=Zt(!0),fe=0;var Z,F,Ft,te,rt=0,we=[],L=k,ee=L.__b,ne=L.__r,ae=L.diffed,se=L.__c,re=L.unmount,oe=L.__;function bt(t,e){L.__h&&L.__h(F,t,rt||e),rt=0;var n=F.__H||(F.__H={__:[],__h:[]});return t>=n.__.length&&n.__.push({}),n.__[t]}function g(t){return rt=1,ze(ke,t)}function ze(t,e,n){var r=bt(Z++,2);if(r.t=t,!r.__c&&(r.__=[ke(void 0,e),function(l){var d=r.__N?r.__N[0]:r.__[0],c=r.t(d,l);d!==c&&(r.__N=[c,r.__[1]],r.__c.setState({}))}],r.__c=F,!F.__f)){var s=function(l,d,c){if(!r.__c.__H)return!0;var v=r.__c.__H.__.filter(function(u){return u.__c});if(v.every(function(u){return!u.__N}))return!a||a.call(this,l,d,c);var i=r.__c.props!==l;return v.some(function(u){if(u.__N){var f=u.__[0];u.__=u.__N,u.__N=void 0,f!==u.__[0]&&(i=!0)}}),a&&a.call(this,l,d,c)||i};F.__f=!0;var a=F.shouldComponentUpdate,o=F.componentWillUpdate;F.componentWillUpdate=function(l,d,c){if(this.__e){var v=a;a=void 0,s(l,d,c),a=v}o&&o.call(this,l,d,c)},F.shouldComponentUpdate=s}return r.__N||r.__}function I(t,e){var n=bt(Z++,3);!L.__s&&Ce(n.__H,e)&&(n.__=t,n.u=e,F.__H.__h.push(n))}function Ke(t){return rt=5,V(function(){return{current:t}},[])}function V(t,e){var n=bt(Z++,7);return Ce(n.__H,e)&&(n.__=t(),n.__H=e,n.__h=t),n.__}function T(t,e){return rt=8,V(function(){return t},e)}function Ye(t){var e=F.context[t.__c],n=bt(Z++,9);return n.c=t,e?(n.__==null&&(n.__=!0,e.sub(F)),e.props.value):t.__}function Xe(){for(var t;t=we.shift();){var e=t.__H;if(t.__P&&e)try{e.__h.some(_t),e.__h.some(jt),e.__h=[]}catch(n){e.__h=[],L.__e(n,t.__v)}}}L.__b=function(t){F=null,ee&&ee(t)},L.__=function(t,e){t&&e.__k&&e.__k.__m&&(t.__m=e.__k.__m),oe&&oe(t,e)},L.__r=function(t){ne&&ne(t),Z=0;var e=(F=t.__c).__H;e&&(Ft===F?(e.__h=[],F.__h=[],e.__.some(function(n){n.__N&&(n.__=n.__N),n.u=n.__N=void 0})):(e.__h.some(_t),e.__h.some(jt),e.__h=[],Z=0)),Ft=F},L.diffed=function(t){ae&&ae(t);var e=t.__c;e&&e.__H&&(e.__H.__h.length&&(we.push(e)!==1&&te===L.requestAnimationFrame||((te=L.requestAnimationFrame)||Ze)(Xe)),e.__H.__.some(function(n){n.u&&(n.__H=n.u),n.u=void 0})),Ft=F=null},L.__c=function(t,e){e.some(function(n){try{n.__h.some(_t),n.__h=n.__h.filter(function(r){return!r.__||jt(r)})}catch(r){e.some(function(s){s.__h&&(s.__h=[])}),e=[],L.__e(r,n.__v)}}),se&&se(t,e)},L.unmount=function(t){re&&re(t);var e,n=t.__c;n&&n.__H&&(n.__H.__.some(function(r){try{_t(r)}catch(s){e=s}}),n.__H=void 0,e&&L.__e(e,n.__v))};var ie=typeof requestAnimationFrame=="function";function Ze(t){var e,n=function(){clearTimeout(r),ie&&cancelAnimationFrame(e),setTimeout(t)},r=setTimeout(n,35);ie&&(e=requestAnimationFrame(n))}function _t(t){var e=F,n=t.__c;typeof n=="function"&&(t.__c=void 0,n()),F=e}function jt(t){var e=F;t.__c=t.__(),F=e}function Ce(t,e){return!t||t.length!==e.length||e.some(function(n,r){return n!==t[r]})}function ke(t,e){return typeof e=="function"?e(t):e}var Se=function(t,e,n,r){var s;e[0]=0;for(var a=1;a<e.length;a++){var o=e[a++],l=e[a]?(e[0]|=o?1:2,n[e[a++]]):e[++a];o===3?r[0]=l:o===4?r[1]=Object.assign(r[1]||{},l):o===5?(r[1]=r[1]||{})[e[++a]]=l:o===6?r[1][e[++a]]+=l+"":o?(s=t.apply(l,Se(t,l,n,["",null])),r.push(s),l[0]?e[0]|=2:(e[a-2]=0,e[a]=s)):r.push(l)}return r},le=new Map;function q(t){var e=le.get(this);return e||(e=new Map,le.set(this,e)),(e=Se(this,e.get(t)||(e.set(t,e=(function(n){for(var r,s,a=1,o="",l="",d=[0],c=function(u){a===1&&(u||(o=o.replace(/^\s*\n\s*|\s*\n\s*$/g,"")))?d.push(0,u,o):a===3&&(u||o)?(d.push(3,u,o),a=2):a===2&&o==="..."&&u?d.push(4,u,0):a===2&&o&&!u?d.push(5,0,!0,o):a>=5&&((o||!u&&a===5)&&(d.push(a,0,o,s),a=6),u&&(d.push(a,u,0,s),a=6)),o=""},v=0;v<n.length;v++){v&&(a===1&&c(),c(v));for(var i=0;i<n[v].length;i++)r=n[v][i],a===1?r==="<"?(c(),d=[d],a=3):o+=r:a===4?o==="--"&&r===">"?(a=1,o=""):o=r+o[0]:l?r===l?l="":o+=r:r==='"'||r==="'"?l=r:r===">"?(c(),a=1):a&&(r==="="?(a=5,s=o,o=""):r==="/"&&(a<5||n[v][i+1]===">")?(c(),a===3&&(d=d[0]),a=d,(d=d[0]).push(2,0,a),a=0):r===" "||r==="	"||r===`
+`||r==="\r"?(c(),a=2):o+=r),a===3&&o==="!--"&&(a=4,d=d[0])}return c(),d})(t)),e),arguments,[])).length>1?e:e[0]}const tn=q.bind(H),At=Qe(null);function ce({base:t,children:e}){const n=o=>o.startsWith(t)?o.slice(t.length)||"/":o,[r,s]=g(()=>n(location.pathname));I(()=>{const o=()=>s(n(location.pathname));return window.addEventListener("popstate",o),()=>window.removeEventListener("popstate",o)},[t]);const a=T(o=>{history.pushState(null,"",t+(o==="/"?"":o)),s(o)},[t]);return tn`<${At.Provider} value=${[r,a]}>${e}</${At.Provider}>`}function Ot(){const t=Ye(At);if(!t)throw new Error("useLocation must be used within RouterProvider");return t}function G(t){if(!t)return"—";const e=Math.floor(t/3600),n=Math.floor(t%3600/60);return e===0?`${n}m`:`${e}h${n>0?` ${n}m`:""}`}function Ht(t){if(!t)return"—";const e=new Date(t),n=new Date,r=e.getFullYear()===n.getFullYear()?{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}:{month:"short",day:"numeric",year:"2-digit",hour:"numeric",minute:"2-digit"};return e.toLocaleString(void 0,r)}function tt(t){if(!t)return"—";const e=new Date(t),n=new Date,r=e.getFullYear()===n.getFullYear()?{month:"short",day:"numeric"}:{month:"short",day:"numeric",year:"2-digit"};return e.toLocaleDateString(void 0,r)}function j(t){return"$"+t.toFixed(2)}function yt(t){return t==null?"—":t>=1e3?`${(t/1e3).toFixed(2)} kg`:`${t.toFixed(1)} g`}function It(t){return t?t>=1e3?`${(t/1e3).toFixed(2)} kg`:`${Math.round(t)} g`:"0 g"}const Q=q.bind(H),en={finish:"badge badge-finish",running:"badge badge-running",failed:"badge badge-failed",cancel:"badge badge-cancel",pause:"badge badge-pause"};function wt({status:t}){const e=(t||"").toLowerCase();return Q`<span class=${en[e]||"badge badge-default"}>${e||"unknown"}</span>`}function Rt({url:t}){const[e,n]=g(!1);return!t||e?Q`<div class="row-thumb-ph">🖨</div>`:Q`<img
     class="row-thumb"
     src=${t}
     alt=""
@@ -13,7 +13,7 @@
     onError=${()=>r(!0)}
   />`}function Wt({colors:t}){if(!(t!=null&&t.length))return null;const e=[...new Set(t.map(n=>n.slice(0,6).toUpperCase()))].filter(n=>n!=="FFFFFF");return e.length?Q`<span class="swatches"
     >${e.map(n=>Q`<span class="swatch" style=${"background:#"+n} title=${"#"+n} />`)}</span
-  >`:null}const A=V.bind(H);function an({summary:t,dataRange:e}){var a,o;const[n,r]=Ot(),s=t==null?void 0:t.totals;return A`
+  >`:null}const A=q.bind(H);function an({summary:t,dataRange:e}){var a,o;const[n,r]=Ot(),s=t==null?void 0:t.totals;return A`
     <header>
       <div class="header-left">
         <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
@@ -63,7 +63,7 @@
         </div>
       </div>
     </header>
-  `}function sn({q:t,setQ:e,statusFilter:n,setStatusFilter:r,deviceFilter:s,setDeviceFilter:a,devices:o,view:l,setView:d,filteredCount:c,totalCount:v}){const i=q(()=>{const u=new URLSearchParams;n&&u.set("status",n),s&&u.set("device",s);const f=u.toString();return"/jobs/export.csv"+(f?"?"+f:"")},[n,s]);return A`
+  `}function sn({q:t,setQ:e,statusFilter:n,setStatusFilter:r,deviceFilter:s,setDeviceFilter:a,devices:o,view:l,setView:d,filteredCount:c,totalCount:v}){const i=V(()=>{const u=new URLSearchParams;n&&u.set("status",n),s&&u.set("device",s);const f=u.toString();return"/jobs/export.csv"+(f?"?"+f:"")},[n,s]);return A`
     <div class="toolbar">
       <input
         type="search"
@@ -71,7 +71,10 @@
         value=${t}
         onInput=${u=>e(u.target.value)}
       />
-      <select value=${n} onChange=${u=>r(u.target.value)}>
+      <select
+        value=${n}
+        onChange=${u=>r(u.target.value)}
+      >
         <option value="">All Statuses</option>
         <option value="finish">Finished</option>
         <option value="cancel">Cancelled</option>
@@ -79,13 +82,26 @@
         <option value="failed">Failed</option>
         <option value="pause">Paused</option>
       </select>
-      <select value=${s} onChange=${u=>a(u.target.value)}>
+      <select
+        value=${s}
+        onChange=${u=>a(u.target.value)}
+      >
         <option value="">All Printers</option>
         ${o.map(u=>A`<option key=${u} value=${u}>${u}</option>`)}
       </select>
       <div class="view-toggle">
-        <button class=${"view-btn"+(l==="table"?" active":"")} onClick=${()=>d("table")}>☰ Table</button>
-        <button class=${"view-btn"+(l==="grid"?" active":"")} onClick=${()=>d("grid")}>⊞ Grid</button>
+        <button
+          class=${"view-btn"+(l==="table"?" active":"")}
+          onClick=${()=>d("table")}
+        >
+          ☰ Table
+        </button>
+        <button
+          class=${"view-btn"+(l==="grid"?" active":"")}
+          onClick=${()=>d("grid")}
+        >
+          ⊞ Grid
+        </button>
       </div>
       <div class="toolbar-right">
         <a class="btn-csv" href=${i} download>↓ CSV</a>
@@ -166,7 +182,7 @@
     <div class="grid-view">
       ${t.map(n=>A`<${dn} key=${n.id} job=${n} onJobClick=${e} />`)}
     </div>
-  `}function Bt(t){I(()=>{const e=n=>{n.key==="Escape"&&t()};return document.addEventListener("keydown",e),()=>document.removeEventListener("keydown",e)},[t])}const de=V.bind(H);let Pe=()=>{};function Y(t,e="info"){Pe({message:t,type:e,id:Date.now()+Math.random()})}function _n(){const[t,e]=g([]),n=Ke(new Map);Pe=P(s=>{e(o=>[...o,s]);const a=setTimeout(()=>{e(o=>o.filter(l=>l.id!==s.id)),n.current.delete(s.id)},3500);n.current.set(s.id,a)},[]);const r=P(s=>{const a=n.current.get(s);a&&clearTimeout(a),n.current.delete(s),e(o=>o.filter(l=>l.id!==s))},[]);return t.length?de`
+  `}function Bt(t){I(()=>{const e=n=>{n.key==="Escape"&&t()};return document.addEventListener("keydown",e),()=>document.removeEventListener("keydown",e)},[t])}const de=q.bind(H);let Pe=()=>{};function Y(t,e="info"){Pe({message:t,type:e,id:Date.now()+Math.random()})}function _n(){const[t,e]=g([]),n=Ke(new Map);Pe=T(s=>{e(o=>[...o,s]);const a=setTimeout(()=>{e(o=>o.filter(l=>l.id!==s.id)),n.current.delete(s.id)},3500);n.current.set(s.id,a)},[]);const r=T(s=>{const a=n.current.get(s);a&&clearTimeout(a),n.current.delete(s),e(o=>o.filter(l=>l.id!==s))},[]);return t.length?de`
     <div class="toast-container">
       ${t.map(s=>de`
           <div class="toast toast-${s.type}" key=${s.id} onClick=${()=>r(s.id)}>
@@ -174,7 +190,7 @@
           </div>
         `)}
     </div>
-  `:null}const pn=15e3,vn=2e4,fn=5;async function mn(t,e){try{const n=await t.json();return typeof n.error=="string"?n.error:e}catch{return e}}function $n(t){return{signal:AbortSignal.timeout(pn),...t}}function hn(t,e){return(t==null?void 0:t.name)==="TimeoutError"?new Error(`${e} (request timed out)`):new Error(`${e} (network error)`)}async function st(t,e,n){let r;try{r=await fetch(t,$n(n))}catch(s){throw hn(s,e)}if(!r.ok)throw new Error(await mn(r,e));return await r.json()}async function qt(t,e,n){try{return{data:await st(t,e,n),error:null}}catch(r){return{data:null,error:r instanceof Error?r:new Error(e)}}}async function Ct(t,e,n){const{data:r,error:s}=await qt(t,e,n);return s?(Y(s.message||e,"error"),null):r}async function pt(t,e,n){return Ct(t,n,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)})}async function Te(t,e,n){return Ct(t,n,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)})}const D=V.bind(H);function gn({jobId:t}){const[e,n]=g(null);if(I(()=>{let a=!0;return n(null),qt(`/jobs/${t}/price`,"Pricing not configured").then(({data:o})=>{a&&n(o??!1)}).catch(()=>{a&&n(!1)}),()=>{a=!1}},[t]),e===null)return D`<div class="pricing-row pricing-loading">Loading price…</div>`;if(e===!1)return D`<div class="pricing-row pricing-na">Pricing not configured</div>`;const r=e.final_price-e.base_price,s=e.base_price>0?Math.round(r/e.base_price*100):0;return D`
+  `:null}const pn=15e3,vn=2e4,fn=5;async function mn(t,e){try{const n=await t.json();return typeof n.error=="string"?n.error:e}catch{return e}}function $n(t){return{signal:AbortSignal.timeout(pn),...t}}function hn(t,e){return(t==null?void 0:t.name)==="TimeoutError"?new Error(`${e} (request timed out)`):new Error(`${e} (network error)`)}async function st(t,e,n){let r;try{r=await fetch(t,$n(n))}catch(s){throw hn(s,e)}if(!r.ok)throw new Error(await mn(r,e));return await r.json()}async function Vt(t,e,n){try{return{data:await st(t,e,n),error:null}}catch(r){return{data:null,error:r instanceof Error?r:new Error(e)}}}async function Ct(t,e,n){const{data:r,error:s}=await Vt(t,e,n);return s?(Y(s.message||e,"error"),null):r}async function pt(t,e,n){return Ct(t,n,{method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)})}async function Te(t,e,n){return Ct(t,n,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(e)})}const D=q.bind(H);function gn({jobId:t}){const[e,n]=g(null);if(I(()=>{let a=!0;return n(null),Vt(`/jobs/${t}/price`,"Pricing not configured").then(({data:o})=>{a&&n(o??!1)}).catch(()=>{a&&n(!1)}),()=>{a=!1}},[t]),e===null)return D`<div class="pricing-row pricing-loading">Loading price…</div>`;if(e===!1)return D`<div class="pricing-row pricing-na">Pricing not configured</div>`;const r=e.final_price-e.base_price,s=e.base_price>0?Math.round(r/e.base_price*100):0;return D`
     <div class="pricing-box">
       <div class="pricing-row">
         <span>Material</span><span>${j(e.material_cost)}</span>
@@ -208,8 +224,8 @@
         <span>${j(e.final_price)}</span>
       </div>
     </div>
-  `}const bn=["finish","failed","cancel","running","pause"];function yn({job:t,onClose:e,onPatch:n,projects:r,onJobProjectChange:s,onJobStatusChange:a,onJobExtraLaborChange:o,onNavigateToProject:l}){const[d,c]=g(t.customer??""),[v,i]=g(t.notes??""),[u,f]=g(t.price_override!=null?String(t.price_override):"");Bt(e);const _=P(p=>{const $=p.target.value;s(t.id,$===""?null:Number($))},[t.id,s]),m=P(p=>{const $=p.target.value;a(t.id,$===""?null:$)},[t.id,a]);return D`
-    <div class="overlay" onClick=${p=>p.target===p.currentTarget&&e()}>
+  `}const bn=["finish","failed","cancel","running","pause"];function yn({job:t,onClose:e,onPatch:n,projects:r,onJobProjectChange:s,onJobStatusChange:a,onJobExtraLaborChange:o,onNavigateToProject:l}){const[d,c]=g(t.customer??""),[v,i]=g(t.notes??""),[u,f]=g(t.price_override!=null?String(t.price_override):"");Bt(e);const p=T(_=>{const $=_.target.value;s(t.id,$===""?null:Number($))},[t.id,s]),m=T(_=>{const $=_.target.value;a(t.id,$===""?null:$)},[t.id,a]);return D`
+    <div class="overlay" onClick=${_=>_.target===_.currentTarget&&e()}>
       <div class="modal">
         <div class="modal-header">
           <h2>${t.designTitle||"Untitled Job"}</h2>
@@ -263,9 +279,9 @@
               type="text"
               placeholder="—"
               value=${d}
-              onInput=${p=>c(p.target.value)}
+              onInput=${_=>c(_.target.value)}
               onBlur=${()=>n(t.id,{customer:d.trim()||null})}
-              onKeyDown=${p=>p.key==="Enter"&&p.target.blur()}
+              onKeyDown=${_=>_.key==="Enter"&&_.target.blur()}
             />
           </div>
           <div class="modal-project-row">
@@ -274,7 +290,7 @@
               class="modal-project-select modal-notes"
               placeholder="—"
               value=${v}
-              onInput=${p=>i(p.target.value)}
+              onInput=${_=>i(_.target.value)}
               onBlur=${()=>n(t.id,{notes:v.trim()||null})}
             />
           </div>
@@ -287,9 +303,9 @@
               step="0.01"
               placeholder="Calculated"
               value=${u}
-              onInput=${p=>f(p.target.value)}
-              onBlur=${()=>{const p=u===""?null:Number(u);n(t.id,{price_override:p})}}
-              onKeyDown=${p=>p.key==="Enter"&&p.target.blur()}
+              onInput=${_=>f(_.target.value)}
+              onBlur=${()=>{const _=u===""?null:Number(u);n(t.id,{price_override:_})}}
+              onKeyDown=${_=>_.key==="Enter"&&_.target.blur()}
             />
           </div>
           <div class="modal-project-row">
@@ -301,7 +317,7 @@
               step="1"
               placeholder="0"
               value=${t.extra_labor_minutes??""}
-              onChange=${p=>{const $=p.target.value===""?null:Number(p.target.value);o(t.id,$)}}
+              onChange=${_=>{const $=_.target.value===""?null:Number(_.target.value);o(t.id,$)}}
             />
           </div>
           <div class="modal-project-row">
@@ -312,7 +328,7 @@
               onChange=${m}
             >
               <option value="">Auto (from printer)</option>
-              ${bn.map(p=>D`<option key=${p} value=${p}>${p}</option>`)}
+              ${bn.map(_=>D`<option key=${_} value=${_}>${_}</option>`)}
             </select>
           </div>
           ${r&&D`
@@ -321,10 +337,10 @@
               <select
                 class="modal-project-select"
                 value=${t.project_id??""}
-                onChange=${_}
+                onChange=${p}
               >
                 <option value="">— None —</option>
-                ${r.map(p=>D`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+                ${r.map(_=>D`<option key=${_.id} value=${_.id}>${_.name}</option>`)}
               </select>
               ${t.project_id!=null&&D`
                 <button
@@ -339,7 +355,7 @@
         </div>
       </div>
     </div>
-  `}const y=V.bind(H);function wn({onClose:t,onCreate:e}){const[n,r]=g(""),[s,a]=g(""),[o,l]=g(""),[d,c]=g(!1);Bt(t);const v=P(async i=>{if(i.preventDefault(),!!n.trim()){c(!0);try{const u=await Te("/projects",{name:n.trim(),customer:s||null,notes:o||null},"Failed to create project.");if(!(u!=null&&u.project))return;e(u.project),t()}finally{c(!1)}}},[n,s,o,e,t]);return y`
+  `}const y=q.bind(H);function wn({onClose:t,onCreate:e}){const[n,r]=g(""),[s,a]=g(""),[o,l]=g(""),[d,c]=g(!1);Bt(t);const v=T(async i=>{if(i.preventDefault(),!!n.trim()){c(!0);try{const u=await Te("/projects",{name:n.trim(),customer:s||null,notes:o||null},"Failed to create project.");if(!(u!=null&&u.project))return;e(u.project),t()}finally{c(!1)}}},[n,s,o,e,t]);return y`
     <div class="overlay" onClick=${i=>i.target===i.currentTarget&&t()}>
       <div class="modal">
         <div class="modal-header">
@@ -403,7 +419,7 @@
       </div>
       ${t.notes&&y`<div class="proj-card-notes">${t.notes}</div>`}
     </div>
-  `}function kn({unassignedJobs:t,onClose:e,onAdd:n}){const[r,s]=g("");Bt(e);const a=q(()=>{if(!r)return t;const o=r.toLowerCase();return t.filter(l=>((l.designTitle||"")+" "+(l.customer||"")).toLowerCase().includes(o))},[t,r]);return y`
+  `}function kn({unassignedJobs:t,onClose:e,onAdd:n}){const[r,s]=g("");Bt(e);const a=V(()=>{if(!r)return t;const o=r.toLowerCase();return t.filter(l=>((l.designTitle||"")+" "+(l.customer||"")).toLowerCase().includes(o))},[t,r]);return y`
     <div class="overlay" onClick=${o=>o.target===o.currentTarget&&e()}>
       <div class="modal">
         <div class="modal-header">
@@ -437,7 +453,7 @@
         </div>
       </div>
     </div>
-  `}function Sn({project:t,jobs:e,unassignedJobs:n,onBack:r,onJobClick:s,onAddJob:a,onRemoveJob:o}){const[l,d]=g(!1),[c,v]=g(null),i=e.reduce((_,m)=>_+(m.total_weight_g||0),0),u=e.reduce((_,m)=>_+(m.total_time_s||0),0);I(()=>{v(null),e.length&&Ct(`/projects/${t.id}/price`,"Failed to load project price.").then(_=>{_&&v(_)})},[t.id,e.length]);const f=P(_=>{a(_)},[a]);return y`
+  `}function Sn({project:t,jobs:e,unassignedJobs:n,onBack:r,onJobClick:s,onAddJob:a,onRemoveJob:o}){const[l,d]=g(!1),[c,v]=g(null),i=e.reduce((p,m)=>p+(m.total_weight_g||0),0),u=e.reduce((p,m)=>p+(m.total_time_s||0),0);I(()=>{v(null),e.length&&Ct(`/projects/${t.id}/price`,"Failed to load project price.").then(p=>{p&&v(p)})},[t.id,e.length]);const f=T(p=>{a(p)},[a]);return y`
     <div class="proj-detail">
       <div class="proj-detail-header">
         <button class="btn-back" onClick=${r}>← Projects</button>
@@ -480,25 +496,25 @@
                   </tr>
                 </thead>
                 <tbody>
-                  ${e.map(_=>y`
-                      <tr key=${_.id} onClick=${()=>s(_)}>
-                        <td class="td-thumb"><${Rt} url=${_.cover_url} /></td>
+                  ${e.map(p=>y`
+                      <tr key=${p.id} onClick=${()=>s(p)}>
+                        <td class="td-thumb"><${Rt} url=${p.cover_url} /></td>
                         <td class="td-title">
-                          <span class="row-title">${_.designTitle||"Untitled Job"}</span>
+                          <span class="row-title">${p.designTitle||"Untitled Job"}</span>
                         </td>
-                        <td>${_.deviceModel||"—"}</td>
-                        <td title=${Ht(_.startTime)}>${tt(_.startTime)}</td>
-                        <td><${wt} status=${_.status} /></td>
-                        <td class="td-num"><strong>${yt(_.total_weight_g)}</strong></td>
-                        <td class="td-num">${G(_.total_time_s)}</td>
+                        <td>${p.deviceModel||"—"}</td>
+                        <td title=${Ht(p.startTime)}>${tt(p.startTime)}</td>
+                        <td><${wt} status=${p.status} /></td>
+                        <td class="td-num"><strong>${yt(p.total_weight_g)}</strong></td>
+                        <td class="td-num">${G(p.total_time_s)}</td>
                         <td class="td-num">
-                          ${_.final_price!=null?y`<strong>${j(_.final_price)}</strong>`:"—"}
+                          ${p.final_price!=null?y`<strong>${j(p.final_price)}</strong>`:"—"}
                         </td>
                         <td>
                           <button
                             class="btn-remove-job"
                             title="Remove from project"
-                            onClick=${m=>{m.stopPropagation(),o(_.id)}}
+                            onClick=${m=>{m.stopPropagation(),o(p.id)}}
                           >
                             ×
                           </button>
@@ -515,7 +531,7 @@
         onAdd=${f}
       />`}
     </div>
-  `}function Pn({projects:t,setProjects:e,onAutoGroup:n,projectPrices:r,loading:s=!1}){const[a,o]=g(!1),[l,d]=g(!1),[c,v]=g(""),[,i]=Ot(),u=P(async()=>{d(!0);try{const m=await Te("/projects/auto-group",{},"Auto-group failed.");if(!m)return;const{projects_created:p,jobs_assigned:$}=m;await n(),p===0?Y("No ungrouped jobs found — everything is already assigned to a project.","info"):Y(`Created ${p} project${p!==1?"s":""}, assigned ${$} job${$!==1?"s":""}.`,"success")}finally{d(!1)}},[n]),f=P(m=>{e(p=>[m,...p]),i(`/projects/${m.id}`)},[e,i]),_=q(()=>{if(!c)return t;const m=c.toLowerCase();return t.filter(p=>[p.name,p.customer,p.notes].filter(Boolean).join(" ").toLowerCase().includes(m))},[t,c]);return y`
+  `}function Pn({projects:t,setProjects:e,onAutoGroup:n,projectPrices:r,loading:s=!1}){const[a,o]=g(!1),[l,d]=g(!1),[c,v]=g(""),[,i]=Ot(),u=T(async()=>{d(!0);try{const m=await Te("/projects/auto-group",{},"Auto-group failed.");if(!m)return;const{projects_created:_,jobs_assigned:$}=m;await n(),_===0?Y("No ungrouped jobs found — everything is already assigned to a project.","info"):Y(`Created ${_} project${_!==1?"s":""}, assigned ${$} job${$!==1?"s":""}.`,"success")}finally{d(!1)}},[n]),f=T(m=>{e(_=>[m,..._]),i(`/projects/${m.id}`)},[e,i]),p=V(()=>{if(!c)return t;const m=c.toLowerCase();return t.filter(_=>[_.name,_.customer,_.notes].filter(Boolean).join(" ").toLowerCase().includes(m))},[t,c]);return y`
     <div class="proj-list-header">
       <input
         type="search"
@@ -525,7 +541,7 @@
         onInput=${m=>v(m.target.value)}
       />
       <span class="proj-list-count">
-        ${c?`${_.length} of ${t.length}`:t.length}
+        ${c?`${p.length} of ${t.length}`:t.length}
         ${" "}project${t.length!==1?"s":""}
       </span>
       <button class="btn-secondary" onClick=${u} disabled=${l}>
@@ -533,11 +549,11 @@
       </button>
       <button class="btn-primary" onClick=${()=>o(!0)}>+ New Project</button>
     </div>
-    ${s?y`<div class="empty">Loading projects…</div>`:_.length===0?y`<div class="empty">
+    ${s?y`<div class="empty">Loading projects…</div>`:p.length===0?y`<div class="empty">
             ${c?"No projects match your search.":"No projects yet. Create one to group related jobs together."}
           </div>`:y`
             <div class="proj-grid">
-              ${_.map(m=>y`<${Cn}
+              ${p.map(m=>y`<${Cn}
                     key=${m.id}
                     project=${m}
                     totalPrice=${r[m.id]??null}
@@ -546,7 +562,7 @@
             </div>
           `}
     ${a&&y`<${wn} onClose=${()=>o(!1)} onCreate=${f} />`}
-  `}const B=V.bind(H);function U({label:t,value:e,onChange:n,step:r="0.01",min:s="0"}){return B`
+  `}const B=q.bind(H);function U({label:t,value:e,onChange:n,step:r="0.01",min:s="0"}){return B`
     <label class="form-label">
       ${t}
       <input
@@ -662,7 +678,7 @@
         </button>
       </div>
     </div>
-  `}function Ln({onRatesChanged:t=()=>{}}){const[e,n]=g(null),[r,s]=g(""),[a,o]=g("");I(()=>{Ct("/rates","Failed to load rates.").then(_=>{_&&n(_)})},[]);const l=_=>{o(_),setTimeout(()=>o(""),2e3)},d=async _=>{s("labor");try{const m=await pt("/rates/labor",_,"Failed to save labor rates.");if(!(m!=null&&m.labor_config))return;n(p=>({...p,labor_config:m.labor_config})),l("labor"),t()}finally{s("")}},c=async _=>{s(_.device_model);const{device_model:m,purchase_price:p,lifetime_hrs:$,electricity_rate:h,maintenance_buffer:b}=_;try{const w=await pt(`/rates/machines/${encodeURIComponent(m)}`,{purchase_price:p,lifetime_hrs:$,electricity_rate:h,maintenance_buffer:b},"Failed to save machine rate.");if(!(w!=null&&w.machine_rate))return;n(F=>({...F,machine_rates:F.machine_rates.map(S=>S.device_model===m?w.machine_rate:S)})),l(m),t()}finally{s("")}},v=async _=>{s(_.filament_type);const{filament_type:m,cost_per_g:p,waste_buffer_pct:$}=_;try{const h=await pt(`/rates/materials/${encodeURIComponent(m)}`,{cost_per_g:p,waste_buffer_pct:$},"Failed to save material rate.");if(!(h!=null&&h.material_rate))return;n(b=>({...b,material_rates:b.material_rates.map(w=>w.filament_type===m?h.material_rate:w)})),l(m),t()}finally{s("")}};if(!e)return B`<div class="loading">
+  `}function Ln({onRatesChanged:t=()=>{}}){const[e,n]=g(null),[r,s]=g(""),[a,o]=g("");I(()=>{Ct("/rates","Failed to load rates.").then(p=>{p&&n(p)})},[]);const l=p=>{o(p),setTimeout(()=>o(""),2e3)},d=async p=>{s("labor");try{const m=await pt("/rates/labor",p,"Failed to save labor rates.");if(!(m!=null&&m.labor_config))return;n(_=>_&&{..._,labor_config:m.labor_config}),l("labor"),t()}finally{s("")}},c=async p=>{s(p.device_model);const{device_model:m,purchase_price:_,lifetime_hrs:$,electricity_rate:h,maintenance_buffer:b}=p;try{const w=await pt(`/rates/machines/${encodeURIComponent(m)}`,{purchase_price:_,lifetime_hrs:$,electricity_rate:h,maintenance_buffer:b},"Failed to save machine rate.");if(!(w!=null&&w.machine_rate))return;n(P=>P&&{...P,machine_rates:P.machine_rates.map(S=>S.device_model===m?w.machine_rate:S)}),l(m),t()}finally{s("")}},v=async p=>{s(p.filament_type);const{filament_type:m,cost_per_g:_,waste_buffer_pct:$}=p;try{const h=await pt(`/rates/materials/${encodeURIComponent(m)}`,{cost_per_g:_,waste_buffer_pct:$},"Failed to save material rate.");if(!(h!=null&&h.material_rate))return;n(b=>b&&{...b,material_rates:b.material_rates.map(w=>w.filament_type===m?h.material_rate:w)}),l(m),t()}finally{s("")}};if(!e)return B`<div class="loading">
       <div class="spinner"></div>
       Loading rates…
     </div>`;const{labor_config:i,machine_rates:u,material_rates:f}=e;return B`
@@ -688,12 +704,12 @@
           Depreciation + electricity + maintenance per hour of print time. Rate = purchase ÷
           lifetime + electricity + maintenance.
         </p>
-        ${u.map(_=>B`
+        ${u.map(p=>B`
             <${Fn}
-              key=${_.device_model}
-              machine=${_}
-              saving=${r===_.device_model}
-              saved=${a===_.device_model}
+              key=${p.device_model}
+              machine=${p}
+              saving=${r===p.device_model}
+              saved=${a===p.device_model}
               onSave=${c}
             />
           `)}
@@ -704,18 +720,18 @@
         <p class="admin-section-desc">
           Cost per gram including waste. Rate = cost × (1 + waste fraction).
         </p>
-        ${f.map(_=>B`
+        ${f.map(p=>B`
             <${xn}
-              key=${_.filament_type}
-              material=${_}
-              saving=${r===_.filament_type}
-              saved=${a===_.filament_type}
+              key=${p.filament_type}
+              material=${p}
+              saving=${r===p.filament_type}
+              saved=${a===p.filament_type}
               onSave=${v}
             />
           `)}
       </section>
     </div>
-  `}function Mn({setJobs:t,setProjects:e,setProjectPrices:n,setSummary:r,setDataRange:s,toast:a}){const[o,l]=g(!0),[d,c]=g(!0),[v,i]=g(0),[u,f]=g(null),[_,m]=g("Starting dashboard…"),p=P(async({url:b,fallback:w,onData:F,onFinally:S})=>{const{data:x,error:N}=await qt(b,w);N&&a(N.message||w,"error"),x&&F(x),S&&S()},[a]),$=P(()=>{p({url:"/projects",fallback:"Failed to load projects.",onData:b=>(b==null?void 0:b.projects)&&e(b.projects),onFinally:()=>c(!1)}),p({url:"/projects/prices",fallback:"Failed to load project prices.",onData:b=>(b==null?void 0:b.prices)&&n(b.prices)})},[p,e,n]),h=P((b=!1)=>{p({url:"/jobs/prices",fallback:b?"Failed to refresh job prices.":"Failed to load job prices.",onData:F=>{F!=null&&F.prices&&t(S=>S.map(x=>{var N;return{...x,final_price:((N=F.prices)==null?void 0:N[x.id])??(b?x.final_price:null)??null}}))}})},[p,t]);return I(()=>{const b=()=>i(S=>Math.min(100,S+100/fn)),w=(S,x)=>(m(`Loading ${S}…`),st(S,x).catch(N=>{throw console.error(`[boot] ${S} failed`,N),N}).finally(b)),F=setTimeout(()=>{f("Dashboard load timed out. Check console/network for the failing request."),l(!1),c(!1)},vn);return Promise.all([w("/ui/data","Failed to load jobs."),w("/summary","Failed to load summary."),w("/health/data-range","Failed to load print history range.")]).then(([S,x,N])=>{t(S.jobs),r(x),s(N),l(!1),m("Loading optional data…"),h(!1),$()}).catch(S=>{f(S.message),l(!1),c(!1)}).finally(()=>clearTimeout(F)),()=>clearTimeout(F)},[t,r,s,h,$]),{loading:o,projectsLoading:d,loadProgress:v,error:u,bootStatus:_,refreshProjectsAndPrices:$,refreshJobPrices:h}}const M=V.bind(H);function Nn(t,e,n,r){return t.filter(s=>{const a=((s.designTitle||"")+" "+(s.customer||"")).toLowerCase();return!(e&&!a.includes(e.toLowerCase())||n&&(s.status||"").toLowerCase()!==n||r&&s.deviceModel!==r)})}function jn(t,e,n){return[...t].sort((r,s)=>{let a=r[e],o=s[e];return a==null&&(a=n==="asc"?1/0:-1/0),o==null&&(o=n==="asc"?1/0:-1/0),typeof a=="string"?n==="asc"?a.localeCompare(o):o.localeCompare(a):n==="asc"?a-o:o-a})}function An({bootStatus:t,loadProgress:e}){return M` <div class="in-app-loading" role="status" aria-live="polite">
+  `}function Mn({setJobs:t,setProjects:e,setProjectPrices:n,setSummary:r,setDataRange:s,toast:a}){const[o,l]=g(!0),[d,c]=g(!0),[v,i]=g(0),[u,f]=g(null),[p,m]=g("Starting dashboard…"),_=T(async({url:b,fallback:w,onData:P,onFinally:S})=>{const{data:x,error:N}=await Vt(b,w);N&&a(N.message||w,"error"),x&&P(x),S&&S()},[a]),$=T(()=>{_({url:"/projects",fallback:"Failed to load projects.",onData:b=>(b==null?void 0:b.projects)&&e(b.projects),onFinally:()=>c(!1)}),_({url:"/projects/prices",fallback:"Failed to load project prices.",onData:b=>(b==null?void 0:b.prices)&&n(b.prices)})},[_,e,n]),h=T((b=!1)=>{_({url:"/jobs/prices",fallback:b?"Failed to refresh job prices.":"Failed to load job prices.",onData:P=>{P!=null&&P.prices&&t(S=>S.map(x=>{var N;return{...x,final_price:((N=P.prices)==null?void 0:N[x.id])??(b?x.final_price:null)??null}}))}})},[_,t]);return I(()=>{const b=()=>i(S=>Math.min(100,S+100/fn)),w=(S,x)=>(m(`Loading ${S}…`),st(S,x).catch(N=>{throw console.error(`[boot] ${S} failed`,N),N}).finally(b)),P=setTimeout(()=>{f("Dashboard load timed out. Check console/network for the failing request."),l(!1),c(!1)},vn);return Promise.all([w("/ui/data","Failed to load jobs."),w("/summary","Failed to load summary."),w("/health/data-range","Failed to load print history range.")]).then(([S,x,N])=>{t(S.jobs),r(x),s(N),l(!1),m("Loading optional data…"),h(!1),$()}).catch(S=>{f(S.message),l(!1),c(!1)}).finally(()=>clearTimeout(P)),()=>clearTimeout(P)},[t,r,s,h,$]),{loading:o,projectsLoading:d,loadProgress:v,error:u,bootStatus:p,refreshProjectsAndPrices:$,refreshJobPrices:h}}const M=q.bind(H);function Nn(t,e,n,r){return t.filter(s=>{const a=((s.designTitle||"")+" "+(s.customer||"")).toLowerCase();return!(e&&!a.includes(e.toLowerCase())||n&&(s.status||"").toLowerCase()!==n||r&&s.deviceModel!==r)})}function jn(t,e,n){return[...t].sort((r,s)=>{let a=r[e],o=s[e];return a==null&&(a=n==="asc"?1/0:-1/0),o==null&&(o=n==="asc"?1/0:-1/0),typeof a=="string"?n==="asc"?a.localeCompare(o):o.localeCompare(a):n==="asc"?a-o:o-a})}function An({bootStatus:t,loadProgress:e}){return M` <div class="in-app-loading" role="status" aria-live="polite">
     <section class="dashboard-loader-card">
       <div class="dashboard-loader-copy">
         <div class="loader-hero-row dashboard-loader-title-row">
@@ -775,7 +791,7 @@
     onJobClick=${a}
     onAddJob=${v=>o(v,t)}
     onRemoveJob=${v=>o(v,null)}
-  />`}function Dn({q:t,setQ:e,statusFilter:n,setStatusFilter:r,deviceFilter:s,setDeviceFilter:a,devices:o,view:l,setView:d,filtered:c,jobs:v,isFiltered:i,sorted:u,sortCol:f,sortDir:_,onSort:m,onJobClick:p}){return M`
+  />`}function Dn({q:t,setQ:e,statusFilter:n,setStatusFilter:r,deviceFilter:s,setDeviceFilter:a,devices:o,view:l,setView:d,filtered:c,jobs:v,isFiltered:i,sorted:u,sortCol:f,sortDir:p,onSort:m,onJobClick:_}){return M`
     <${sn}
       q=${t}
       setQ=${e}
@@ -793,17 +809,17 @@
     ${u.length===0?M`<div class="empty">No jobs match your filters.</div>`:l==="table"?M`<${cn}
             sorted=${u}
             sortCol=${f}
-            sortDir=${_}
+            sortDir=${p}
             onSort=${m}
-            onJobClick=${p}
-          />`:M`<${un} sorted=${u} onJobClick=${p} />`}
-  `}function Un(){const[t,e]=g([]),[n,r]=g([]),[s,a]=g({}),[o,l]=g(null),[d,c]=g(null),[v,i]=g("table"),[u,f]=g(""),[_,m]=g(""),[p,$]=g(""),[h,b]=g("startTime"),[w,F]=g("desc"),[S,x]=g(null),[N,E]=Ot(),{loading:R,projectsLoading:Vt,loadProgress:Fe,error:Gt,bootStatus:xe,refreshProjectsAndPrices:z,refreshJobPrices:ot}=Mn({setJobs:e,setProjects:r,setProjectPrices:a,setSummary:l,setDataRange:c,toast:Y}),Le=q(()=>[...new Set(t.map(C=>C.deviceModel).filter(Boolean))].sort(),[t]),Me=!!(u||_||p),kt=q(()=>Nn(t,u,_,p),[t,u,_,p]),Ne=q(()=>jn(kt,h,w),[kt,h,w]),je=P(C=>{h===C?F(J=>J==="asc"?"desc":"asc"):(b(C),F(C==="startTime"?"desc":"asc"))},[h]),Ae=P(()=>x(null),[]),et=P(async(C,J)=>{const nt=await pt(`/jobs/${C}`,J,"Failed to update job.");if(!(nt!=null&&nt.job))return null;const{job:St}=nt;return e(K=>K.map(Pt=>Pt.id===C?{...Pt,...St}:Pt)),x(K=>K&&K.id===C?{...K,...St}:K),St},[]),Qt=P(async(C,J)=>{await et(C,{project_id:J})&&z()},[et,z]),it=P((C,J)=>{et(C,J)},[et]),Ee=P((C,J)=>{it(C,{status_override:J})},[it]),Je=P((C,J)=>{it(C,{extra_labor_minutes:J})},[it]),De=P(C=>{x(null),E(`/projects/${C}`)},[E]),zt=P(async()=>{const C=await st("/summary","Failed to refresh summary.");l(C)},[]),Ue=P(async()=>{ot(!0),z();try{await zt(),Y("Pricing refreshed from updated rates.","success")}catch(C){Y((C==null?void 0:C.message)||"Updated rates saved, but summary refresh failed.","error")}},[ot,z,zt]),Oe=P(async()=>{const[C,J]=await Promise.all([st("/ui/data","Failed to refresh jobs."),st("/projects","Failed to refresh projects.")]);e(C.jobs),r(J.projects),ot(!0),z()},[ot,z]);if(R)return M`<${An} bootStatus=${xe} loadProgress=${Fe} />`;if(Gt)return M`<${En} error=${Gt} />`;const Kt=N.match(/^\/projects\/(\d+)$/),He=N.startsWith("/projects");return M`
+            onJobClick=${_}
+          />`:M`<${un} sorted=${u} onJobClick=${_} />`}
+  `}function Un(){const[t,e]=g([]),[n,r]=g([]),[s,a]=g({}),[o,l]=g(null),[d,c]=g(null),[v,i]=g("table"),[u,f]=g(""),[p,m]=g(""),[_,$]=g(""),[h,b]=g("startTime"),[w,P]=g("desc"),[S,x]=g(null),[N,E]=Ot(),{loading:R,projectsLoading:qt,loadProgress:Fe,error:Gt,bootStatus:xe,refreshProjectsAndPrices:z,refreshJobPrices:ot}=Mn({setJobs:e,setProjects:r,setProjectPrices:a,setSummary:l,setDataRange:c,toast:Y}),Le=V(()=>[...new Set(t.map(C=>C.deviceModel).filter(Boolean))].sort(),[t]),Me=!!(u||p||_),kt=V(()=>Nn(t,u,p,_),[t,u,p,_]),Ne=V(()=>jn(kt,h,w),[kt,h,w]),je=T(C=>{h===C?P(J=>J==="asc"?"desc":"asc"):(b(C),P(C==="startTime"?"desc":"asc"))},[h]),Ae=T(()=>x(null),[]),et=T(async(C,J)=>{const nt=await pt(`/jobs/${C}`,J,"Failed to update job.");if(!(nt!=null&&nt.job))return null;const{job:St}=nt;return e(K=>K.map(Pt=>Pt.id===C?{...Pt,...St}:Pt)),x(K=>K&&K.id===C?{...K,...St}:K),St},[]),Qt=T(async(C,J)=>{await et(C,{project_id:J})&&z()},[et,z]),it=T((C,J)=>{et(C,J)},[et]),Ee=T((C,J)=>{it(C,{status_override:J})},[it]),Je=T((C,J)=>{it(C,{extra_labor_minutes:J})},[it]),De=T(C=>{x(null),E(`/projects/${C}`)},[E]),zt=T(async()=>{const C=await st("/summary","Failed to refresh summary.");l(C)},[]),Ue=T(async()=>{ot(!0),z();try{await zt(),Y("Pricing refreshed from updated rates.","success")}catch(C){Y((C==null?void 0:C.message)||"Updated rates saved, but summary refresh failed.","error")}},[ot,z,zt]),Oe=T(async()=>{const[C,J]=await Promise.all([st("/ui/data","Failed to refresh jobs."),st("/projects","Failed to refresh projects.")]);e(C.jobs),r(J.projects),ot(!0),z()},[ot,z]);if(R)return M`<${An} bootStatus=${xe} loadProgress=${Fe} />`;if(Gt)return M`<${En} error=${Gt} />`;const Kt=N.match(/^\/projects\/(\d+)$/),He=N.startsWith("/projects");return M`
     <${an} summary=${o} dataRange=${d} />
     ${N.startsWith("/admin")?M`<${Ln} onRatesChanged=${Ue} />`:Kt?M`<${Jn}
         projectId=${Number(Kt[1])}
         projects=${n}
         jobs=${t}
-        projectsLoading=${Vt}
+        projectsLoading=${qt}
         navigate=${E}
         setSelectedJob=${x}
         handleJobProjectChange=${Qt}
@@ -812,13 +828,13 @@
         setProjects=${r}
         onAutoGroup=${Oe}
         projectPrices=${s}
-        loading=${Vt}
+        loading=${qt}
       />`:M`<${Dn}
       q=${u}
       setQ=${f}
-      statusFilter=${_}
+      statusFilter=${p}
       setStatusFilter=${m}
-      deviceFilter=${p}
+      deviceFilter=${_}
       setDeviceFilter=${$}
       devices=${Le}
       view=${v}
@@ -844,4 +860,4 @@
       onNavigateToProject=${De}
     />`}
     <${_n} />
-  `}Ge(M`<${ce} base="/ui"><${Un} /></${ce}>`,document.getElementById("app"));
+  `}const On=M`<${ce} base="/ui"><${Un} /></${ce}>`;Ge(On,document.getElementById("app"));

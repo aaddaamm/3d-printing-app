@@ -17,9 +17,7 @@ import { useLocation } from "./router.js";
 
 const html = (
   htm as unknown as {
-    bind: (
-      renderer: typeof h,
-    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+    bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
 
@@ -128,7 +126,10 @@ export function Toolbar({
         value=${q}
         onInput=${(e: Event) => setQ((e.target as HTMLInputElement).value)}
       />
-      <select value=${statusFilter} onChange=${(e: Event) => setStatusFilter((e.target as HTMLSelectElement).value)}>
+      <select
+        value=${statusFilter}
+        onChange=${(e: Event) => setStatusFilter((e.target as HTMLSelectElement).value)}
+      >
         <option value="">All Statuses</option>
         <option value="finish">Finished</option>
         <option value="cancel">Cancelled</option>
@@ -136,13 +137,26 @@ export function Toolbar({
         <option value="failed">Failed</option>
         <option value="pause">Paused</option>
       </select>
-      <select value=${deviceFilter} onChange=${(e: Event) => setDeviceFilter((e.target as HTMLSelectElement).value)}>
+      <select
+        value=${deviceFilter}
+        onChange=${(e: Event) => setDeviceFilter((e.target as HTMLSelectElement).value)}
+      >
         <option value="">All Printers</option>
         ${devices.map((d) => html`<option key=${d} value=${d}>${d}</option>`)}
       </select>
       <div class="view-toggle">
-        <button class=${"view-btn" + (view === "table" ? " active" : "")} onClick=${() => setView("table")}>☰ Table</button>
-        <button class=${"view-btn" + (view === "grid" ? " active" : "")} onClick=${() => setView("grid")}>⊞ Grid</button>
+        <button
+          class=${"view-btn" + (view === "table" ? " active" : "")}
+          onClick=${() => setView("table")}
+        >
+          ☰ Table
+        </button>
+        <button
+          class=${"view-btn" + (view === "grid" ? " active" : "")}
+          onClick=${() => setView("grid")}
+        >
+          ⊞ Grid
+        </button>
       </div>
       <div class="toolbar-right">
         <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
@@ -271,7 +285,13 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
   `;
 }
 
-export function GridView({ sorted, onJobClick }: { sorted: Job[]; onJobClick: (job: Job) => void }) {
+export function GridView({
+  sorted,
+  onJobClick,
+}: {
+  sorted: Job[];
+  onJobClick: (job: Job) => void;
+}) {
   return html`
     <div class="grid-view">
       ${sorted.map((job) => html`<${JobCard} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}

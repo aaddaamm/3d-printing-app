@@ -11,16 +11,24 @@ import {
   fmtDateShort,
   fmtDate,
   fmtWeight,
-} from "./helpers.ts";
-import { Badge, RowThumb } from "./atoms.ts";
-import { toast } from "./toast.ts";
-import { useLocation } from "./router.ts";
-import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.ts";
-import { useEscapeClose } from "../hooks/use-escape-close.ts";
+} from "./helpers.js";
+import { Badge, RowThumb } from "./atoms.js";
+import { toast } from "./toast.js";
+import { useLocation } from "./router.js";
+import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import { useEscapeClose } from "../hooks/use-escape-close.js";
 
-const html = htm.bind(h);
+const html = (
+  htm as unknown as {
+    bind: (
+      renderer: typeof h,
+    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+  }
+).bind(h);
 
-function NewProjectModal({ onClose, onCreate }) {
+type AnyObj = Record<string, any>;
+
+function NewProjectModal({ onClose, onCreate }: { onClose: () => void; onCreate: (p: AnyObj) => void }) {
   const [name, setName] = useState("");
   const [customer, setCustomer] = useState("");
   const [notes, setNotes] = useState("");
@@ -29,12 +37,12 @@ function NewProjectModal({ onClose, onCreate }) {
   useEscapeClose(onClose);
 
   const handleSubmit = useCallback(
-    async (e) => {
+    async (e: any) => {
       e.preventDefault();
       if (!name.trim()) return;
       setSaving(true);
       try {
-        const data = await postJsonOrToast(
+        const data = await postJsonOrToast<AnyObj>(
           "/projects",
           { name: name.trim(), customer: customer || null, notes: notes || null },
           "Failed to create project.",
@@ -50,7 +58,7 @@ function NewProjectModal({ onClose, onCreate }) {
   );
 
   return html`
-    <div class="overlay" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${(e: any) => e.target === e.currentTarget && onClose()}>
       <div class="modal">
         <div class="modal-header">
           <h2>New Project</h2>
@@ -64,7 +72,7 @@ function NewProjectModal({ onClose, onCreate }) {
                 class="form-input"
                 type="text"
                 value=${name}
-                onInput=${(e) => setName(e.target.value)}
+                onInput=${(e: any) => setName(e.target.value)}
                 placeholder="Project name"
                 required
               />
@@ -75,7 +83,7 @@ function NewProjectModal({ onClose, onCreate }) {
                 class="form-input"
                 type="text"
                 value=${customer}
-                onInput=${(e) => setCustomer(e.target.value)}
+                onInput=${(e: any) => setCustomer(e.target.value)}
                 placeholder="Optional"
               />
             </label>
@@ -84,7 +92,7 @@ function NewProjectModal({ onClose, onCreate }) {
               <textarea
                 class="form-input form-textarea"
                 value=${notes}
-                onInput=${(e) => setNotes(e.target.value)}
+                onInput=${(e: any) => setNotes(e.target.value)}
                 placeholder="Optional"
               />
             </label>
@@ -101,7 +109,7 @@ function NewProjectModal({ onClose, onCreate }) {
   `;
 }
 
-function ProjectCard({ project, totalPrice, onClick }) {
+function ProjectCard({ project, totalPrice, onClick }: AnyObj) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
   return html`
@@ -117,26 +125,25 @@ function ProjectCard({ project, totalPrice, onClick }) {
         <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? "s" : ""}</span>
         ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
         ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
-        ${totalPrice != null &&
-        html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
+        ${totalPrice != null && html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
     </div>
   `;
 }
 
-function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
+function AddJobsModal({ unassignedJobs, onClose, onAdd }: AnyObj) {
   const [q, setQ] = useState("");
   useEscapeClose(onClose);
   const filtered = useMemo(() => {
     if (!q) return unassignedJobs;
     const lc = q.toLowerCase();
-    return unassignedJobs.filter((j) =>
+    return unassignedJobs.filter((j: AnyObj) =>
       ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase().includes(lc),
     );
   }, [unassignedJobs, q]);
   return html`
-    <div class="overlay" onClick=${(e) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${(e: any) => e.target === e.currentTarget && onClose()}>
       <div class="modal">
         <div class="modal-header">
           <h2>Add Jobs to Project</h2>
@@ -148,7 +155,7 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
             class="add-jobs-search"
             placeholder="Search…"
             value=${q}
-            onInput=${(e) => setQ(e.target.value)}
+            onInput=${(e: any) => setQ(e.target.value)}
           />
           ${filtered.length === 0
             ? html`<div class="empty" style="padding:16px 0">
@@ -156,7 +163,7 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
               </div>`
             : html`<div class="add-jobs-list">
                 ${filtered.map(
-                  (job) => html`
+                  (job: AnyObj) => html`
                     <div class="add-jobs-row" key=${job.id} onClick=${() => onAdd(job.id)}>
                       <${RowThumb} url=${job.cover_url} />
                       <div class="add-jobs-info">
@@ -176,30 +183,22 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }) {
   `;
 }
 
-function ProjectDetail({
-  project,
-  jobs,
-  unassignedJobs,
-  onBack,
-  onJobClick,
-  onAddJob,
-  onRemoveJob,
-}) {
+function ProjectDetail({ project, jobs, unassignedJobs, onBack, onJobClick, onAddJob, onRemoveJob }: AnyObj) {
   const [showAddJobs, setShowAddJobs] = useState(false);
-  const [price, setPrice] = useState(null);
-  const totW = jobs.reduce((s, j) => s + (j.total_weight_g || 0), 0);
-  const totT = jobs.reduce((s, j) => s + (j.total_time_s || 0), 0);
+  const [price, setPrice] = useState<AnyObj | null>(null);
+  const totW = jobs.reduce((s: number, j: AnyObj) => s + (j.total_weight_g || 0), 0);
+  const totT = jobs.reduce((s: number, j: AnyObj) => s + (j.total_time_s || 0), 0);
 
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetchJsonOrToast(`/projects/${project.id}/price`, "Failed to load project price.").then((d) => {
+    fetchJsonOrToast<AnyObj>(`/projects/${project.id}/price`, "Failed to load project price.").then((d) => {
       if (d) setPrice(d);
     });
   }, [project.id, jobs.length]);
 
   const handleAdd = useCallback(
-    (jobId) => {
+    (jobId: number) => {
       onAddJob(jobId);
     },
     [onAddJob],
@@ -253,7 +252,7 @@ function ProjectDetail({
                 </thead>
                 <tbody>
                   ${jobs.map(
-                    (job) => html`
+                    (job: AnyObj) => html`
                       <tr key=${job.id} onClick=${() => onJobClick(job)}>
                         <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
                         <td class="td-title">
@@ -273,7 +272,7 @@ function ProjectDetail({
                           <button
                             class="btn-remove-job"
                             title="Remove from project"
-                            onClick=${(e) => {
+                            onClick=${(e: any) => {
                               e.stopPropagation();
                               onRemoveJob(job.id);
                             }}
@@ -304,6 +303,12 @@ export function ProjectsView({
   onAutoGroup,
   projectPrices,
   loading = false,
+}: {
+  projects: AnyObj[];
+  setProjects: (updater: AnyObj[] | ((ps: AnyObj[]) => AnyObj[])) => void;
+  onAutoGroup: () => Promise<void>;
+  projectPrices: Record<number, number>;
+  loading?: boolean;
 }) {
   const [showNew, setShowNew] = useState(false);
   const [grouping, setGrouping] = useState(false);
@@ -313,7 +318,7 @@ export function ProjectsView({
   const handleAutoGroup = useCallback(async () => {
     setGrouping(true);
     try {
-      const data = await postJsonOrToast("/projects/auto-group", {}, "Auto-group failed.");
+      const data = await postJsonOrToast<AnyObj>("/projects/auto-group", {}, "Auto-group failed.");
       if (!data) return;
       const { projects_created, jobs_assigned } = data;
       await onAutoGroup();
@@ -331,7 +336,7 @@ export function ProjectsView({
   }, [onAutoGroup]);
 
   const handleCreate = useCallback(
-    (project) => {
+    (project: AnyObj) => {
       setProjects((ps) => [project, ...ps]);
       navigate(`/projects/${project.id}`);
     },
@@ -353,7 +358,7 @@ export function ProjectsView({
         class="proj-search"
         placeholder="Search projects…"
         value=${q}
-        onInput=${(e) => setQ(e.target.value)}
+        onInput=${(e: any) => setQ(e.target.value)}
       />
       <span class="proj-list-count">
         ${q ? `${filtered.length} of ${projects.length}` : projects.length}

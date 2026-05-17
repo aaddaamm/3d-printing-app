@@ -1,19 +1,28 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { h, render } from "preact";
 import { useState, useMemo, useCallback } from "preact/hooks";
 import htm from "htm";
 
-import { RouterProvider, useLocation } from "./components/router.ts";
-import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.ts";
-import { Modal } from "./components/modal.ts";
+import { RouterProvider, useLocation } from "./components/router.js";
+import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";
+import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
-import { toast, ToastContainer } from "./components/toast.ts";
-import { fetchJson, patchJsonOrToast } from "./lib/api.ts";
-import { useDashboardBootstrap } from "./components/bootstrap.ts";
+import { toast, ToastContainer } from "./components/toast.js";
+import { fetchJson, patchJsonOrToast } from "./lib/api.js";
+import { useDashboardBootstrap } from "./components/bootstrap.js";
 
-const html = htm.bind(h);
+const html = (
+  htm as unknown as {
+    bind: (
+      renderer: typeof h,
+    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+  }
+).bind(h);
 
-function filterJobs(jobs, q, statusFilter, deviceFilter) {
+type AnyObj = Record<string, any>;
+
+function filterJobs(jobs: AnyObj[], q: string, statusFilter: string, deviceFilter: string) {
   return jobs.filter((j) => {
     const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
     if (q && !text.includes(q.toLowerCase())) return false;
@@ -23,7 +32,7 @@ function filterJobs(jobs, q, statusFilter, deviceFilter) {
   });
 }
 
-function sortJobs(filtered, sortCol, sortDir) {
+function sortJobs(filtered: AnyObj[], sortCol: string, sortDir: "asc" | "desc") {
   return [...filtered].sort((a, b) => {
     let av = a[sortCol];
     let bv = b[sortCol];
@@ -36,7 +45,7 @@ function sortJobs(filtered, sortCol, sortDir) {
   });
 }
 
-function LoadingView({ bootStatus, loadProgress }) {
+function LoadingView({ bootStatus, loadProgress }: { bootStatus: string; loadProgress: number }) {
   return html` <div class="in-app-loading" role="status" aria-live="polite">
     <section class="dashboard-loader-card">
       <div class="dashboard-loader-copy">
@@ -85,7 +94,7 @@ function LoadingView({ bootStatus, loadProgress }) {
   </div>`;
 }
 
-function ErrorView({ error }) {
+function ErrorView({ error }: { error: string }) {
   return html`<div class="app-loading">
     <div class="loader-shell">
       <div class="loader-main loader-error">
@@ -107,9 +116,9 @@ function ProjectRouteView({
   navigate,
   setSelectedJob,
   handleJobProjectChange,
-}) {
-  const project = projects.find((p) => p.id === projectId);
-  const projectJobs = jobs.filter((j) => j.project_id === projectId);
+}: AnyObj) {
+  const project = projects.find((p: AnyObj) => p.id === projectId);
+  const projectJobs = jobs.filter((j: AnyObj) => j.project_id === projectId);
 
   if (!project) {
     return projectsLoading
@@ -117,15 +126,15 @@ function ProjectRouteView({
       : html`<div class="empty">Project not found.</div>`;
   }
 
-  const unassignedJobs = jobs.filter((j) => j.project_id == null);
+  const unassignedJobs = jobs.filter((j: AnyObj) => j.project_id == null);
   return html`<${ProjectDetail}
     project=${project}
     jobs=${projectJobs}
     unassignedJobs=${unassignedJobs}
     onBack=${() => navigate("/projects")}
     onJobClick=${setSelectedJob}
-    onAddJob=${(jobId) => handleJobProjectChange(jobId, projectId)}
-    onRemoveJob=${(jobId) => handleJobProjectChange(jobId, null)}
+    onAddJob=${(jobId: number) => handleJobProjectChange(jobId, projectId)}
+    onRemoveJob=${(jobId: number) => handleJobProjectChange(jobId, null)}
   />`;
 }
 
@@ -147,7 +156,7 @@ function JobsRouteView({
   sortDir,
   onSort,
   onJobClick,
-}) {
+}: AnyObj) {
   return html`
     <${Toolbar}
       q=${q}
@@ -180,19 +189,19 @@ function JobsRouteView({
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [jobs, setJobs] = useState([]);
-  const [projects, setProjects] = useState([]);
-  const [projectPrices, setProjectPrices] = useState({});
-  const [summary, setSummary] = useState(null);
-  const [dataRange, setDataRange] = useState(null);
+  const [jobs, setJobs] = useState<AnyObj[]>([]);
+  const [projects, setProjects] = useState<AnyObj[]>([]);
+  const [projectPrices, setProjectPrices] = useState<Record<number, number>>({});
+  const [summary, setSummary] = useState<any>(null);
+  const [dataRange, setDataRange] = useState<any>(null);
 
   const [view, setView] = useState("table");
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [deviceFilter, setDeviceFilter] = useState("");
   const [sortCol, setSortCol] = useState("startTime");
-  const [sortDir, setSortDir] = useState("desc");
-  const [selectedJob, setSelectedJob] = useState(null);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [selectedJob, setSelectedJob] = useState<AnyObj | null>(null);
   const [loc, navigate] = useLocation();
 
   const {
@@ -204,11 +213,11 @@ function App() {
     refreshProjectsAndPrices,
     refreshJobPrices,
   } = useDashboardBootstrap({
-    setJobs,
-    setProjects,
+    setJobs: setJobs as any,
+    setProjects: setProjects as any,
     setProjectPrices,
-    setSummary,
-    setDataRange,
+    setSummary: setSummary as any,
+    setDataRange: setDataRange as any,
     toast,
   });
 
@@ -227,7 +236,7 @@ function App() {
   const sorted = useMemo(() => sortJobs(filtered, sortCol, sortDir), [filtered, sortCol, sortDir]);
 
   const handleSort = useCallback(
-    (col) => {
+    (col: string) => {
       if (sortCol === col) {
         setSortDir((d) => (d === "asc" ? "desc" : "asc"));
       } else {
@@ -241,7 +250,7 @@ function App() {
   const closeModal = useCallback(() => setSelectedJob(null), []);
 
   // Generic job patch helper — updates local state from the returned job
-  const patchJob = useCallback(async (jobId, fields) => {
+  const patchJob = useCallback(async (jobId: number, fields: Record<string, unknown>) => {
     const data = await patchJsonOrToast(`/jobs/${jobId}`, fields, "Failed to update job.");
     if (!data?.job) return null;
     const { job } = data;
@@ -251,7 +260,7 @@ function App() {
   }, []);
 
   const handleJobProjectChange = useCallback(
-    async (jobId, projectId) => {
+    async (jobId: number, projectId: number | null) => {
       const job = await patchJob(jobId, { project_id: projectId });
       if (!job) return;
       // Refresh project stats and prices (job counts / totals changed)
@@ -261,28 +270,28 @@ function App() {
   );
 
   const patchJobField = useCallback(
-    (jobId, fields) => {
+    (jobId: number, fields: Record<string, unknown>) => {
       patchJob(jobId, fields);
     },
     [patchJob],
   );
 
   const handleJobStatusChange = useCallback(
-    (jobId, statusOverride) => {
+    (jobId: number, statusOverride: string | null) => {
       patchJobField(jobId, { status_override: statusOverride });
     },
     [patchJobField],
   );
 
   const handleJobExtraLaborChange = useCallback(
-    (jobId, minutes) => {
+    (jobId: number, minutes: number | null) => {
       patchJobField(jobId, { extra_labor_minutes: minutes });
     },
     [patchJobField],
   );
 
   const handleNavigateToProject = useCallback(
-    (projectId) => {
+    (projectId: number) => {
       setSelectedJob(null);
       navigate(`/projects/${projectId}`);
     },
@@ -300,18 +309,18 @@ function App() {
     try {
       await refreshSummary();
       toast("Pricing refreshed from updated rates.", "success");
-    } catch (err) {
+    } catch (err: any) {
       toast(err?.message || "Updated rates saved, but summary refresh failed.", "error");
     }
   }, [refreshJobPrices, refreshProjectsAndPrices, refreshSummary]);
 
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
-      fetchJson("/ui/data", "Failed to refresh jobs."),
-      fetchJson("/projects", "Failed to refresh projects."),
+      fetchJson<any>("/ui/data", "Failed to refresh jobs."),
+      fetchJson<any>("/projects", "Failed to refresh projects."),
     ]);
-    setJobs(jobsData.jobs);
-    setProjects(projData.projects);
+    setJobs(jobsData.jobs as AnyObj[]);
+    setProjects(projData.projects as AnyObj[]);
     refreshJobPrices(true);
     refreshProjectsAndPrices();
   }, [refreshJobPrices, refreshProjectsAndPrices]);
@@ -390,7 +399,5 @@ function App() {
   `;
 }
 
-render(
-  html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>`,
-  document.getElementById("app"),
-);
+const rootVNode = html`<${RouterProvider} base="/ui"><${App} /></${RouterProvider}>` as any;
+render(rootVNode, document.getElementById("app")!);

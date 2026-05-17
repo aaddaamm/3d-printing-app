@@ -4,12 +4,20 @@ import { h } from "preact";
 import { useState, useEffect } from "preact/hooks";
 import htm from "htm";
 
-import { fmtCurrency } from "./helpers.ts";
-import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.ts";
+import { fmtCurrency } from "./helpers.js";
+import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.js";
 
-const html = htm.bind(h);
+const html = (
+  htm as unknown as {
+    bind: (
+      renderer: typeof h,
+    ) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
+  }
+).bind(h);
 
-function RateField({ label, value, onChange, step = "0.01", min = "0" }) {
+type AnyObj = Record<string, any>;
+
+function RateField({ label, value, onChange, step = "0.01", min = "0" }: AnyObj) {
   return html`
     <label class="form-label">
       ${label}
@@ -19,13 +27,13 @@ function RateField({ label, value, onChange, step = "0.01", min = "0" }) {
         step=${step}
         min=${min}
         value=${value}
-        onInput=${(e) => onChange(Number(e.target.value))}
+        onInput=${(e: any) => onChange(Number(e.target.value))}
       />
     </label>
   `;
 }
 
-function LaborForm({ labor, saving, saved, onSave }) {
+function LaborForm({ labor, saving, saved, onSave }: AnyObj) {
   const [v, setV] = useState(labor);
   useEffect(() => setV(labor), [labor]);
   return html`
@@ -35,31 +43,31 @@ function LaborForm({ labor, saving, saved, onSave }) {
           label="Hourly rate ($)"
           value=${v.hourly_rate}
           step="0.5"
-          onChange=${(val) => setV((x) => ({ ...x, hourly_rate: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, hourly_rate: val }))}
         />
         <${RateField}
           label="Minimum minutes"
           value=${v.minimum_minutes}
           step="1"
-          onChange=${(val) => setV((x) => ({ ...x, minimum_minutes: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, minimum_minutes: val }))}
         />
         <${RateField}
           label="Profit markup (%)"
           value=${Math.round(v.profit_markup_pct * 100)}
           step="1"
-          onChange=${(val) => setV((x) => ({ ...x, profit_markup_pct: val / 100 }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, profit_markup_pct: val / 100 }))}
         />
         <${RateField}
           label="Failure buffer (%)"
           value=${Math.round(v.failure_buffer_pct * 100)}
           step="1"
-          onChange=${(val) => setV((x) => ({ ...x, failure_buffer_pct: val / 100 }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, failure_buffer_pct: val / 100 }))}
         />
         <${RateField}
           label="Overhead buffer (%)"
           value=${Math.round(v.overhead_buffer_pct * 100)}
           step="1"
-          onChange=${(val) => setV((x) => ({ ...x, overhead_buffer_pct: val / 100 }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, overhead_buffer_pct: val / 100 }))}
         />
       </div>
       <div class="admin-card-footer">
@@ -74,7 +82,7 @@ function LaborForm({ labor, saving, saved, onSave }) {
   `;
 }
 
-function MachineForm({ machine, saving, saved, onSave }) {
+function MachineForm({ machine, saving, saved, onSave }: AnyObj) {
   const [v, setV] = useState(machine);
   useEffect(() => setV(machine), [machine]);
   const rate = v.purchase_price / v.lifetime_hrs + v.electricity_rate + v.maintenance_buffer;
@@ -86,25 +94,25 @@ function MachineForm({ machine, saving, saved, onSave }) {
           label="Purchase price ($)"
           value=${v.purchase_price}
           step="1"
-          onChange=${(val) => setV((x) => ({ ...x, purchase_price: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, purchase_price: val }))}
         />
         <${RateField}
           label="Lifetime hours"
           value=${v.lifetime_hrs}
           step="100"
-          onChange=${(val) => setV((x) => ({ ...x, lifetime_hrs: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, lifetime_hrs: val }))}
         />
         <${RateField}
           label="Electricity ($/hr)"
           value=${v.electricity_rate}
           step="0.01"
-          onChange=${(val) => setV((x) => ({ ...x, electricity_rate: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, electricity_rate: val }))}
         />
         <${RateField}
           label="Maintenance ($/hr)"
           value=${v.maintenance_buffer}
           step="0.01"
-          onChange=${(val) => setV((x) => ({ ...x, maintenance_buffer: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, maintenance_buffer: val }))}
         />
       </div>
       <div class="admin-card-footer">
@@ -117,7 +125,7 @@ function MachineForm({ machine, saving, saved, onSave }) {
   `;
 }
 
-function MaterialForm({ material, saving, saved, onSave }) {
+function MaterialForm({ material, saving, saved, onSave }: AnyObj) {
   const [v, setV] = useState(material);
   useEffect(() => setV(material), [material]);
   const rate = v.cost_per_g * (1 + v.waste_buffer_pct);
@@ -129,13 +137,13 @@ function MaterialForm({ material, saving, saved, onSave }) {
           label="Cost per gram ($/g)"
           value=${v.cost_per_g}
           step="0.001"
-          onChange=${(val) => setV((x) => ({ ...x, cost_per_g: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, cost_per_g: val }))}
         />
         <${RateField}
           label="Waste buffer fraction"
           value=${v.waste_buffer_pct}
           step="0.01"
-          onChange=${(val) => setV((x) => ({ ...x, waste_buffer_pct: val }))}
+          onChange=${(val: number) => setV((x: AnyObj) => ({ ...x, waste_buffer_pct: val }))}
         />
         <p class="form-help">Stored as a fraction: 0.10 = 10% waste.</p>
       </div>
@@ -149,28 +157,28 @@ function MaterialForm({ material, saving, saved, onSave }) {
   `;
 }
 
-export function AdminView({ onRatesChanged = () => {} }) {
-  const [rates, setRates] = useState(null);
+export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () => void }) {
+  const [rates, setRates] = useState<AnyObj | null>(null);
   const [saving, setSaving] = useState("");
   const [saved, setSaved] = useState("");
 
   useEffect(() => {
-    fetchJsonOrToast("/rates", "Failed to load rates.").then((data) => {
+    fetchJsonOrToast<AnyObj>("/rates", "Failed to load rates.").then((data) => {
       if (data) setRates(data);
     });
   }, []);
 
-  const flash = (key) => {
+  const flash = (key: string) => {
     setSaved(key);
     setTimeout(() => setSaved(""), 2000);
   };
 
-  const saveLaborConfig = async (labor) => {
+  const saveLaborConfig = async (labor: AnyObj) => {
     setSaving("labor");
     try {
-      const data = await patchJsonOrToast("/rates/labor", labor, "Failed to save labor rates.");
+      const data = await patchJsonOrToast<AnyObj>("/rates/labor", labor, "Failed to save labor rates.");
       if (!data?.labor_config) return;
-      setRates((r) => ({ ...r, labor_config: data.labor_config }));
+      setRates((r) => (r ? { ...r, labor_config: data.labor_config } : r));
       flash("labor");
       onRatesChanged();
     } finally {
@@ -178,23 +186,26 @@ export function AdminView({ onRatesChanged = () => {} }) {
     }
   };
 
-  const saveMachine = async (machine) => {
+  const saveMachine = async (machine: AnyObj) => {
     setSaving(machine.device_model);
-    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } =
-      machine;
+    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = machine;
     try {
-      const data = await patchJsonOrToast(
+      const data = await patchJsonOrToast<AnyObj>(
         `/rates/machines/${encodeURIComponent(device_model)}`,
         { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer },
         "Failed to save machine rate.",
       );
       if (!data?.machine_rate) return;
-      setRates((r) => ({
-        ...r,
-        machine_rates: r.machine_rates.map((m) =>
-          m.device_model === device_model ? data.machine_rate : m,
-        ),
-      }));
+      setRates((r) =>
+        r
+          ? {
+              ...r,
+              machine_rates: r.machine_rates.map((m: AnyObj) =>
+                m.device_model === device_model ? data.machine_rate : m,
+              ),
+            }
+          : r,
+      );
       flash(device_model);
       onRatesChanged();
     } finally {
@@ -202,22 +213,26 @@ export function AdminView({ onRatesChanged = () => {} }) {
     }
   };
 
-  const saveMaterial = async (material) => {
+  const saveMaterial = async (material: AnyObj) => {
     setSaving(material.filament_type);
     const { filament_type, cost_per_g, waste_buffer_pct } = material;
     try {
-      const data = await patchJsonOrToast(
+      const data = await patchJsonOrToast<AnyObj>(
         `/rates/materials/${encodeURIComponent(filament_type)}`,
         { cost_per_g, waste_buffer_pct },
         "Failed to save material rate.",
       );
       if (!data?.material_rate) return;
-      setRates((r) => ({
-        ...r,
-        material_rates: r.material_rates.map((m) =>
-          m.filament_type === filament_type ? data.material_rate : m,
-        ),
-      }));
+      setRates((r) =>
+        r
+          ? {
+              ...r,
+              material_rates: r.material_rates.map((m: AnyObj) =>
+                m.filament_type === filament_type ? data.material_rate : m,
+              ),
+            }
+          : r,
+      );
       flash(filament_type);
       onRatesChanged();
     } finally {
@@ -257,7 +272,7 @@ export function AdminView({ onRatesChanged = () => {} }) {
           lifetime + electricity + maintenance.
         </p>
         ${machine_rates.map(
-          (m) => html`
+          (m: AnyObj) => html`
             <${MachineForm}
               key=${m.device_model}
               machine=${m}
@@ -275,7 +290,7 @@ export function AdminView({ onRatesChanged = () => {} }) {
           Cost per gram including waste. Rate = cost × (1 + waste fraction).
         </p>
         ${material_rates.map(
-          (m) => html`
+          (m: AnyObj) => html`
             <${MaterialForm}
               key=${m.filament_type}
               material=${m}
