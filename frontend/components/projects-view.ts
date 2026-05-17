@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // ── Projects view ─────────────────────────────────────────────────────────────
 
 import { h } from "preact";
@@ -25,14 +24,46 @@ const html = (
   }
 ).bind(h);
 
-type AnyObj = Record<string, any>;
+type Project = {
+  id: number;
+  name?: string;
+  customer?: string | null;
+  notes?: string | null;
+  job_count?: number;
+  total_weight_g?: number | null;
+  total_time_s?: number | null;
+  cover_url?: string | null;
+  [key: string]: unknown;
+};
+
+type Job = {
+  id: number;
+  designTitle?: string;
+  customer?: string | null;
+  cover_url?: string | null;
+  startTime?: string;
+  deviceModel?: string;
+  status?: string;
+  total_weight_g?: number | null;
+  total_time_s?: number | null;
+  final_price?: number | null;
+  [key: string]: unknown;
+};
+
+type ProjectPrice = {
+  material_cost: number;
+  machine_cost: number;
+  labor_cost: number;
+  extra_labor_cost: number;
+  final_price: number;
+};
 
 function NewProjectModal({
   onClose,
   onCreate,
 }: {
   onClose: () => void;
-  onCreate: (p: AnyObj) => void;
+  onCreate: (p: Project) => void;
 }) {
   const [name, setName] = useState("");
   const [customer, setCustomer] = useState("");
@@ -47,7 +78,7 @@ function NewProjectModal({
       if (!name.trim()) return;
       setSaving(true);
       try {
-        const data = await postJsonOrToast<AnyObj>(
+        const data = await postJsonOrToast<{ project?: Project }>(
           "/projects",
           { name: name.trim(), customer: customer || null, notes: notes || null },
           "Failed to create project.",
@@ -114,7 +145,7 @@ function NewProjectModal({
   `;
 }
 
-function ProjectCard({ project, totalPrice, onClick }: AnyObj) {
+function ProjectCard({ project, totalPrice, onClick }: { project: Project; totalPrice: number | null; onClick: () => void }) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
   return html`
@@ -138,13 +169,21 @@ function ProjectCard({ project, totalPrice, onClick }: AnyObj) {
   `;
 }
 
-function AddJobsModal({ unassignedJobs, onClose, onAdd }: AnyObj) {
+function AddJobsModal({
+  unassignedJobs,
+  onClose,
+  onAdd,
+}: {
+  unassignedJobs: Job[];
+  onClose: () => void;
+  onAdd: (jobId: number) => void;
+}) {
   const [q, setQ] = useState("");
   useEscapeClose(onClose);
   const filtered = useMemo(() => {
     if (!q) return unassignedJobs;
     const lc = q.toLowerCase();
-    return unassignedJobs.filter((j: AnyObj) =>
+    return unassignedJobs.filter((j: Job) =>
       ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase().includes(lc),
     );
   }, [unassignedJobs, q]);
@@ -169,7 +208,7 @@ function AddJobsModal({ unassignedJobs, onClose, onAdd }: AnyObj) {
               </div>`
             : html`<div class="add-jobs-list">
                 ${filtered.map(
-                  (job: AnyObj) => html`
+                  (job: Job) => html`
                     <div class="add-jobs-row" key=${job.id} onClick=${() => onAdd(job.id)}>
                       <${RowThumb} url=${job.cover_url} />
                       <div class="add-jobs-info">
@@ -197,16 +236,24 @@ function ProjectDetail({
   onJobClick,
   onAddJob,
   onRemoveJob,
-}: AnyObj) {
+}: {
+  project: Project;
+  jobs: Job[];
+  unassignedJobs: Job[];
+  onBack: () => void;
+  onJobClick: (job: Job) => void;
+  onAddJob: (jobId: number) => void;
+  onRemoveJob: (jobId: number) => void;
+}) {
   const [showAddJobs, setShowAddJobs] = useState(false);
-  const [price, setPrice] = useState<AnyObj | null>(null);
-  const totW = jobs.reduce((s: number, j: AnyObj) => s + (j.total_weight_g || 0), 0);
-  const totT = jobs.reduce((s: number, j: AnyObj) => s + (j.total_time_s || 0), 0);
+  const [price, setPrice] = useState<ProjectPrice | null>(null);
+  const totW = jobs.reduce((s: number, j: Job) => s + (j.total_weight_g || 0), 0);
+  const totT = jobs.reduce((s: number, j: Job) => s + (j.total_time_s || 0), 0);
 
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetchJsonOrToast<AnyObj>(`/projects/${project.id}/price`, "Failed to load project price.").then(
+    fetchJsonOrToast<ProjectPrice>(`/projects/${project.id}/price`, "Failed to load project price.").then(
       (d) => {
         if (d) setPrice(d);
       },
@@ -268,7 +315,7 @@ function ProjectDetail({
                 </thead>
                 <tbody>
                   ${jobs.map(
-                    (job: AnyObj) => html`
+                    (job: Job) => html`
                       <tr key=${job.id} onClick=${() => onJobClick(job)}>
                         <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
                         <td class="td-title">
@@ -320,8 +367,8 @@ export function ProjectsView({
   projectPrices,
   loading = false,
 }: {
-  projects: AnyObj[];
-  setProjects: (updater: AnyObj[] | ((ps: AnyObj[]) => AnyObj[])) => void;
+  projects: Project[];
+  setProjects: (updater: Project[] | ((ps: Project[]) => Project[])) => void;
   onAutoGroup: () => Promise<void>;
   projectPrices: Record<number, number>;
   loading?: boolean;
@@ -334,7 +381,11 @@ export function ProjectsView({
   const handleAutoGroup = useCallback(async () => {
     setGrouping(true);
     try {
-      const data = await postJsonOrToast<AnyObj>("/projects/auto-group", {}, "Auto-group failed.");
+      const data = await postJsonOrToast<{ projects_created: number; jobs_assigned: number }>(
+        "/projects/auto-group",
+        {},
+        "Auto-group failed.",
+      );
       if (!data) return;
       const { projects_created, jobs_assigned } = data;
       await onAutoGroup();
@@ -352,7 +403,7 @@ export function ProjectsView({
   }, [onAutoGroup]);
 
   const handleCreate = useCallback(
-    (project: AnyObj) => {
+    (project: Project) => {
       setProjects((ps) => [project, ...ps]);
       navigate(`/projects/${project.id}`);
     },
