@@ -31,6 +31,17 @@ type ProjectPatchBody = {
   notes?: string | null;
 };
 
+const PROJECT_MUTABLE_FIELDS = ["name", "customer", "notes"] as const;
+const PROJECT_TEXT_OPTIONAL_FIELDS = ["customer", "notes"] as const;
+
+function validateOptionalTextFields(body: ProjectCreateBody | ProjectPatchBody): string | null {
+  for (const field of PROJECT_TEXT_OPTIONAL_FIELDS) {
+    if (!(field in body)) continue;
+    if (!isNullableString(body[field])) return `${field} must be a string or null`;
+  }
+  return null;
+}
+
 export const projects = new Hono();
 
 projects.get("/", (c) => {
@@ -64,12 +75,8 @@ projects.post("/", async (c) => {
   if (!name || typeof name !== "string" || !name.trim()) {
     return jsonError(c, "name is required", 400);
   }
-  for (const field of ["customer", "notes"] as const) {
-    const value = body[field];
-    if (field in body && !isNullableString(value)) {
-      return jsonError(c, `${field} must be a string or null`, 400);
-    }
-  }
+  const createValidationError = validateOptionalTextFields(body);
+  if (createValidationError) return jsonError(c, createValidationError, 400);
   const project = createProject({
     name: name.trim(),
     customer: customer ?? null,
@@ -104,7 +111,7 @@ projects.patch("/:id", async (c) => {
   const body = await parseJsonBody<ProjectPatchBody>(c);
   if (!body) return jsonError(c, "Invalid JSON body", 400);
 
-  const unknown = unknownFields(body, ["name", "customer", "notes"]);
+  const unknown = unknownFields(body, PROJECT_MUTABLE_FIELDS as unknown as readonly string[]);
   if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
 
   const name = body.name;
@@ -114,12 +121,8 @@ projects.patch("/:id", async (c) => {
   if ("name" in body && (typeof name !== "string" || !name.trim())) {
     return jsonError(c, "name must be a non-empty string", 400);
   }
-  for (const field of ["customer", "notes"] as const) {
-    const value = body[field];
-    if (field in body && !isNullableString(value)) {
-      return jsonError(c, `${field} must be a string or null`, 400);
-    }
-  }
+  const patchValidationError = validateOptionalTextFields(body);
+  if (patchValidationError) return jsonError(c, patchValidationError, 400);
 
   const project = patchProject(idOrError, {
     ...("name" in body ? { name: String(name).trim() } : {}),
