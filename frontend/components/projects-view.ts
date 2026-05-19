@@ -58,6 +58,31 @@ type ProjectPrice = {
   final_price: number;
 };
 
+function filterProjects(projects: Project[], q: string): Project[] {
+  if (!q) return projects;
+  const lc = q.toLowerCase();
+  return projects.filter((p) =>
+    [p.name, p.customer, p.notes].filter(Boolean).join(" ").toLowerCase().includes(lc),
+  );
+}
+
+function projectCountLabel(projects: Project[], filtered: Project[], q: string): string {
+  const prefix = q ? `${filtered.length} of ${projects.length}` : String(projects.length);
+  return `${prefix} project${projects.length !== 1 ? "s" : ""}`;
+}
+
+function autoGroupToast(projectsCreated: number, jobsAssigned: number): void {
+  if (projectsCreated === 0) {
+    toast("No ungrouped jobs found — everything is already assigned to a project.", "info");
+    return;
+  }
+
+  toast(
+    `Created ${projectsCreated} project${projectsCreated !== 1 ? "s" : ""}, assigned ${jobsAssigned} job${jobsAssigned !== 1 ? "s" : ""}.`,
+    "success",
+  );
+}
+
 function NewProjectModal({
   onClose,
   onCreate,
@@ -398,14 +423,7 @@ export function ProjectsView({
       if (!data) return;
       const { projects_created, jobs_assigned } = data;
       await onAutoGroup();
-      if (projects_created === 0) {
-        toast("No ungrouped jobs found — everything is already assigned to a project.", "info");
-      } else {
-        toast(
-          `Created ${projects_created} project${projects_created !== 1 ? "s" : ""}, assigned ${jobs_assigned} job${jobs_assigned !== 1 ? "s" : ""}.`,
-          "success",
-        );
-      }
+      autoGroupToast(projects_created, jobs_assigned);
     } finally {
       setGrouping(false);
     }
@@ -419,13 +437,7 @@ export function ProjectsView({
     [setProjects, navigate],
   );
 
-  const filtered = useMemo(() => {
-    if (!q) return projects;
-    const lc = q.toLowerCase();
-    return projects.filter((p) =>
-      [p.name, p.customer, p.notes].filter(Boolean).join(" ").toLowerCase().includes(lc),
-    );
-  }, [projects, q]);
+  const filtered = useMemo(() => filterProjects(projects, q), [projects, q]);
 
   return html`
     <div class="proj-list-header">
@@ -436,10 +448,7 @@ export function ProjectsView({
         value=${q}
         onInput=${(e: Event) => setQ((e.target as HTMLInputElement).value)}
       />
-      <span class="proj-list-count">
-        ${q ? `${filtered.length} of ${projects.length}` : projects.length}
-        ${" "}project${projects.length !== 1 ? "s" : ""}
-      </span>
+      <span class="proj-list-count">${projectCountLabel(projects, filtered, q)}</span>
       <button class="btn-secondary" onClick=${handleAutoGroup} disabled=${grouping}>
         ${grouping ? "Grouping…" : "⚡ Auto-group by design"}
       </button>
