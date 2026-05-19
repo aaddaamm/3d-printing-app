@@ -33,6 +33,10 @@ export function isNullableString(value: unknown): value is string | null {
   return value === null || typeof value === "string";
 }
 
+export function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 export function isNullableFiniteNumber(value: unknown): value is number | null {
-  return value === null || (typeof value === "number" && Number.isFinite(value));
+  return value === null || isFiniteNumber(value);
 }

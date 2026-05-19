@@ -5,7 +5,7 @@ import {
   upsertMachineRate,
   upsertMaterialRate,
 } from "../models/rates.js";
-import { parseJsonBody, jsonError } from "../lib/util.js";
+import { parseJsonBody, jsonError, isFiniteNumber } from "../lib/util.js";
 
 export const rates = new Hono();
 
@@ -25,11 +25,11 @@ rates.patch("/labor", async (c) => {
     overhead_buffer_pct,
   } = body;
   if (
-    !Number.isFinite(hourly_rate) ||
-    !Number.isFinite(minimum_minutes) ||
-    !Number.isFinite(profit_markup_pct) ||
-    !Number.isFinite(failure_buffer_pct) ||
-    !Number.isFinite(overhead_buffer_pct)
+    !isFiniteNumber(hourly_rate) ||
+    !isFiniteNumber(minimum_minutes) ||
+    !isFiniteNumber(profit_markup_pct) ||
+    !isFiniteNumber(failure_buffer_pct) ||
+    !isFiniteNumber(overhead_buffer_pct)
   ) {
     return jsonError(
       c,
@@ -38,20 +38,20 @@ rates.patch("/labor", async (c) => {
     );
   }
   if (
-    (hourly_rate as number) < 0 ||
-    (minimum_minutes as number) < 0 ||
-    (profit_markup_pct as number) < 0 ||
-    (failure_buffer_pct as number) < 0 ||
-    (overhead_buffer_pct as number) < 0
+    hourly_rate < 0 ||
+    minimum_minutes < 0 ||
+    profit_markup_pct < 0 ||
+    failure_buffer_pct < 0 ||
+    overhead_buffer_pct < 0
   ) {
     return jsonError(c, "Values must be non-negative", 400);
   }
   const labor_config = updateLaborConfig({
-    hourly_rate: hourly_rate as number,
-    minimum_minutes: minimum_minutes as number,
-    profit_markup_pct: profit_markup_pct as number,
-    failure_buffer_pct: failure_buffer_pct as number,
-    overhead_buffer_pct: overhead_buffer_pct as number,
+    hourly_rate,
+    minimum_minutes,
+    profit_markup_pct,
+    failure_buffer_pct,
+    overhead_buffer_pct,
   });
   return c.json({ labor_config });
 });
@@ -63,9 +63,10 @@ rates.patch("/machines/:device_model", async (c) => {
 
   const { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = body;
   if (
-    [purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer].some(
-      (v) => !Number.isFinite(v),
-    )
+    !isFiniteNumber(purchase_price) ||
+    !isFiniteNumber(lifetime_hrs) ||
+    !isFiniteNumber(electricity_rate) ||
+    !isFiniteNumber(maintenance_buffer)
   ) {
     return jsonError(
       c,
@@ -74,10 +75,10 @@ rates.patch("/machines/:device_model", async (c) => {
     );
   }
   if (
-    (purchase_price as number) < 0 ||
-    (lifetime_hrs as number) <= 0 ||
-    (electricity_rate as number) < 0 ||
-    (maintenance_buffer as number) < 0
+    purchase_price < 0 ||
+    lifetime_hrs <= 0 ||
+    electricity_rate < 0 ||
+    maintenance_buffer < 0
   ) {
     return jsonError(
       c,
@@ -87,10 +88,10 @@ rates.patch("/machines/:device_model", async (c) => {
   }
   const machine_rate = upsertMachineRate({
     device_model,
-    purchase_price: purchase_price as number,
-    lifetime_hrs: lifetime_hrs as number,
-    electricity_rate: electricity_rate as number,
-    maintenance_buffer: maintenance_buffer as number,
+    purchase_price,
+    lifetime_hrs,
+    electricity_rate,
+    maintenance_buffer,
   });
   return c.json({ machine_rate });
 });
@@ -101,16 +102,16 @@ rates.patch("/materials/:filament_type", async (c) => {
   if (!body) return jsonError(c, "Invalid JSON", 400);
 
   const { cost_per_g, waste_buffer_pct } = body;
-  if (!Number.isFinite(cost_per_g) || !Number.isFinite(waste_buffer_pct)) {
+  if (!isFiniteNumber(cost_per_g) || !isFiniteNumber(waste_buffer_pct)) {
     return jsonError(c, "cost_per_g and waste_buffer_pct must be finite numbers", 400);
   }
-  if ((cost_per_g as number) < 0 || (waste_buffer_pct as number) < 0) {
+  if (cost_per_g < 0 || waste_buffer_pct < 0) {
     return jsonError(c, "cost_per_g and waste_buffer_pct must be non-negative", 400);
   }
   const material_rate = upsertMaterialRate({
     filament_type,
-    cost_per_g: cost_per_g as number,
-    waste_buffer_pct: waste_buffer_pct as number,
+    cost_per_g,
+    waste_buffer_pct,
   });
   return c.json({ material_rate });
 });
