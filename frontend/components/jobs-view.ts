@@ -37,8 +37,30 @@ type Job = {
   filament_colors?: string[];
 };
 
-type Summary = { totals?: Record<string, number> | null } | null;
+type DeviceSummary = {
+  deviceModel?: string | null;
+  total_jobs?: number;
+  total_plates?: number | null;
+  total_time_s?: number | null;
+};
+
+type Summary = {
+  totals?: Record<string, number> | null;
+  by_device?: DeviceSummary[];
+} | null;
 type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
+
+function metricBreakdownTitle(summary: Summary, metric: "jobs" | "plates" | "hours") {
+  const rows = summary?.by_device ?? [];
+  if (!rows.length) return "No printer breakdown available";
+  const lines = rows.map((row) => {
+    const label = row.deviceModel || "Unknown printer";
+    if (metric === "jobs") return `${label}: ${(row.total_jobs ?? 0).toLocaleString()} jobs`;
+    if (metric === "plates") return `${label}: ${(row.total_plates ?? 0).toLocaleString()} plates`;
+    return `${label}: ${((row.total_time_s ?? 0) / 3600).toFixed(1).toLocaleString()} h`;
+  });
+  return lines.join("\n");
+}
 
 export function Header({ summary, dataRange }: { summary: Summary; dataRange: DataRange }) {
   const [loc, navigate] = useLocation();
@@ -70,6 +92,12 @@ export function Header({ summary, dataRange }: { summary: Summary; dataRange: Da
             Projects
           </button>
           <button
+            class=${"nav-btn" + (loc.startsWith("/printers") ? " active" : "")}
+            onClick=${() => navigate("/printers")}
+          >
+            Printers
+          </button>
+          <button
             class=${"nav-btn" + (loc.startsWith("/admin") ? " active" : "")}
             onClick=${() => navigate("/admin")}
           >
@@ -78,7 +106,7 @@ export function Header({ summary, dataRange }: { summary: Summary; dataRange: Da
         </nav>
       </div>
       <div class="stats">
-        <div class="stat">
+        <div class="stat" title=${metricBreakdownTitle(summary, "jobs")}>
           <div class="stat-val">${t ? t.total_jobs?.toLocaleString() : "—"}</div>
           <div class="stat-lbl">Total Jobs</div>
         </div>
@@ -86,11 +114,11 @@ export function Header({ summary, dataRange }: { summary: Summary; dataRange: Da
           <div class="stat-val">${t ? ((t.total_weight_g ?? 0) / 1000).toFixed(2) : "—"}</div>
           <div class="stat-lbl">Filament kg</div>
         </div>
-        <div class="stat">
+        <div class="stat" title=${metricBreakdownTitle(summary, "hours")}>
           <div class="stat-val">${t ? ((t.total_time_s ?? 0) / 3600).toFixed(1) : "—"}</div>
           <div class="stat-lbl">Print Hours</div>
         </div>
-        <div class="stat">
+        <div class="stat" title=${metricBreakdownTitle(summary, "plates")}>
           <div class="stat-val">${t ? t.total_plates?.toLocaleString() : "—"}</div>
           <div class="stat-lbl">Plates</div>
         </div>
@@ -176,6 +204,38 @@ export function Toolbar({
         <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
         <span class="job-count">${filteredCount} / ${totalCount} jobs</span>
       </div>
+    </div>
+  `;
+}
+
+export function PrinterBreakdownView({ summary }: { summary: Summary }) {
+  const rows = summary?.by_device ?? [];
+  if (!rows.length) return html`<div class="empty">No printer totals available yet.</div>`;
+
+  return html`
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Printer</th>
+            <th class="td-num">Jobs</th>
+            <th class="td-num">Plates</th>
+            <th class="td-num">Print Hours</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(
+            (row) => html`
+              <tr key=${row.deviceModel || "unknown"}>
+                <td>${row.deviceModel || "Unknown printer"}</td>
+                <td class="td-num"><strong>${(row.total_jobs ?? 0).toLocaleString()}</strong></td>
+                <td class="td-num">${(row.total_plates ?? 0).toLocaleString()}</td>
+                <td class="td-num">${((row.total_time_s ?? 0) / 3600).toFixed(1)} h</td>
+              </tr>
+            `,
+          )}
+        </tbody>
+      </table>
     </div>
   `;
 }

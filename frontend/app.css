@@ -163,6 +163,9 @@ header h1 span:last-child {
 .stat {
   text-align: center;
 }
+.stat[title] {
+  cursor: help;
+}
 .stat-val {
   font-size: 1.35rem;
   font-weight: 600;

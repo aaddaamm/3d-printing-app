@@ -3,7 +3,14 @@ import { useState, useMemo, useCallback } from "preact/hooks";
 import htm from "htm";
 
 import { RouterProvider, useLocation } from "./components/router.js";
-import { Header, Toolbar, TotalsBar, TableView, GridView } from "./components/jobs-view.js";
+import {
+  Header,
+  Toolbar,
+  TotalsBar,
+  TableView,
+  GridView,
+  PrinterBreakdownView,
+} from "./components/jobs-view.js";
 import { Modal } from "./components/modal.js";
 import { ProjectsView, ProjectDetail } from "./components/projects-view.js";
 import { AdminView } from "./components/admin-view.js";
@@ -17,7 +24,15 @@ const html = (
   }
 ).bind(h);
 
-type Summary = { totals?: Record<string, number> | null } | null;
+type Summary = {
+  totals?: Record<string, number> | null;
+  by_device?: Array<{
+    deviceModel?: string | null;
+    total_jobs?: number;
+    total_plates?: number | null;
+    total_time_s?: number | null;
+  }>;
+} | null;
 type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
 
 type Job = {
@@ -229,6 +244,131 @@ function JobsRouteView({
   `;
 }
 
+type RouteState = {
+  isAdmin: boolean;
+  isPrinters: boolean;
+  isProjects: boolean;
+  projectId: number | null;
+};
+
+function getRouteState(loc: string): RouteState {
+  const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
+  return {
+    isAdmin: loc.startsWith("/admin"),
+    isPrinters: loc.startsWith("/printers"),
+    isProjects: loc.startsWith("/projects"),
+    projectId: projectDetailMatch ? Number(projectDetailMatch[1]) : null,
+  };
+}
+
+function renderMainContent({
+  route,
+  summary,
+  projects,
+  setProjects,
+  jobs,
+  projectsLoading,
+  navigate,
+  setSelectedJob,
+  handleJobProjectChange,
+  handleRatesChanged,
+  handleAutoGroup,
+  projectPrices,
+  q,
+  setQ,
+  statusFilter,
+  setStatusFilter,
+  deviceFilter,
+  setDeviceFilter,
+  devices,
+  view,
+  setView,
+  filtered,
+  isFiltered,
+  sorted,
+  sortCol,
+  sortDir,
+  handleSort,
+}: {
+  route: RouteState;
+  summary: Summary;
+  projects: Project[];
+  setProjects: (updater: Project[] | ((ps: Project[]) => Project[])) => void;
+  jobs: Job[];
+  projectsLoading: boolean;
+  navigate: (path: string) => void;
+  setSelectedJob: (job: Job | null) => void;
+  handleJobProjectChange: (jobId: number, projectId: number | null) => void;
+  handleRatesChanged: () => void;
+  handleAutoGroup: () => void;
+  projectPrices: Record<number, number>;
+  q: string;
+  setQ: (q: string) => void;
+  statusFilter: string;
+  setStatusFilter: (v: string) => void;
+  deviceFilter: string;
+  setDeviceFilter: (v: string) => void;
+  devices: string[];
+  view: string;
+  setView: (v: string) => void;
+  filtered: Job[];
+  isFiltered: boolean;
+  sorted: Job[];
+  sortCol: string;
+  sortDir: "asc" | "desc";
+  handleSort: (col: string) => void;
+}) {
+  if (route.isAdmin) {
+    return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
+  }
+
+  if (route.isPrinters) {
+    return html`<${PrinterBreakdownView} summary=${summary} />`;
+  }
+
+  if (route.projectId != null) {
+    return html`<${ProjectRouteView}
+      projectId=${route.projectId}
+      projects=${projects}
+      jobs=${jobs}
+      projectsLoading=${projectsLoading}
+      navigate=${navigate}
+      setSelectedJob=${setSelectedJob}
+      handleJobProjectChange=${handleJobProjectChange}
+    />`;
+  }
+
+  if (route.isProjects) {
+    return html`<${ProjectsView}
+      projects=${projects}
+      setProjects=${setProjects}
+      onAutoGroup=${handleAutoGroup}
+      projectPrices=${projectPrices}
+      loading=${projectsLoading}
+    />`;
+  }
+
+  return html`<${JobsRouteView}
+    q=${q}
+    setQ=${setQ}
+    statusFilter=${statusFilter}
+    setStatusFilter=${setStatusFilter}
+    deviceFilter=${deviceFilter}
+    setDeviceFilter=${setDeviceFilter}
+    devices=${devices}
+    view=${view}
+    setView=${setView}
+    filtered=${filtered}
+    jobs=${jobs}
+    isFiltered=${isFiltered}
+    sorted=${sorted}
+    sortCol=${sortCol}
+    sortDir=${sortDir}
+    onSort=${handleSort}
+    onJobClick=${setSelectedJob}
+  />`;
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -265,7 +405,7 @@ function App() {
   });
 
   const devices = useMemo(
-    () => [...new Set(jobs.map((j) => j.deviceModel).filter(Boolean))].sort(),
+    () => [...new Set(jobs.map((j) => j.deviceModel).filter((d): d is string => !!d))].sort(),
     [jobs],
   );
 
@@ -374,60 +514,39 @@ function App() {
     return html`<${LoadingView} bootStatus=${bootStatus} loadProgress=${loadProgress} />`;
   if (error) return html`<${ErrorView} error=${error} />`;
 
-  const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
-  const isProjects = loc.startsWith("/projects");
-
-  const renderMainContent = () => {
-    if (loc.startsWith("/admin")) {
-      return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
-    }
-
-    if (projectDetailMatch) {
-      return html`<${ProjectRouteView}
-        projectId=${Number(projectDetailMatch[1])}
-        projects=${projects}
-        jobs=${jobs}
-        projectsLoading=${projectsLoading}
-        navigate=${navigate}
-        setSelectedJob=${setSelectedJob}
-        handleJobProjectChange=${handleJobProjectChange}
-      />`;
-    }
-
-    if (isProjects) {
-      return html`<${ProjectsView}
-        projects=${projects}
-        setProjects=${setProjects}
-        onAutoGroup=${handleAutoGroup}
-        projectPrices=${projectPrices}
-        loading=${projectsLoading}
-      />`;
-    }
-
-    return html`<${JobsRouteView}
-      q=${q}
-      setQ=${setQ}
-      statusFilter=${statusFilter}
-      setStatusFilter=${setStatusFilter}
-      deviceFilter=${deviceFilter}
-      setDeviceFilter=${setDeviceFilter}
-      devices=${devices}
-      view=${view}
-      setView=${setView}
-      filtered=${filtered}
-      jobs=${jobs}
-      isFiltered=${isFiltered}
-      sorted=${sorted}
-      sortCol=${sortCol}
-      sortDir=${sortDir}
-      onSort=${handleSort}
-      onJobClick=${setSelectedJob}
-    />`;
-  };
+  const route = getRouteState(loc);
 
   return html`
     <${Header} summary=${summary} dataRange=${dataRange} />
-    ${renderMainContent()}
+    ${renderMainContent({
+      route,
+      summary,
+      projects,
+      setProjects,
+      jobs,
+      projectsLoading,
+      navigate,
+      setSelectedJob,
+      handleJobProjectChange,
+      handleRatesChanged,
+      handleAutoGroup,
+      projectPrices,
+      q,
+      setQ,
+      statusFilter,
+      setStatusFilter,
+      deviceFilter,
+      setDeviceFilter,
+      devices,
+      view,
+      setView,
+      filtered,
+      isFiltered,
+      sorted,
+      sortCol,
+      sortDir,
+      handleSort,
+    })}
     ${selectedJob &&
     html`<${Modal}
       key=${selectedJob.id}
