@@ -41,6 +41,11 @@ type RatesResponse = {
   material_rates: MaterialRate[];
 };
 
+function replaceByKey<T>(items: T[], keyOf: (item: T) => string, next: T): T[] {
+  const key = keyOf(next);
+  return items.map((item) => (keyOf(item) === key ? next : item));
+}
+
 type RateFieldProps = {
   label: string;
   value: number;
@@ -103,15 +108,13 @@ function LaborForm({
           label="Failure buffer (%)"
           value=${Math.round(v.failure_buffer_pct * 100)}
           step="1"
-          onChange=${(val: number) =>
-            setV((x) => ({ ...x, failure_buffer_pct: val / 100 }))}
+          onChange=${(val: number) => setV((x) => ({ ...x, failure_buffer_pct: val / 100 }))}
         />
         <${RateField}
           label="Overhead buffer (%)"
           value=${Math.round(v.overhead_buffer_pct * 100)}
           step="1"
-          onChange=${(val: number) =>
-            setV((x) => ({ ...x, overhead_buffer_pct: val / 100 }))}
+          onChange=${(val: number) => setV((x) => ({ ...x, overhead_buffer_pct: val / 100 }))}
         />
       </div>
       <div class="admin-card-footer">
@@ -237,79 +240,75 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
     setTimeout(() => setSaved(""), 2000);
   };
 
-  const saveLaborConfig = async (labor: LaborConfig) => {
-    setSaving("labor");
+  const runSave = async (saveKey: string, action: () => Promise<boolean>) => {
+    setSaving(saveKey);
     try {
+      const ok = await action();
+      if (!ok) return;
+      flash(saveKey);
+      onRatesChanged();
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const saveLaborConfig = async (labor: LaborConfig) => {
+    await runSave("labor", async () => {
       const data = await patchJsonOrToast<{ labor_config?: LaborConfig }>(
         "/rates/labor",
         labor,
         "Failed to save labor rates.",
       );
       const laborConfig = data?.labor_config;
-      if (!laborConfig) return;
+      if (!laborConfig) return false;
       setRates((r) => (r ? { ...r, labor_config: laborConfig } : r));
-      flash("labor");
-      onRatesChanged();
-    } finally {
-      setSaving("");
-    }
+      return true;
+    });
   };
 
   const saveMachine = async (machine: MachineRate) => {
-    setSaving(machine.device_model);
     const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } =
       machine;
-    try {
+    await runSave(device_model, async () => {
       const data = await patchJsonOrToast<{ machine_rate?: MachineRate }>(
         `/rates/machines/${encodeURIComponent(device_model)}`,
         { purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer },
         "Failed to save machine rate.",
       );
       const machineRate = data?.machine_rate;
-      if (!machineRate) return;
+      if (!machineRate) return false;
       setRates((r) =>
         r
           ? {
               ...r,
-              machine_rates: r.machine_rates.map((m) =>
-                m.device_model === device_model ? machineRate : m,
-              ),
+              machine_rates: replaceByKey(r.machine_rates, (m) => m.device_model, machineRate),
             }
           : r,
       );
-      flash(device_model);
-      onRatesChanged();
-    } finally {
-      setSaving("");
-    }
+      return true;
+    });
   };
 
   const saveMaterial = async (material: MaterialRate) => {
-    setSaving(material.filament_type);
     const { filament_type, cost_per_g, waste_buffer_pct } = material;
-    try {
+    await runSave(filament_type, async () => {
       const data = await patchJsonOrToast<{ material_rate?: MaterialRate }>(
         `/rates/materials/${encodeURIComponent(filament_type)}`,
         { cost_per_g, waste_buffer_pct },
         "Failed to save material rate.",
       );
       const materialRate = data?.material_rate;
-      if (!materialRate) return;
+      if (!materialRate) return false;
       setRates((r) =>
         r
           ? {
               ...r,
-              material_rates: r.material_rates.map((m) =>
-                m.filament_type === filament_type ? materialRate : m,
-              ),
+              material_rates: replaceByKey(r.material_rates, (m) => m.filament_type, materialRate),
             }
           : r,
       );
-      flash(filament_type);
-      onRatesChanged();
-    } finally {
-      setSaving("");
-    }
+      return true;
+    });
   };
 
   if (!rates)
