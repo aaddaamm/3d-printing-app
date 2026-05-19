@@ -21,8 +21,6 @@ const JETBRAINS_FONT_PATH = fileURLToPath(
   new URL("../frontend/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
 );
 
-const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
-
 // In production, static text assets are cached in memory on first read.
 // In dev, files are read fresh each request so edits are live without restart.
 const isProd = process.env["NODE_ENV"] === "production";
@@ -189,14 +187,7 @@ export function createUiApp(apiKey: string): Hono {
 
   // Job data — protected by app-level auth middleware.
   ui.get("/data", (c) => {
-    const started = Date.now();
     const jobs = listUiJobs();
-    const finished = Date.now();
-
-    if (DEBUG_LOADING) {
-      console.log(`[debug-loading] /ui/data jobs=${jobs.length} totalMs=${finished - started}`);
-    }
-
     return c.json({ jobs });
   });
 

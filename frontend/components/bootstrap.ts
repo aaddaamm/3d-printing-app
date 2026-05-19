@@ -89,12 +89,7 @@ export function useDashboardBootstrap({
       setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
     const trackedFetchJson = (url: string, fallback: string) => {
       setBootStatus(`Loading ${url}…`);
-      return fetchJson(url, fallback)
-        .catch((err) => {
-          console.error(`[boot] ${url} failed`, err);
-          throw err;
-        })
-        .finally(advanceProgress);
+      return fetchJson(url, fallback).finally(advanceProgress);
     };
 
     const failsafe = setTimeout(() => {
