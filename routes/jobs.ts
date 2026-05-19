@@ -20,6 +20,15 @@ import { getProjectById } from "../models/projects.js";
 export const jobs = new Hono();
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
+type JobPatchBody = {
+  customer?: string | null;
+  notes?: string | null;
+  status_override?: string | null;
+  price_override?: number | null;
+  project_id?: number | null;
+  extra_labor_minutes?: number | null;
+};
+
 const TEXT_FIELDS = ["customer", "notes", "status_override"] as const;
 const NUMERIC_FIELDS = ["price_override", "project_id", "extra_labor_minutes"] as const;
 const ALL_FIELDS = [...TEXT_FIELDS, ...NUMERIC_FIELDS] as const;
@@ -102,7 +111,7 @@ jobs.patch("/:id", async (c) => {
   if (idOrError instanceof Response) return idOrError;
   if (!getJobById(idOrError)) return jsonError(c, "Not found", 404);
 
-  const body = await parseJsonBody(c);
+  const body = await parseJsonBody<JobPatchBody>(c);
   if (!body) return jsonError(c, "Invalid JSON body", 400);
 
   const unknown = unknownFields(body, ALL_FIELDS as readonly string[]);
@@ -124,7 +133,7 @@ jobs.patch("/:id", async (c) => {
   }
 
   if (body["project_id"] != null) {
-    const projectId = body["project_id"] as number;
+    const projectId = body["project_id"];
     if (!Number.isInteger(projectId)) {
       return jsonError(c, "project_id must be an integer or null", 400);
     }
@@ -134,12 +143,12 @@ jobs.patch("/:id", async (c) => {
   }
 
   const job = patchJob(idOrError, {
-    customer: body["customer"] as string | null | undefined,
-    notes: body["notes"] as string | null | undefined,
-    price_override: body["price_override"] as number | null | undefined,
-    status_override: body["status_override"] as string | null | undefined,
-    project_id: body["project_id"] as number | null | undefined,
-    extra_labor_minutes: body["extra_labor_minutes"] as number | null | undefined,
+    customer: body.customer,
+    notes: body.notes,
+    price_override: body.price_override,
+    status_override: body.status_override,
+    project_id: body.project_id,
+    extra_labor_minutes: body.extra_labor_minutes,
   });
   return c.json({ job });
 });

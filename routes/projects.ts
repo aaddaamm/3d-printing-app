@@ -19,6 +19,18 @@ import {
   isNullableString,
 } from "../lib/util.js";
 
+type ProjectCreateBody = {
+  name?: string;
+  customer?: string | null;
+  notes?: string | null;
+};
+
+type ProjectPatchBody = {
+  name?: string;
+  customer?: string | null;
+  notes?: string | null;
+};
+
 export const projects = new Hono();
 const DEBUG_LOADING = process.env["DEBUG_LOADING"] === "1";
 
@@ -56,7 +68,7 @@ projects.post("/cleanup-junk", (c) => {
 });
 
 projects.post("/", async (c) => {
-  const body = await parseJsonBody(c);
+  const body = await parseJsonBody<ProjectCreateBody>(c);
   if (!body) return jsonError(c, "Invalid JSON body", 400);
   const name = body.name;
   const customer = body.customer;
@@ -73,8 +85,8 @@ projects.post("/", async (c) => {
   }
   const project = createProject({
     name: name.trim(),
-    customer: (customer ?? null) as string | null,
-    notes: (notes ?? null) as string | null,
+    customer: customer ?? null,
+    notes: notes ?? null,
   });
   return c.json({ project }, 201);
 });
@@ -102,7 +114,7 @@ projects.patch("/:id", async (c) => {
   if (idOrError instanceof Response) return idOrError;
   if (!getProjectById(idOrError)) return jsonError(c, "Not found", 404);
 
-  const body = await parseJsonBody(c);
+  const body = await parseJsonBody<ProjectPatchBody>(c);
   if (!body) return jsonError(c, "Invalid JSON body", 400);
 
   const unknown = unknownFields(body, ["name", "customer", "notes"]);
@@ -123,9 +135,9 @@ projects.patch("/:id", async (c) => {
   }
 
   const project = patchProject(idOrError, {
-    ...("name" in body ? { name: (name as string).trim() } : {}),
-    ...("customer" in body ? { customer: (customer ?? null) as string | null } : {}),
-    ...("notes" in body ? { notes: (notes ?? null) as string | null } : {}),
+    ...("name" in body ? { name: String(name).trim() } : {}),
+    ...("customer" in body ? { customer: customer ?? null } : {}),
+    ...("notes" in body ? { notes: notes ?? null } : {}),
   });
   return c.json({ project });
 });

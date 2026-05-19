@@ -11,9 +11,11 @@ export function jsonError(c: Context, error: string, status = 400): Response {
   return c.json({ error });
 }
 
-export async function parseJsonBody(c: Context): Promise<Record<string, unknown> | null> {
+export async function parseJsonBody<T extends Record<string, unknown> = Record<string, unknown>>(
+  c: Context,
+): Promise<T | null> {
   try {
-    return (await c.req.json()) as Record<string, unknown>;
+    return (await c.req.json()) as T;
   } catch {
     return null;
   }

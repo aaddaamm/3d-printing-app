@@ -74,12 +74,7 @@ rates.patch("/machines/:device_model", async (c) => {
       400,
     );
   }
-  if (
-    purchase_price < 0 ||
-    lifetime_hrs <= 0 ||
-    electricity_rate < 0 ||
-    maintenance_buffer < 0
-  ) {
+  if (purchase_price < 0 || lifetime_hrs <= 0 || electricity_rate < 0 || maintenance_buffer < 0) {
     return jsonError(
       c,
       "purchase_price, electricity_rate, and maintenance_buffer must be non-negative; lifetime_hrs must be greater than 0",

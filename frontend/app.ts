@@ -387,6 +387,18 @@ function App() {
   const [selectedJob, setSelectedJob] = useState<Job | null>(null);
   const [loc, navigate] = useLocation();
 
+  const setProjectsFromBootstrap = useCallback((items: unknown[]) => {
+    setProjects(items as Project[]);
+  }, []);
+
+  const setSummaryFromBootstrap = useCallback((next: unknown) => {
+    setSummary(next as Summary);
+  }, []);
+
+  const setDataRangeFromBootstrap = useCallback((next: unknown) => {
+    setDataRange(next as DataRange);
+  }, []);
+
   const {
     loading,
     projectsLoading,
@@ -397,10 +409,10 @@ function App() {
     refreshJobPrices,
   } = useDashboardBootstrap({
     setJobs,
-    setProjects: (items) => setProjects(items as Project[]),
+    setProjects: setProjectsFromBootstrap,
     setProjectPrices,
-    setSummary: (next) => setSummary(next as Summary),
-    setDataRange: (next) => setDataRange(next as DataRange),
+    setSummary: setSummaryFromBootstrap,
+    setDataRange: setDataRangeFromBootstrap,
     toast,
   });
 
