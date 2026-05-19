@@ -130,6 +130,10 @@ function isActiveJob(job: Job): boolean {
   return ACTIVE_STATUSES.has((job.status_override ?? job.status ?? "").toLowerCase());
 }
 
+function shouldUseEstimate(job: Job): boolean {
+  return (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+}
+
 function loadSessionUsage(
   sessionIds: string[],
   statuses: readonly string[],
@@ -170,20 +174,22 @@ function calculateProjectVariableCosts(
 
   for (const job of jobs) {
     const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-    const shouldUseEstimate =
-      (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
-    const usage = shouldUseEstimate
-      ? activeSessionUsage.get(job.session_id)
+    const useEstimate = shouldUseEstimate(job);
+    const usage = useEstimate
+      ? (activeSessionUsage.get(job.session_id) ?? {
+          total_weight_g: 0,
+          total_time_s: 0,
+          session_id: job.session_id,
+        })
       : { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
 
     material_cost += calcWeightedMaterialCost(
-      usage?.total_weight_g ?? 0,
-      (shouldUseEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ??
-        [],
+      usage.total_weight_g,
+      (useEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ?? [],
       materialRates,
       fallbackMaterialRate,
     );
-    machine_cost += calcMachineCost(usage?.total_time_s ?? 0, machineRate);
+    machine_cost += calcMachineCost(usage.total_time_s, machineRate);
     if (job.extra_labor_minutes) {
       extra_labor_cost += (job.extra_labor_minutes / 60) * hourlyRate;
     }

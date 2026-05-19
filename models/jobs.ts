@@ -15,6 +15,7 @@ const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
 
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
 type UsageTotals = { total_weight_g: number; total_time_s: number };
+type SqlCondition = [string, string];
 
 export interface ListJobsFilter {
   status?: string | undefined;
@@ -24,14 +25,24 @@ export interface ListJobsFilter {
   to?: string | undefined;
 }
 
-export function listJobs({ status, device, customer, from, to }: ListJobsFilter = {}): Job[] {
-  // Each entry is [sql-fragment, bound-value] — kept together so they can't drift apart.
-  const conds: Array<[string, string]> = [];
+function buildListJobConditions({
+  status,
+  device,
+  customer,
+  from,
+  to,
+}: ListJobsFilter): SqlCondition[] {
+  const conds: SqlCondition[] = [];
   if (status) conds.push(["COALESCE(status_override, status) = ?", status]);
   if (device) conds.push(["deviceModel = ?", device]);
   if (customer) conds.push(["customer = ?", customer]);
   if (from) conds.push(["startTime >= ?", from]);
   if (to) conds.push(["startTime <= ?", to]);
+  return conds;
+}
+
+export function listJobs(filters: ListJobsFilter = {}): Job[] {
+  const conds = buildListJobConditions(filters);
   const where = conds.length ? `WHERE ${conds.map(([sql]) => sql).join(" AND ")}` : "";
   return db
     .prepare<string[], Job>(`SELECT * FROM jobs ${where} ORDER BY startTime DESC`)
@@ -286,6 +297,9 @@ export function getAllJobPrices(): Record<number, number> {
   const activeSessionUsage = loadSessionUsageByStatuses(ESTIMATE_STATUSES);
   const prices: Record<number, number> = {};
 
+  const getFilamentsForJob = (job: Job, useEstimate: boolean): FilamentWeight[] =>
+    (useEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ?? [];
+
   for (const job of listJobs()) {
     try {
       const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
@@ -295,7 +309,7 @@ export function getAllJobPrices(): Record<number, number> {
         : directUsage(job);
       const breakdown = calcPrice({
         total_weight_g: 0,
-        total_time_s: usage?.total_time_s ?? 0,
+        total_time_s: usage.total_time_s,
         extra_labor_minutes: job.extra_labor_minutes ?? null,
         price_override: job.price_override ?? null,
         machineRate,
@@ -303,8 +317,8 @@ export function getAllJobPrices(): Record<number, number> {
         laborConfig,
       });
       const materialCost = calcWeightedMaterialCost(
-        usage?.total_weight_g ?? 0,
-        (useEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ?? [],
+        usage.total_weight_g,
+        getFilamentsForJob(job, useEstimate),
         materialRates,
         fallbackMaterialRate,
       );
