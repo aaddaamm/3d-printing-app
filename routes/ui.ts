@@ -1,4 +1,5 @@
 import { readFileSync, existsSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
 import { setCookie, deleteCookie } from "hono/cookie";
@@ -150,7 +151,7 @@ export function createUiApp(apiKey: string): Hono {
   ui.get("/assets/:file", (c) => {
     const file = c.req.param("file");
     if (!/^[\w.-]+$/.test(file)) return notFound(c);
-    const filePath = `${DIST_ASSETS_PATH}/${file}`;
+    const filePath = path.join(DIST_ASSETS_PATH, file);
     if (!existsSync(filePath)) return notFound(c);
     if (file.endsWith(".css")) return textResponse(readTextFile(filePath), "text/css");
     if (file.endsWith(".js")) return textResponse(readTextFile(filePath), "application/javascript");
@@ -160,7 +161,7 @@ export function createUiApp(apiKey: string): Hono {
   ui.get("/chunks/:file", (c) => {
     const file = c.req.param("file");
     if (!/^[\w.-]+$/.test(file)) return notFound(c);
-    const filePath = `${DIST_CHUNKS_PATH}/${file}`;
+    const filePath = path.join(DIST_CHUNKS_PATH, file);
     if (!existsSync(filePath)) return notFound(c);
     return textResponse(readTextFile(filePath), "application/javascript");
   });

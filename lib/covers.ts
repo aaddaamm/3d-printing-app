@@ -5,8 +5,21 @@ import { fetchWithRetry, HttpError } from "./fetch.js";
 
 export const COVERS_DIR = path.resolve(process.env["BAMBU_COVERS_DIR"] ?? "./covers");
 
+function sanitizeTaskId(taskId: string): string {
+  if (!/^[A-Za-z0-9_-]+$/.test(taskId)) {
+    throw new Error(`Invalid task id for cover path: ${taskId}`);
+  }
+  return taskId;
+}
+
 export function localCoverPath(taskId: string): string {
-  return path.join(COVERS_DIR, `${taskId}.png`);
+  const safeTaskId = sanitizeTaskId(taskId);
+  const candidate = path.join(COVERS_DIR, safeTaskId + ".png");
+  const rel = path.relative(COVERS_DIR, candidate);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+    throw new Error(`Refusing path outside covers dir: ${candidate}`);
+  }
+  return candidate;
 }
 
 export function localCoverExists(taskId: string): boolean {
