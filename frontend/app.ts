@@ -444,15 +444,22 @@ function App() {
 
   const closeModal = useCallback(() => setSelectedJob(null), []);
 
-  // Generic job patch helper — updates local state from the returned job
-  const patchJob = useCallback(async (jobId: number, fields: Record<string, unknown>) => {
-    const data = await patchJsonOrToast(`/jobs/${jobId}`, fields, "Failed to update job.");
-    if (!data?.job) return null;
-    const { job } = data;
-    setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...job } : j)));
-    setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...job } : j));
-    return job;
+  const applyPatchedJob = useCallback((jobId: number, patch: Record<string, unknown>) => {
+    setJobs((js) => js.map((j) => (j.id === jobId ? { ...j, ...patch } : j)));
+    setSelectedJob((j) => (j && j.id === jobId ? { ...j, ...patch } : j));
   }, []);
+
+  // Generic job patch helper — updates local state from the returned job
+  const patchJob = useCallback(
+    async (jobId: number, fields: Record<string, unknown>) => {
+      const data = await patchJsonOrToast(`/jobs/${jobId}`, fields, "Failed to update job.");
+      if (!data?.job) return null;
+      const { job } = data;
+      applyPatchedJob(jobId, job as Record<string, unknown>);
+      return job;
+    },
+    [applyPatchedJob],
+  );
 
   const handleJobProjectChange = useCallback(
     async (jobId: number, projectId: number | null) => {
@@ -498,9 +505,13 @@ function App() {
     setSummary(data);
   }, []);
 
-  const handleRatesChanged = useCallback(async () => {
+  const refreshPricingViews = useCallback(() => {
     refreshJobPrices(true);
     refreshProjectsAndPrices();
+  }, [refreshJobPrices, refreshProjectsAndPrices]);
+
+  const handleRatesChanged = useCallback(async () => {
+    refreshPricingViews();
     try {
       await refreshSummary();
       toast("Pricing refreshed from updated rates.", "success");
@@ -509,7 +520,7 @@ function App() {
         err instanceof Error ? err.message : "Updated rates saved, but summary refresh failed.";
       toast(message, "error");
     }
-  }, [refreshJobPrices, refreshProjectsAndPrices, refreshSummary]);
+  }, [refreshPricingViews, refreshSummary]);
 
   const handleAutoGroup = useCallback(async () => {
     const [jobsData, projData] = await Promise.all([
@@ -518,9 +529,8 @@ function App() {
     ]);
     setJobs(jobsData.jobs);
     setProjects(projData.projects);
-    refreshJobPrices(true);
-    refreshProjectsAndPrices();
-  }, [refreshJobPrices, refreshProjectsAndPrices]);
+    refreshPricingViews();
+  }, [refreshPricingViews]);
 
   if (loading)
     return html`<${LoadingView} bootStatus=${bootStatus} loadProgress=${loadProgress} />`;
