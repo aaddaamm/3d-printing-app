@@ -32,6 +32,20 @@ const TEXT_FIELDS = ["customer", "notes", "status_override"] as const;
 const NUMERIC_FIELDS = ["price_override", "project_id", "extra_labor_minutes"] as const;
 const ALL_FIELDS = [...TEXT_FIELDS, ...NUMERIC_FIELDS] as const;
 
+function validatePatchFieldTypes(body: JobPatchBody): string | null {
+  for (const field of NUMERIC_FIELDS) {
+    if (!(field in body)) continue;
+    if (!isNullableFiniteNumber(body[field])) return `${field} must be a finite number or null`;
+  }
+
+  for (const field of TEXT_FIELDS) {
+    if (!(field in body)) continue;
+    if (!isNullableString(body[field])) return `${field} must be a string or null`;
+  }
+
+  return null;
+}
+
 jobs.get("/", (c) => {
   const rows = listJobs(c.req.query());
   return c.json({ count: rows.length, jobs: rows });
@@ -110,20 +124,8 @@ jobs.patch("/:id", async (c) => {
   const unknown = unknownFields(body, ALL_FIELDS as readonly string[]);
   if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
 
-  for (const field of NUMERIC_FIELDS) {
-    if (!(field in body)) continue;
-    const v = body[field];
-    if (!isNullableFiniteNumber(v)) {
-      return jsonError(c, `${field} must be a finite number or null`, 400);
-    }
-  }
-  for (const field of TEXT_FIELDS) {
-    if (!(field in body)) continue;
-    const v = body[field];
-    if (!isNullableString(v)) {
-      return jsonError(c, `${field} must be a string or null`, 400);
-    }
-  }
+  const fieldTypeError = validatePatchFieldTypes(body);
+  if (fieldTypeError) return jsonError(c, fieldTypeError, 400);
 
   if (body["project_id"] != null) {
     const projectId = body["project_id"];
