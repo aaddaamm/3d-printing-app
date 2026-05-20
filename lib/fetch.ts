@@ -99,8 +99,10 @@ export async function fetchTasks({
 
   const data = (await res.json()) as BambuApiResponse;
   if (process.env["BAMBU_DEBUG"]) {
-    console.log("\n[debug] url:", url.toString());
-    console.log("[debug] hits count:", data.hits?.length, "api total:", data.total);
+    process.stderr.write(`\n[debug] url: ${url.toString()}\n`);
+    process.stderr.write(
+      `[debug] hits count: ${String(data.hits?.length)} api total: ${String(data.total)}\n`,
+    );
   }
   return data;
 }
