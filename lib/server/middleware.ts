@@ -38,6 +38,23 @@ function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.has(pathname) || PUBLIC_FONT_RE.test(pathname);
 }
 
+function formatRequestLogLine(method: string, path: string, status: number, ms: number): string {
+  return `  ${methodColor(method)} ${path} ${dim("→")} ${statusColor(status)} ${dim(`${ms}ms`)}`;
+}
+
+function isAuthorizedRequest(
+  path: string,
+  authorizationHeader: string,
+  session: string,
+  apiKey: string,
+): boolean {
+  return (
+    isPublicPath(path) ||
+    safeEqual(authorizationHeader, `Bearer ${apiKey}`) ||
+    safeEqual(session, apiKey)
+  );
+}
+
 export function createRequestLogger(enabled: boolean): MiddlewareHandler {
   return async (c, next) => {
     if (!enabled) {
@@ -48,9 +65,7 @@ export function createRequestLogger(enabled: boolean): MiddlewareHandler {
     const start = Date.now();
     await next();
     const ms = Date.now() - start;
-    console.log(
-      `  ${methodColor(c.req.method)} ${c.req.path} ${dim("→")} ${statusColor(c.res.status)} ${dim(`${ms}ms`)}`,
-    );
+    console.log(formatRequestLogLine(c.req.method, c.req.path, c.res.status, ms));
   };
 }
 
@@ -60,11 +75,7 @@ export function createAuthMiddleware(apiKey: string): MiddlewareHandler {
     const authorizationHeader = c.req.header("Authorization") ?? "";
     const session = getCookie(c, "session") ?? "";
 
-    if (
-      isPublicPath(path) ||
-      safeEqual(authorizationHeader, `Bearer ${apiKey}`) ||
-      safeEqual(session, apiKey)
-    ) {
+    if (isAuthorizedRequest(path, authorizationHeader, session, apiKey)) {
       await next();
       return;
     }
