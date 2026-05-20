@@ -26,7 +26,7 @@ export interface BambuApiTask {
   [key: string]: unknown;
 }
 
-export interface AmsSlot {
+interface AmsSlot {
   amsId: number;
   slotId: number;
   filamentType: string;

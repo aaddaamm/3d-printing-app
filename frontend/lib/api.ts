@@ -5,7 +5,7 @@ type JsonRecord = Record<string, unknown>;
 
 type RequestOptions = RequestInit | undefined;
 
-export async function errorMessage(res: Response, fallback: string): Promise<string> {
+async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
     const data = (await res.json()) as JsonRecord;
     return typeof data.error === "string" ? data.error : fallback;

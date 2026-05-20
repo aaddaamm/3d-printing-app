@@ -1,7 +1,7 @@
 {
   "name": "bambu-history-dump",
   "version": "1.0.0",
-  "description": "",
+  "description": "Sync Bambu Lab print history to SQLite with pricing, projects, and a lightweight dashboard.",
   "main": "dump-bambu-history.ts",
   "scripts": {
     "sync": "npx tsx dump-bambu-history.ts",
@@ -21,7 +21,7 @@
     "format:check": "prettier --check \"**/*.ts\" \"**/*.json\" --ignore-path .gitignore"
   },
   "keywords": [],
-  "author": "",
+  "author": "Adam",
   "license": "ISC",
   "engines": {
     "node": ">=18"
@@ -40,7 +40,6 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.3.0",
     "@vitest/coverage-v8": "^4.0.18",
-    "esbuild": "^0.28.0",
     "vite": "^6.3.5",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",

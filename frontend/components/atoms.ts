@@ -10,7 +10,7 @@ const html = (
   }
 ).bind(h);
 
-export const BADGE_CLS: Record<string, string> = {
+const BADGE_CLS: Record<string, string> = {
   finish: "badge badge-finish",
   running: "badge badge-running",
   failed: "badge badge-failed",

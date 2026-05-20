@@ -10,7 +10,7 @@ import {
 } from "../migrations.js";
 import { LABOR_BUFFER_MIGRATION } from "./labor-config.js";
 
-export const DB_MIGRATIONS: Migration[] = [
+const DB_MIGRATIONS: Migration[] = [
   {
     id: 1,
     description: "rename legacy tasks table to print_tasks",

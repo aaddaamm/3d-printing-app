@@ -13,7 +13,7 @@ const html = (
 type Navigate = (to: string) => void;
 type LocationTuple = [string, Navigate];
 
-export const LocationContext = createContext<LocationTuple | null>(null);
+const LocationContext = createContext<LocationTuple | null>(null);
 
 export function RouterProvider({ base, children }: { base: string; children: ComponentChildren }) {
   const strip = (path: string) => (path.startsWith(base) ? path.slice(base.length) || "/" : path);
