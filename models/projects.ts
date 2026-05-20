@@ -198,6 +198,57 @@ function calculateProjectVariableCosts(
   return { material_cost, machine_cost, extra_labor_cost };
 }
 
+function readCachedProjectPrices(): Record<number, number> | null {
+  try {
+    const hasActiveJobs = db
+      .prepare<
+        [],
+        { exists: number }
+      >("SELECT 1 AS exists FROM jobs WHERE project_id IS NOT NULL AND lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1")
+      .get();
+    if (hasActiveJobs?.exists) return null;
+
+    const targetCount = (
+      db
+        .prepare("SELECT COUNT(DISTINCT project_id) AS n FROM jobs WHERE project_id IS NOT NULL")
+        .get() as { n: number }
+    ).n;
+    const cachedCount = (
+      db.prepare("SELECT COUNT(*) AS n FROM project_price_cache").get() as { n: number }
+    ).n;
+    if (targetCount <= 0 || cachedCount !== targetCount) return null;
+
+    const rows = db
+      .prepare<
+        [],
+        { project_id: number; final_price: number }
+      >("SELECT project_id, final_price FROM project_price_cache")
+      .all();
+    return Object.fromEntries(rows.map((r) => [r.project_id, r.final_price]));
+  } catch {
+    // cache table unavailable (tests/older DB)
+    return null;
+  }
+}
+
+function writeProjectPriceCache(prices: Record<number, number>): void {
+  try {
+    const now = new Date().toISOString();
+    const writeCache = db.transaction((entries: Array<[number, number]>) => {
+      db.exec("DELETE FROM project_price_cache");
+      const insert = db.prepare(
+        "INSERT INTO project_price_cache (project_id, final_price, computed_at) VALUES (?, ?, ?)",
+      );
+      for (const [projectId, finalPrice] of entries) insert.run(projectId, finalPrice, now);
+    });
+    writeCache(
+      Object.entries(prices).map(([projectId, finalPrice]) => [Number(projectId), finalPrice]),
+    );
+  } catch {
+    // cache table unavailable (tests/older DB)
+  }
+}
+
 function buildProjectPrice(projectId: number): PriceBreakdown | null {
   const config = loadRatesConfig();
   if (!config) return null;
@@ -245,35 +296,8 @@ export function getProjectPrice(id: number): PriceBreakdown | null {
 }
 
 export function getAllProjectPrices(): Record<number, number> {
-  try {
-    const hasActiveJobs = db
-      .prepare<
-        [],
-        { exists: number }
-      >("SELECT 1 AS exists FROM jobs WHERE project_id IS NOT NULL AND lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1")
-      .get();
-    if (hasActiveJobs?.exists) throw new Error("bypass-cache-for-active-jobs");
-
-    const targetCount = (
-      db
-        .prepare("SELECT COUNT(DISTINCT project_id) AS n FROM jobs WHERE project_id IS NOT NULL")
-        .get() as { n: number }
-    ).n;
-    const cachedCount = (
-      db.prepare("SELECT COUNT(*) AS n FROM project_price_cache").get() as { n: number }
-    ).n;
-    if (targetCount > 0 && cachedCount === targetCount) {
-      const rows = db
-        .prepare<
-          [],
-          { project_id: number; final_price: number }
-        >("SELECT project_id, final_price FROM project_price_cache")
-        .all();
-      return Object.fromEntries(rows.map((r) => [r.project_id, r.final_price]));
-    }
-  } catch {
-    // cache table unavailable (tests/older DB) — fall through to live compute
-  }
+  const cached = readCachedProjectPrices();
+  if (cached) return cached;
 
   const config = loadRatesConfig();
   if (!config) return {};
@@ -315,22 +339,7 @@ export function getAllProjectPrices(): Record<number, number> {
       // skip — pricing config incomplete for this project
     }
   }
-  try {
-    const now = new Date().toISOString();
-    const writeCache = db.transaction((entries: Array<[number, number]>) => {
-      db.exec("DELETE FROM project_price_cache");
-      const insert = db.prepare(
-        "INSERT INTO project_price_cache (project_id, final_price, computed_at) VALUES (?, ?, ?)",
-      );
-      for (const [projectId, finalPrice] of entries) insert.run(projectId, finalPrice, now);
-    });
-    writeCache(
-      Object.entries(prices).map(([projectId, finalPrice]) => [Number(projectId), finalPrice]),
-    );
-  } catch {
-    // cache table unavailable (tests/older DB)
-  }
-
+  writeProjectPriceCache(prices);
   return prices;
 }
 
