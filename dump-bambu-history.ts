@@ -189,6 +189,14 @@ function postSyncSteps(startedAt: number): void {
   console.log("");
 }
 
+function colorStatusLabel(status: string): string {
+  if (status === "finish") return green(status);
+  if (status === "failed" || status === "cancel") return red(status);
+  if (status === "running") return cyan(status);
+  if (status === "pause") return yellow(status);
+  return dim(status);
+}
+
 async function runCoverSyncAndSummary(): Promise<void> {
   console.log(bold(cyan("=== cover images ===")));
   console.log(`  ${dim("Cache:")} ${dim(COVERS_DIR)}`);
@@ -205,18 +213,7 @@ async function runCoverSyncAndSummary(): Promise<void> {
   console.log(bold("By status:"));
   for (const row of statusSummary) {
     const s = row.status ?? "(null)";
-    const label =
-      s === "finish"
-        ? green(s)
-        : s === "failed"
-          ? red(s)
-          : s === "cancel"
-            ? red(s)
-            : s === "running"
-              ? cyan(s)
-              : s === "pause"
-                ? yellow(s)
-                : dim(s);
+    const label = colorStatusLabel(s);
     console.log(`  ${label}: ${bold(String(row.n))}`);
   }
 }

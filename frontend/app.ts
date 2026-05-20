@@ -161,9 +161,10 @@ function ProjectRouteView({
   const projectJobs = jobs.filter((j) => j.project_id === projectId);
 
   if (!project) {
-    return projectsLoading
-      ? html`<div class="empty">Loading projects…</div>`
-      : html`<div class="empty">Project not found.</div>`;
+    if (projectsLoading) {
+      return html`<div class="empty">Loading projects…</div>`;
+    }
+    return html`<div class="empty">Project not found.</div>`;
   }
 
   const unassignedJobs = jobs.filter((j) => j.project_id == null);
@@ -176,6 +177,38 @@ function ProjectRouteView({
     onAddJob=${(jobId: number) => handleJobProjectChange(jobId, projectId)}
     onRemoveJob=${(jobId: number) => handleJobProjectChange(jobId, null)}
   />`;
+}
+
+function renderJobsBody({
+  sorted,
+  view,
+  sortCol,
+  sortDir,
+  onSort,
+  onJobClick,
+}: {
+  sorted: Job[];
+  view: string;
+  sortCol: string;
+  sortDir: "asc" | "desc";
+  onSort: (col: string) => void;
+  onJobClick: (job: Job) => void;
+}) {
+  if (sorted.length === 0) {
+    return html`<div class="empty">No jobs match your filters.</div>`;
+  }
+
+  if (view === "table") {
+    return html`<${TableView}
+      sorted=${sorted}
+      sortCol=${sortCol}
+      sortDir=${sortDir}
+      onSort=${onSort}
+      onJobClick=${onJobClick}
+    />`;
+  }
+
+  return html`<${GridView} sorted=${sorted} onJobClick=${onJobClick} />`;
 }
 
 function JobsRouteView({
@@ -230,17 +263,7 @@ function JobsRouteView({
       totalCount=${jobs.length}
     />
     <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
-    ${sorted.length === 0
-      ? html`<div class="empty">No jobs match your filters.</div>`
-      : view === "table"
-        ? html`<${TableView}
-            sorted=${sorted}
-            sortCol=${sortCol}
-            sortDir=${sortDir}
-            onSort=${onSort}
-            onJobClick=${onJobClick}
-          />`
-        : html`<${GridView} sorted=${sorted} onJobClick=${onJobClick} />`}
+    ${renderJobsBody({ sorted, view, sortCol, sortDir, onSort, onJobClick })}
   `;
 }
 

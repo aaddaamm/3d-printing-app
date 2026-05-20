@@ -24,13 +24,18 @@ export type ProjectWithStats = Project & {
   cover_url: string | null;
 };
 
+function resolveProjectCoverUrl(
+  latestCoverTaskId: number | string | null | undefined,
+): string | null {
+  if (!latestCoverTaskId) return null;
+  if (!localCoverExists(String(latestCoverTaskId))) return null;
+  return `/ui/covers/${latestCoverTaskId}`;
+}
+
 export function listProjects(): ProjectWithStats[] {
   return stmts.listProjects.all().map(({ latest_cover_task_id, ...row }) => ({
     ...row,
-    cover_url:
-      latest_cover_task_id && localCoverExists(String(latest_cover_task_id))
-        ? `/ui/covers/${latest_cover_task_id}`
-        : null,
+    cover_url: resolveProjectCoverUrl(latest_cover_task_id),
   }));
 }
 
@@ -156,6 +161,27 @@ function loadSessionUsage(
   return new Map(rows.map((row) => [row.session_id, row]));
 }
 
+function usageForProjectJob(
+  job: Job,
+  activeSessionUsage: ReadonlyMap<string, SessionUsage>,
+): { total_weight_g: number; total_time_s: number } {
+  if (!shouldUseEstimate(job)) {
+    return { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
+  }
+  const estimated = activeSessionUsage.get(job.session_id);
+  if (!estimated) return { total_weight_g: 0, total_time_s: 0 };
+  return { total_weight_g: estimated.total_weight_g, total_time_s: estimated.total_time_s };
+}
+
+function filamentsForProjectJob(
+  job: Job,
+  finishedSessionFilaments: ReadonlyMap<string, FilamentWeight[]>,
+  activeSessionFilaments: ReadonlyMap<string, FilamentWeight[]>,
+): FilamentWeight[] {
+  const bySession = shouldUseEstimate(job) ? activeSessionFilaments : finishedSessionFilaments;
+  return bySession.get(job.session_id) ?? [];
+}
+
 function calculateProjectVariableCosts(
   jobs: Job[],
   finishedSessionFilaments: ReadonlyMap<string, FilamentWeight[]>,
@@ -174,18 +200,11 @@ function calculateProjectVariableCosts(
 
   for (const job of jobs) {
     const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-    const useEstimate = shouldUseEstimate(job);
-    const usage = useEstimate
-      ? (activeSessionUsage.get(job.session_id) ?? {
-          total_weight_g: 0,
-          total_time_s: 0,
-          session_id: job.session_id,
-        })
-      : { total_weight_g: job.total_weight_g ?? 0, total_time_s: job.total_time_s ?? 0 };
+    const usage = usageForProjectJob(job, activeSessionUsage);
 
     material_cost += calcWeightedMaterialCost(
       usage.total_weight_g,
-      (useEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ?? [],
+      filamentsForProjectJob(job, finishedSessionFilaments, activeSessionFilaments),
       materialRates,
       fallbackMaterialRate,
     );

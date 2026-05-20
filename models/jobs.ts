@@ -230,6 +230,23 @@ function loadJobFilamentTotals(sessionId: string, statuses: readonly string[]): 
     .all(sessionId, ...statuses);
 }
 
+function getUsageForJob(job: Job, activeSessionUsage?: Map<string, SessionUsage>): UsageTotals {
+  if (!shouldUseEstimate(job)) return directUsage(job);
+  if (!activeSessionUsage) return loadEstimatedUsage(job.session_id);
+  return activeSessionUsage.get(job.session_id) ?? directUsage(job);
+}
+
+function resolveFinalPrice(
+  breakdown: PriceBreakdown,
+  materialCost: number,
+  laborConfig: Parameters<typeof totalPricingMultiplier>[0],
+): number {
+  const basePrice =
+    materialCost + breakdown.machine_cost + breakdown.labor_cost + breakdown.extra_labor_cost;
+  if (breakdown.is_override) return breakdown.final_price;
+  return Math.ceil(basePrice * totalPricingMultiplier(laborConfig));
+}
+
 export function getJobPrice(
   id: number,
 ): ({ id: number; filament_type: string } & PriceBreakdown) | null {
@@ -238,7 +255,7 @@ export function getJobPrice(
 
   const eligibleStatuses = estimateStatusesForJob(job);
   const filamentTotals = loadJobFilamentTotals(job.session_id, eligibleStatuses);
-  const usage = shouldUseEstimate(job) ? loadEstimatedUsage(job.session_id) : directUsage(job);
+  const usage = getUsageForJob(job);
 
   const filamentType = filamentTotals[0]?.filament_type ?? "PLA";
   const config = loadRatesConfig();
@@ -297,16 +314,17 @@ export function getAllJobPrices(): Record<number, number> {
   const activeSessionUsage = loadSessionUsageByStatuses(ESTIMATE_STATUSES);
   const prices: Record<number, number> = {};
 
-  const getFilamentsForJob = (job: Job, useEstimate: boolean): FilamentWeight[] =>
-    (useEstimate ? activeSessionFilaments : finishedSessionFilaments).get(job.session_id) ?? [];
+  const getFilamentsForJob = (job: Job): FilamentWeight[] => {
+    const sessionFilaments = shouldUseEstimate(job)
+      ? activeSessionFilaments
+      : finishedSessionFilaments;
+    return sessionFilaments.get(job.session_id) ?? [];
+  };
 
   for (const job of listJobs()) {
     try {
       const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
-      const useEstimate = shouldUseEstimate(job);
-      const usage = useEstimate
-        ? (activeSessionUsage.get(job.session_id) ?? directUsage(job))
-        : directUsage(job);
+      const usage = getUsageForJob(job, activeSessionUsage);
       const breakdown = calcPrice({
         total_weight_g: 0,
         total_time_s: usage.total_time_s,
@@ -318,15 +336,11 @@ export function getAllJobPrices(): Record<number, number> {
       });
       const materialCost = calcWeightedMaterialCost(
         usage.total_weight_g,
-        getFilamentsForJob(job, useEstimate),
+        getFilamentsForJob(job),
         materialRates,
         fallbackMaterialRate,
       );
-      const basePrice =
-        materialCost + breakdown.machine_cost + breakdown.labor_cost + breakdown.extra_labor_cost;
-      prices[job.id] = breakdown.is_override
-        ? breakdown.final_price
-        : Math.ceil(basePrice * totalPricingMultiplier(laborConfig));
+      prices[job.id] = resolveFinalPrice(breakdown, materialCost, laborConfig);
     } catch {
       // skip — pricing config incomplete for this job
     }
