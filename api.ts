@@ -11,11 +11,12 @@ import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
 import { createAuthMiddleware, createRequestLogger } from "./lib/server/middleware.js";
 import { startSyncScheduler } from "./lib/server/sync-scheduler.js";
+import { logError, logInfo } from "./lib/logger.js";
 
 function getRequiredApiKey(): string {
   const key = process.env["API_KEY"];
   if (key) return key;
-  console.error("API_KEY env var is required");
+  logError("API_KEY env var is required");
   throw new Error("API_KEY env var is required");
 }
 
@@ -47,10 +48,10 @@ function mountRoutes(): void {
 
 function startServer(): void {
   serve({ fetch: app.fetch, port: PORT }, (info) => {
-    console.log(bold(cyan("=== bambu-api ===")));
-    console.log(`  Listening on ${cyan(`http://localhost:${info.port}`)}`);
-    console.log(`  UI:          ${cyan(`http://localhost:${info.port}/ui`)}`);
-    console.log(`  DB: ${dim(DB_PATH)}`);
+    logInfo(bold(cyan("=== bambu-api ===")));
+    logInfo(`  Listening on ${cyan(`http://localhost:${info.port}`)}`);
+    logInfo(`  UI:          ${cyan(`http://localhost:${info.port}/ui`)}`);
+    logInfo(`  DB: ${dim(DB_PATH)}`);
     startSyncScheduler({ syncIntervalHours: SYNC_INTERVAL_HOURS, appEntryUrl: import.meta.url });
   });
 }

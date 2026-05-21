@@ -21,6 +21,23 @@ function safeIdentifier(identifier: string, kind: "table" | "column"): string {
   return identifier;
 }
 
+const SAFE_COLUMN_DEFINITION_RE =
+  /^(?:INTEGER|REAL|TEXT|BLOB|NUMERIC)(?:\s+(?:NOT\s+NULL|UNIQUE|PRIMARY\s+KEY))*?(?:\s+DEFAULT\s+(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*'))?(?:\s+REFERENCES\s+[A-Za-z_][A-Za-z0-9_]*\s*\([A-Za-z_][A-Za-z0-9_]*\))?$/i;
+
+function assertSafeColumnDefinition(definition: string): void {
+  const trimmed = definition.trim();
+  if (!trimmed) throw new Error("Column definition must not be empty");
+  if (/[;\0]/.test(trimmed)) {
+    throw new Error(`Unsafe column definition: ${definition}`);
+  }
+  if (/--|\/\*/.test(trimmed)) {
+    throw new Error(`Unsafe column definition comments are not allowed: ${definition}`);
+  }
+  if (!SAFE_COLUMN_DEFINITION_RE.test(trimmed)) {
+    throw new Error(`Unsafe or unsupported column definition: ${definition}`);
+  }
+}
+
 export function sqliteVersionAtLeast(version: string, minimum: string): boolean {
   const parse = (v: string) => v.split(".").map((part) => Number.parseInt(part, 10) || 0);
   const a = parse(version);
@@ -59,6 +76,7 @@ export function addColumnIfMissing(
   if (columnExists(db, tableName, columnName)) return;
   const safeTableName = safeIdentifier(tableName, "table");
   const safeColumnName = safeIdentifier(columnName, "column");
+  assertSafeColumnDefinition(columnDefinition);
   db.exec(`ALTER TABLE ${safeTableName} ADD COLUMN ${safeColumnName} ${columnDefinition}`);
 }
 

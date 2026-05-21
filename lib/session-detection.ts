@@ -72,7 +72,9 @@ function sortByStartTime(tasks: RawTask[]): void {
   tasks.sort((a, b) => {
     if (!a.startTime) return 1;
     if (!b.startTime) return -1;
-    return a.startTime < b.startTime ? -1 : a.startTime > b.startTime ? 1 : 0;
+    if (a.startTime < b.startTime) return -1;
+    if (a.startTime > b.startTime) return 1;
+    return 0;
   });
 }
 

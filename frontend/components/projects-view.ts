@@ -439,6 +439,30 @@ export function ProjectsView({
 
   const filtered = useMemo(() => filterProjects(projects, q), [projects, q]);
 
+  let body: unknown;
+  if (loading) {
+    body = html`<div class="empty">Loading projects…</div>`;
+  } else if (filtered.length === 0) {
+    const emptyText = q
+      ? "No projects match your search."
+      : "No projects yet. Create one to group related jobs together.";
+    body = html`<div class="empty">${emptyText}</div>`;
+  } else {
+    body = html`
+      <div class="proj-grid">
+        ${filtered.map(
+          (p) =>
+            html`<${ProjectCard}
+              key=${p.id}
+              project=${p}
+              totalPrice=${projectPrices[p.id] ?? null}
+              onClick=${() => navigate(`/projects/${p.id}`)}
+            />`,
+        )}
+      </div>
+    `;
+  }
+
   return html`
     <div class="proj-list-header">
       <input
@@ -454,27 +478,7 @@ export function ProjectsView({
       </button>
       <button class="btn-primary" onClick=${() => setShowNew(true)}>+ New Project</button>
     </div>
-    ${loading
-      ? html`<div class="empty">Loading projects…</div>`
-      : filtered.length === 0
-        ? html`<div class="empty">
-            ${q
-              ? "No projects match your search."
-              : "No projects yet. Create one to group related jobs together."}
-          </div>`
-        : html`
-            <div class="proj-grid">
-              ${filtered.map(
-                (p) =>
-                  html`<${ProjectCard}
-                    key=${p.id}
-                    project=${p}
-                    totalPrice=${projectPrices[p.id] ?? null}
-                    onClick=${() => navigate(`/projects/${p.id}`)}
-                  />`,
-              )}
-            </div>
-          `}
+    ${body}
     ${showNew &&
     html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
   `;

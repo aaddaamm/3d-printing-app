@@ -3,6 +3,7 @@ import { db, stmts } from "./lib/db.js";
 import type { JobFilament } from "./lib/types.js";
 import { deriveJobStatus, detectSessions, type RawTask } from "./lib/session-detection.js";
 import { invalidateAllPriceCaches } from "./lib/price-cache.js";
+import { logInfo } from "./lib/logger.js";
 
 // ── normalize.ts ──────────────────────────────────────────────────────────────
 //
@@ -243,29 +244,29 @@ function upsertJobs(sessionAccumulators: Map<string, SessionAccumulator>): numbe
 
 export function runNormalize(): void {
   const allTasks = selectAllTasks.all();
-  console.log(`  Processing ${allTasks.length} tasks...`);
+  logInfo(`  Processing ${allTasks.length} tasks...`);
 
   const taskToSession = detectSessions(allTasks);
   const sessionOrder = computeSessionOrder(allTasks, taskToSession);
   const sessionAccumulators = backfillTasksAndBuildSessions(allTasks, taskToSession, sessionOrder);
 
-  console.log(`  Backfilled ${allTasks.length} tasks into ${sessionAccumulators.size} sessions.`);
+  logInfo(`  Backfilled ${allTasks.length} tasks into ${sessionAccumulators.size} sessions.`);
 
   const jobsDone = upsertJobs(sessionAccumulators);
-  console.log(`  Upserted ${jobsDone} jobs.`);
+  logInfo(`  Upserted ${jobsDone} jobs.`);
 
   invalidateAllPriceCaches();
-  console.log("  Invalidated job/project price caches.");
-  console.log("");
-  console.log("Done.");
+  logInfo("  Invalidated job/project price caches.");
+  logInfo("");
+  logInfo("Done.");
 }
 
 // ── Standalone entry point ────────────────────────────────────────────────────
 
 if (process.argv[1]?.endsWith("normalize.ts") || process.argv[1]?.endsWith("normalize.js")) {
-  console.log("=== bambu-normalize ===");
-  console.log(`  DB: ${DB_PATH}`);
-  console.log("");
+  logInfo("=== bambu-normalize ===");
+  logInfo(`  DB: ${DB_PATH}`);
+  logInfo("");
   runNormalize();
   db.close();
 }

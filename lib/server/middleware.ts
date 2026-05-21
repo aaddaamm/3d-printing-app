@@ -2,6 +2,7 @@ import { timingSafeEqual } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
 import { getCookie } from "hono/cookie";
 import { cyan, dim, green, red, yellow } from "../colors.js";
+import { logInfo } from "../logger.js";
 
 const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css"]);
 const PUBLIC_FONT_RE = /^\/ui\/fonts\/[\w,.-]+\.(?:woff2|ttf)$/;
@@ -65,7 +66,7 @@ export function createRequestLogger(enabled: boolean): MiddlewareHandler {
     const start = Date.now();
     await next();
     const ms = Date.now() - start;
-    console.log(formatRequestLogLine(c.req.method, c.req.path, c.res.status, ms));
+    logInfo(formatRequestLogLine(c.req.method, c.req.path, c.res.status, ms));
   };
 }
 

@@ -1,5 +1,6 @@
 import type { BambuApiResponse } from "./types.js";
 import { FETCH_TIMEOUT_MS } from "./constants.js";
+import { logWarn } from "./logger.js";
 
 interface FetchRetryOptions {
   retries?: number;
@@ -56,7 +57,7 @@ export async function fetchWithRetry(
 
       const backoff = retryBackoffMs(attempt);
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(
+      logWarn(
         `\n  Network error (${msg}) — retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${retries})`,
       );
       await sleep(backoff);
@@ -71,7 +72,7 @@ export async function fetchWithRetry(
     }
 
     const backoff = retryBackoffMs(attempt, res.headers.get("retry-after"));
-    console.warn(
+    logWarn(
       `\n  HTTP ${res.status} — retrying in ${Math.round(backoff / 1000)}s (attempt ${attempt + 1}/${retries})`,
     );
     await sleep(backoff);

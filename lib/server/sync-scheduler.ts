@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dim, red } from "../colors.js";
+import { logError, logInfo } from "../logger.js";
 
 type SyncCommand = { cmd: string; args: string[] };
 
@@ -38,14 +39,17 @@ function spawnSync(appEntryUrl: string): Promise<void> {
   });
 }
 
-export function startSyncScheduler({ syncIntervalHours, appEntryUrl }: StartSyncSchedulerArgs): void {
+export function startSyncScheduler({
+  syncIntervalHours,
+  appEntryUrl,
+}: StartSyncSchedulerArgs): void {
   if (syncIntervalHours <= 0) return;
 
   let syncInProgress = false;
 
   const runScheduledSync = async (): Promise<void> => {
     if (syncInProgress) {
-      console.log(dim("  Sync skipped — previous run still in progress"));
+      logInfo(dim("  Sync skipped — previous run still in progress"));
       return;
     }
 
@@ -54,14 +58,14 @@ export function startSyncScheduler({ syncIntervalHours, appEntryUrl }: StartSync
       await spawnSync(appEntryUrl);
     } catch (e: unknown) {
       const error = e instanceof Error ? e : new Error(String(e));
-      console.error(`${red("Sync error:")} ${error.message}`);
+      logError(`${red("Sync error:")} ${error.message}`);
       throw error;
     } finally {
       syncInProgress = false;
     }
   };
 
-  console.log(`  ${dim("Sync:")} every ${syncIntervalHours}h`);
+  logInfo(`  ${dim("Sync:")} every ${syncIntervalHours}h`);
   const intervalMs = syncIntervalHours * 3_600_000;
 
   setTimeout(() => {

@@ -46,6 +46,12 @@ function replaceByKey<T>(items: T[], keyOf: (item: T) => string, next: T): T[] {
   return items.map((item) => (keyOf(item) === key ? next : item));
 }
 
+function saveButtonLabel(saving: boolean, saved: boolean): string {
+  if (saving) return "Saving…";
+  if (saved) return "✓ Saved";
+  return "Save";
+}
+
 type RateFieldProps = {
   label: string;
   value: number;
@@ -122,7 +128,7 @@ function LaborForm({
           >→ Min charge: ${fmtCurrency((Math.max(v.minimum_minutes, 0) / 60) * v.hourly_rate)}</span
         >
         <button class="btn-primary" onClick=${() => onSave(v)} disabled=${saving}>
-          ${saving ? "Saving…" : saved ? "✓ Saved" : "Save"}
+          ${saveButtonLabel(saving, saved)}
         </button>
       </div>
     </div>
@@ -175,7 +181,7 @@ function MachineForm({
       <div class="admin-card-footer">
         <span class="admin-derived">→ ${fmtCurrency(rate)}/hr</span>
         <button class="btn-primary" onClick=${() => onSave(v)} disabled=${saving}>
-          ${saving ? "Saving…" : saved ? "✓ Saved" : "Save"}
+          ${saveButtonLabel(saving, saved)}
         </button>
       </div>
     </div>
@@ -217,7 +223,7 @@ function MaterialForm({
       <div class="admin-card-footer">
         <span class="admin-derived">→ ${(rate * 1000).toFixed(2)}¢/g effective</span>
         <button class="btn-primary" onClick=${() => onSave(v)} disabled=${saving}>
-          ${saving ? "Saving…" : saved ? "✓ Saved" : "Save"}
+          ${saveButtonLabel(saving, saved)}
         </button>
       </div>
     </div>

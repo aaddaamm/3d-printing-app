@@ -2,8 +2,14 @@ import fs from "node:fs";
 import path from "node:path";
 import { db } from "./db.js";
 import { fetchWithRetry, HttpError } from "./fetch.js";
+import { logInfo } from "./logger.js";
 
 export const COVERS_DIR = path.resolve(process.env["BAMBU_COVERS_DIR"] ?? "./covers");
+
+function ensureCoversDir(): string {
+  fs.mkdirSync(COVERS_DIR, { recursive: true });
+  return COVERS_DIR;
+}
 
 function sanitizeTaskId(taskId: string): string {
   if (!/^[A-Za-z0-9_-]+$/.test(taskId)) {
@@ -14,16 +20,21 @@ function sanitizeTaskId(taskId: string): string {
 
 export function localCoverPath(taskId: string): string {
   const safeTaskId = sanitizeTaskId(taskId);
-  const candidate = path.join(COVERS_DIR, safeTaskId + ".png");
-  const rel = path.relative(COVERS_DIR, candidate);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
+  const root = ensureCoversDir();
+  const candidate = path.resolve(root, safeTaskId + ".png");
+  if (!candidate.startsWith(root + path.sep)) {
     throw new Error(`Refusing path outside covers dir: ${candidate}`);
   }
   return candidate;
 }
 
 export function localCoverExists(taskId: string): boolean {
-  return fs.existsSync(localCoverPath(taskId));
+  const coverPath = localCoverPath(taskId);
+  const root = ensureCoversDir();
+  if (!coverPath.startsWith(root + path.sep)) {
+    throw new Error(`Refusing path outside covers dir: ${coverPath}`);
+  }
+  return fs.existsSync(coverPath);
 }
 
 /**
@@ -37,7 +48,7 @@ export async function downloadCovers(): Promise<{
   expired: number;
   failed: number;
 }> {
-  fs.mkdirSync(COVERS_DIR, { recursive: true });
+  ensureCoversDir();
 
   const tasks = db
     .prepare<
@@ -64,14 +75,19 @@ export async function downloadCovers(): Promise<{
   printProgress();
 
   for (const task of tasks) {
-    const dest = localCoverPath(task.id);
+    const taskId = sanitizeTaskId(task.id);
+    const dest = localCoverPath(taskId);
     if (fs.existsSync(dest)) {
+      const stat = fs.lstatSync(dest);
+      if (!stat.isFile() || stat.isSymbolicLink()) {
+        throw new Error(`Refusing non-regular cover file path: ${dest}`);
+      }
       skipped++;
     } else {
       try {
         const resp = await fetchWithRetry(task.cover, {}, { retries: 2, timeoutMs: 5000 });
-        const buf = await resp.arrayBuffer();
-        fs.writeFileSync(dest, Buffer.from(buf));
+        const buf = Buffer.from(await resp.arrayBuffer());
+        fs.writeFileSync(dest, buf);
         downloaded++;
       } catch (e) {
         if (e instanceof HttpError && e.status === 403) expired++;
@@ -83,9 +99,7 @@ export async function downloadCovers(): Promise<{
 
   process.stdout.write("\n");
   if (expired > 0) {
-    console.log(
-      `  Note: ${expired} URLs expired (tasks older than API fetch window — unavailable).`,
-    );
+    logInfo(`  Note: ${expired} URLs expired (tasks older than API fetch window — unavailable).`);
   }
   return { downloaded, skipped, expired, failed };
 }
