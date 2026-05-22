@@ -21,8 +21,6 @@ const JETBRAINS_FONT_PATH = fileURLToPath(
   new URL("../frontend/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
 );
 
-// In production, static text assets are cached in memory on first read.
-// In dev, files are read fresh each request so edits are live without restart.
 const isProd = process.env["NODE_ENV"] === "production";
 const fileCache = new Map<string, string>();
 
@@ -50,6 +48,19 @@ function binaryResponse(
 
 function notFound(c: Context): Response {
   return c.json({ error: "Not found" }, 404);
+}
+
+function isSafeAssetFile(file: string): boolean {
+  return /^[\w.-]+$/.test(file);
+}
+
+function isSafeFontFile(file: string): boolean {
+  return /^[\w,.-]+\.(woff2|ttf)$/.test(file);
+}
+
+function serveOptionalTextFile(c: Context, filePath: string, contentType: string): Response {
+  if (!existsSync(filePath)) return notFound(c);
+  return textResponse(readTextFile(filePath), contentType);
 }
 
 const FONT_CONTENTS = new Map<string, Buffer>([
@@ -93,15 +104,15 @@ const LOGIN_HTML = `<!DOCTYPE html>
 </body>
 </html>`;
 
-export function createUiApp(apiKey: string): Hono {
-  const ui = new Hono();
+function serveShell(c: Context): Response {
+  const htmlPath = existsSync(DIST_INDEX_HTML_PATH) ? DIST_INDEX_HTML_PATH : SOURCE_INDEX_HTML_PATH;
+  return c.html(readTextFile(htmlPath));
+}
 
+function registerAuthRoutes(ui: Hono, apiKey: string): void {
   ui.get("/login", (c) => {
     const error = c.req.query("error");
-    const page = LOGIN_HTML.replace(
-      "__ERROR__",
-      error ? '<p class="error">Incorrect key.</p>' : "",
-    );
+    const page = LOGIN_HTML.replace("__ERROR__", error ? '<p class="error">Incorrect key.</p>' : "");
     return c.html(page);
   });
 
@@ -122,18 +133,12 @@ export function createUiApp(apiKey: string): Hono {
     deleteCookie(c, "session", { path: "/" });
     return c.redirect("/ui/login");
   });
+}
 
-  const serveShell = (c: Context) => {
-    const htmlPath = existsSync(DIST_INDEX_HTML_PATH)
-      ? DIST_INDEX_HTML_PATH
-      : SOURCE_INDEX_HTML_PATH;
-    const content = readTextFile(htmlPath);
-    return c.html(content);
-  };
+function registerStaticRoutes(ui: Hono): void {
   ui.get("/", (c) => serveShell(c));
   ui.get("", (c) => serveShell(c));
 
-  // Static assets — served without auth (no sensitive data).
   ui.get("/app.js", (_c) => {
     if (!existsSync(DIST_APP_JS_PATH)) {
       return new Response("UI bundle missing. Run npm run build:ui.", { status: 500 });
@@ -148,32 +153,33 @@ export function createUiApp(apiKey: string): Hono {
 
   ui.get("/assets/:file", (c) => {
     const file = c.req.param("file");
-    if (!/^[\w.-]+$/.test(file)) return notFound(c);
+    if (!isSafeAssetFile(file)) return notFound(c);
+
     const filePath = path.join(DIST_ASSETS_PATH, file);
+    if (file.endsWith(".css")) return serveOptionalTextFile(c, filePath, "text/css");
+    if (file.endsWith(".js")) {
+      return serveOptionalTextFile(c, filePath, "application/javascript");
+    }
     if (!existsSync(filePath)) return notFound(c);
-    if (file.endsWith(".css")) return textResponse(readTextFile(filePath), "text/css");
-    if (file.endsWith(".js")) return textResponse(readTextFile(filePath), "application/javascript");
     return binaryResponse(readFileSync(filePath), "application/octet-stream");
   });
 
   ui.get("/chunks/:file", (c) => {
     const file = c.req.param("file");
-    if (!/^[\w.-]+$/.test(file)) return notFound(c);
+    if (!isSafeAssetFile(file)) return notFound(c);
     const filePath = path.join(DIST_CHUNKS_PATH, file);
-    if (!existsSync(filePath)) return notFound(c);
-    return textResponse(readTextFile(filePath), "application/javascript");
+    return serveOptionalTextFile(c, filePath, "application/javascript");
   });
 
   ui.get("/fonts/:file", (c) => {
     const file = c.req.param("file");
-    if (!/^[\w,.-]+\.(woff2|ttf)$/.test(file)) return notFound(c);
+    if (!isSafeFontFile(file)) return notFound(c);
     const content = FONT_CONTENTS.get(file);
     if (!content) return notFound(c);
     const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
     return binaryResponse(new Uint8Array(content), contentType);
   });
 
-  // Locally cached cover images — no auth (non-sensitive thumbnails).
   ui.get("/covers/:taskId", (c) => {
     const taskId = c.req.param("taskId");
     if (!/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
@@ -184,14 +190,19 @@ export function createUiApp(apiKey: string): Hono {
       "public, max-age=31536000, immutable",
     );
   });
+}
 
-  // Job data — protected by app-level auth middleware.
-  ui.get("/data", (c) => {
-    const jobs = listUiJobs();
-    return c.json({ jobs });
-  });
+function registerDataRoutes(ui: Hono): void {
+  ui.get("/data", (c) => c.json({ jobs: listUiJobs() }));
+}
 
-  // SPA catch-all — must be last so static assets and API routes match first
+export function createUiApp(apiKey: string): Hono {
+  const ui = new Hono();
+
+  registerAuthRoutes(ui, apiKey);
+  registerStaticRoutes(ui);
+  registerDataRoutes(ui);
+
   ui.get("/*", (c) => serveShell(c));
 
   return ui;
