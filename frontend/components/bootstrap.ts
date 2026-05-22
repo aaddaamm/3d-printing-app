@@ -5,6 +5,8 @@ import { BOOT_FAILSAFE_MS, TOTAL_BOOT_REQUESTS } from "../lib/constants.js";
 type JobRow = { id: number; final_price?: number | null; [key: string]: unknown };
 type PricesResponse = { prices?: Record<number, number> };
 type UiDataResponse = { jobs: JobRow[] };
+type SummaryResponse = Record<string, unknown>;
+type DataRangeResponse = Record<string, unknown>;
 
 type BootstrapArgs = {
   setJobs: (updater: JobRow[] | ((jobs: JobRow[]) => JobRow[])) => void;
@@ -87,9 +89,14 @@ export function useDashboardBootstrap({
   useEffect(() => {
     const advanceProgress = () =>
       setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
-    const trackedFetchJson = (url: string, fallback: string) => {
+    const trackedFetchJson = <T>(url: string, fallback: string, label: string) => {
       setBootStatus(`Loading ${url}…`);
-      return fetchJson(url, fallback).finally(advanceProgress);
+      return fetchJson<T>(url, fallback)
+        .catch((err: unknown) => {
+          const detail = err instanceof Error ? err.message : fallback;
+          throw new Error(`Initial dashboard load failed (${label}): ${detail}`);
+        })
+        .finally(advanceProgress);
     };
 
     const failsafe = setTimeout(() => {
@@ -99,9 +106,13 @@ export function useDashboardBootstrap({
     }, BOOT_FAILSAFE_MS);
 
     Promise.all([
-      trackedFetchJson("/ui/data", "Failed to load jobs.") as Promise<UiDataResponse>,
-      trackedFetchJson("/summary", "Failed to load summary."),
-      trackedFetchJson("/health/data-range", "Failed to load print history range."),
+      trackedFetchJson<UiDataResponse>("/ui/data", "Failed to load jobs.", "jobs"),
+      trackedFetchJson<SummaryResponse>("/summary", "Failed to load summary.", "summary"),
+      trackedFetchJson<DataRangeResponse>(
+        "/health/data-range",
+        "Failed to load print history range.",
+        "history range",
+      ),
     ])
       .then(([data, sum, range]) => {
         setJobs(data.jobs);
