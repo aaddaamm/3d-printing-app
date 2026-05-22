@@ -48,81 +48,108 @@ type Summary = {
   totals?: Record<string, number> | null;
   by_device?: DeviceSummary[];
 } | null;
+
 type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
+
+const NAV_ITEMS = [
+  { label: "Jobs", path: "/", active: (loc: string) => !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers") },
+  { label: "Projects", path: "/projects", active: (loc: string) => loc.startsWith("/projects") },
+  { label: "Printers", path: "/printers", active: (loc: string) => loc.startsWith("/printers") },
+  { label: "Rates", path: "/admin", active: (loc: string) => loc.startsWith("/admin") },
+] as const;
+
+const STATUS_OPTIONS = [
+  ["", "All Statuses"],
+  ["finish", "Finished"],
+  ["cancel", "Cancelled"],
+  ["running", "Running"],
+  ["failed", "Failed"],
+  ["pause", "Paused"],
+] as const;
+
+const TABLE_COLS: Array<{ col: string | null; label: string; cls: string }> = [
+  { col: "designTitle", label: "Title", cls: "sortable td-title" },
+  { col: "deviceModel", label: "Printer", cls: "sortable" },
+  { col: "startTime", label: "Date", cls: "sortable" },
+  { col: null, label: "Status", cls: "" },
+  { col: "total_weight_g", label: "Filament", cls: "sortable td-num" },
+  { col: "total_time_s", label: "Time", cls: "sortable td-num" },
+  { col: "final_price", label: "Price", cls: "sortable td-num" },
+  { col: null, label: "Plates", cls: "td-num" },
+  { col: null, label: "Customer", cls: "" },
+];
 
 function metricBreakdownTitle(summary: Summary, metric: "jobs" | "plates" | "hours") {
   const rows = summary?.by_device ?? [];
   if (!rows.length) return "No printer breakdown available";
-  const lines = rows.map((row) => {
-    const label = row.deviceModel || "Unknown printer";
-    if (metric === "jobs") return `${label}: ${(row.total_jobs ?? 0).toLocaleString()} jobs`;
-    if (metric === "plates") return `${label}: ${(row.total_plates ?? 0).toLocaleString()} plates`;
-    return `${label}: ${((row.total_time_s ?? 0) / 3600).toFixed(1).toLocaleString()} h`;
-  });
-  return lines.join("\n");
+
+  return rows
+    .map((row) => {
+      const label = row.deviceModel || "Unknown printer";
+      if (metric === "jobs") return `${label}: ${(row.total_jobs ?? 0).toLocaleString()} jobs`;
+      if (metric === "plates") return `${label}: ${(row.total_plates ?? 0).toLocaleString()} plates`;
+      return `${label}: ${((row.total_time_s ?? 0) / 3600).toFixed(1).toLocaleString()} h`;
+    })
+    .join("\n");
+}
+
+function HeaderNav({ loc, navigate }: { loc: string; navigate: (path: string) => void }) {
+  return html`<nav class="top-nav">
+    ${NAV_ITEMS.map((item) => {
+      const isActive = item.active(loc);
+      return html`
+        <button
+          key=${item.label}
+          class=${"nav-btn" + (isActive ? " active" : "")}
+          onClick=${() => navigate(item.path)}
+        >
+          ${item.label}
+        </button>
+      `;
+    })}
+  </nav>`;
+}
+
+function HeaderStats({ summary }: { summary: Summary }) {
+  const t = summary?.totals;
+  return html`
+    <div class="stats">
+      <div class="stat" title=${metricBreakdownTitle(summary, "jobs")}>
+        <div class="stat-val">${t ? t.total_jobs?.toLocaleString() : "—"}</div>
+        <div class="stat-lbl">Total Jobs</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val">${t ? ((t.total_weight_g ?? 0) / 1000).toFixed(2) : "—"}</div>
+        <div class="stat-lbl">Filament kg</div>
+      </div>
+      <div class="stat" title=${metricBreakdownTitle(summary, "hours")}>
+        <div class="stat-val">${t ? ((t.total_time_s ?? 0) / 3600).toFixed(1) : "—"}</div>
+        <div class="stat-lbl">Print Hours</div>
+      </div>
+      <div class="stat" title=${metricBreakdownTitle(summary, "plates")}>
+        <div class="stat-val">${t ? t.total_plates?.toLocaleString() : "—"}</div>
+        <div class="stat-lbl">Plates</div>
+      </div>
+    </div>
+  `;
 }
 
 export function Header({ summary, dataRange }: { summary: Summary; dataRange: DataRange }) {
   const [loc, navigate] = useLocation();
-  const t = summary?.totals;
+
   return html`
     <header>
       <div class="header-left">
         <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
         ${dataRange?.min_start &&
         dataRange?.max_start &&
-        html`
-          <div class="header-range">
-            History: ${fmtDateShort(dataRange.min_start)} → ${fmtDateShort(dataRange.max_start)}
-            (${(dataRange.task_count || 0).toLocaleString()} tasks)
-          </div>
-        `}
-        <nav class="top-nav">
-          <button
-            class=${"nav-btn" +
-            (!loc.startsWith("/projects") && !loc.startsWith("/admin") ? " active" : "")}
-            onClick=${() => navigate("/")}
-          >
-            Jobs
-          </button>
-          <button
-            class=${"nav-btn" + (loc.startsWith("/projects") ? " active" : "")}
-            onClick=${() => navigate("/projects")}
-          >
-            Projects
-          </button>
-          <button
-            class=${"nav-btn" + (loc.startsWith("/printers") ? " active" : "")}
-            onClick=${() => navigate("/printers")}
-          >
-            Printers
-          </button>
-          <button
-            class=${"nav-btn" + (loc.startsWith("/admin") ? " active" : "")}
-            onClick=${() => navigate("/admin")}
-          >
-            Rates
-          </button>
-        </nav>
+        html`<div class="header-range">
+          History: ${fmtDateShort(dataRange.min_start)} → ${fmtDateShort(dataRange.max_start)}
+          (${(dataRange.task_count || 0).toLocaleString()} tasks)
+        </div>`}
+        <${HeaderNav} loc=${loc} navigate=${navigate} />
       </div>
-      <div class="stats">
-        <div class="stat" title=${metricBreakdownTitle(summary, "jobs")}>
-          <div class="stat-val">${t ? t.total_jobs?.toLocaleString() : "—"}</div>
-          <div class="stat-lbl">Total Jobs</div>
-        </div>
-        <div class="stat">
-          <div class="stat-val">${t ? ((t.total_weight_g ?? 0) / 1000).toFixed(2) : "—"}</div>
-          <div class="stat-lbl">Filament kg</div>
-        </div>
-        <div class="stat" title=${metricBreakdownTitle(summary, "hours")}>
-          <div class="stat-val">${t ? ((t.total_time_s ?? 0) / 3600).toFixed(1) : "—"}</div>
-          <div class="stat-lbl">Print Hours</div>
-        </div>
-        <div class="stat" title=${metricBreakdownTitle(summary, "plates")}>
-          <div class="stat-val">${t ? t.total_plates?.toLocaleString() : "—"}</div>
-          <div class="stat-lbl">Plates</div>
-        </div>
-      </div>
+      <${HeaderStats} summary=${summary} />
     </header>
   `;
 }
@@ -172,31 +199,20 @@ export function Toolbar({
         value=${statusFilter}
         onChange=${(e: Event) => setStatusFilter((e.target as HTMLSelectElement).value)}
       >
-        <option value="">All Statuses</option>
-        <option value="finish">Finished</option>
-        <option value="cancel">Cancelled</option>
-        <option value="running">Running</option>
-        <option value="failed">Failed</option>
-        <option value="pause">Paused</option>
+        ${STATUS_OPTIONS.map(([value, label]) => html`<option key=${value} value=${value}>${label}</option> `)}
       </select>
       <select
         value=${deviceFilter}
         onChange=${(e: Event) => setDeviceFilter((e.target as HTMLSelectElement).value)}
       >
         <option value="">All Printers</option>
-        ${devices.map((d) => html`<option key=${d} value=${d}>${d}</option>`)}
+        ${devices.map((d) => html`<option key=${d} value=${d}>${d}</option> `)}
       </select>
       <div class="view-toggle">
-        <button
-          class=${"view-btn" + (view === "table" ? " active" : "")}
-          onClick=${() => setView("table")}
-        >
+        <button class=${"view-btn" + (view === "table" ? " active" : "")} onClick=${() => setView("table")}>
           ☰ Table
         </button>
-        <button
-          class=${"view-btn" + (view === "grid" ? " active" : "")}
-          onClick=${() => setView("grid")}
-        >
+        <button class=${"view-btn" + (view === "grid" ? " active" : "")} onClick=${() => setView("grid")}>
           ⊞ Grid
         </button>
       </div>
@@ -254,26 +270,12 @@ export function TotalsBar({ filtered, isFiltered }: { filtered: Job[]; isFiltere
   `;
 }
 
-const TABLE_COLS: Array<{ col: string | null; label: string; cls: string }> = [
-  { col: "designTitle", label: "Title", cls: "sortable td-title" },
-  { col: "deviceModel", label: "Printer", cls: "sortable" },
-  { col: "startTime", label: "Date", cls: "sortable" },
-  { col: null, label: "Status", cls: "" },
-  { col: "total_weight_g", label: "Filament", cls: "sortable td-num" },
-  { col: "total_time_s", label: "Time", cls: "sortable td-num" },
-  { col: "final_price", label: "Price", cls: "sortable td-num" },
-  { col: null, label: "Plates", cls: "td-num" },
-  { col: null, label: "Customer", cls: "" },
-];
-
 function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
   return html`
     <tr onClick=${() => onJobClick(job)}>
       <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
       <td class="td-title">
-        <span class="row-title" title=${job.designTitle || "Untitled"}>
-          ${job.designTitle || "Untitled Job"}
-        </span>
+        <span class="row-title" title=${job.designTitle || "Untitled"}>${job.designTitle || "Untitled Job"}</span>
         ${(job.print_run ?? 1) > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
         <${FilamentSwatches} colors=${job.filament_colors} />
       </td>
@@ -282,9 +284,7 @@ function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void 
       <td><${Badge} status=${job.status} /></td>
       <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
       <td class="td-num">${fmtTime(job.total_time_s)}</td>
-      <td class="td-num">
-        ${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}
-      </td>
+      <td class="td-num">${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}</td>
       <td class="td-num">${job.plate_count ?? "—"}</td>
       <td>${job.customer && html`<span class="customer-pill">${job.customer}</span>`}</td>
     </tr>
@@ -314,11 +314,7 @@ export function TableView({
               const active = col && col === sortCol;
               const thCls = [cls, active ? `sort-${sortDir}` : ""].filter(Boolean).join(" ");
               return html`
-                <th
-                  key=${label}
-                  class=${thCls || undefined}
-                  onClick=${col ? () => onSort(col) : undefined}
-                >
+                <th key=${label} class=${thCls || undefined} onClick=${col ? () => onSort(col) : undefined}>
                   ${label}
                 </th>
               `;
@@ -326,9 +322,7 @@ export function TableView({
           </tr>
         </thead>
         <tbody>
-          ${sorted.map(
-            (job) => html`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
-          )}
+          ${sorted.map((job) => html`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
         </tbody>
       </table>
     </div>
