@@ -16,6 +16,7 @@ const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
 type UsageTotals = { total_weight_g: number; total_time_s: number };
 type SqlCondition = [string, string];
+type LaborConfig = Parameters<typeof totalPricingMultiplier>[0];
 
 export interface ListJobsFilter {
   status?: string | undefined;
@@ -62,23 +63,25 @@ export interface JobPatch {
   extra_labor_minutes?: number | null | undefined;
 }
 
+function patchField<T>(next: T | null | undefined, existing: T | null | undefined): T | null {
+  if (next !== undefined) return next ?? null;
+  return existing ?? null;
+}
+
 export function patchJob(id: number, patch: JobPatch): Job | undefined {
   const existing = stmts.getJobById.get(id);
   if (!existing) return undefined;
+
   stmts.patchJob.run({
     id,
-    customer: "customer" in patch ? (patch.customer ?? null) : existing.customer,
-    notes: "notes" in patch ? (patch.notes ?? null) : existing.notes,
-    price_override:
-      "price_override" in patch ? (patch.price_override ?? null) : existing.price_override,
-    status_override:
-      "status_override" in patch ? (patch.status_override ?? null) : existing.status_override,
-    project_id: "project_id" in patch ? (patch.project_id ?? null) : existing.project_id,
-    extra_labor_minutes:
-      "extra_labor_minutes" in patch
-        ? (patch.extra_labor_minutes ?? null)
-        : existing.extra_labor_minutes,
+    customer: patchField(patch.customer, existing.customer),
+    notes: patchField(patch.notes, existing.notes),
+    price_override: patchField(patch.price_override, existing.price_override),
+    status_override: patchField(patch.status_override, existing.status_override),
+    project_id: patchField(patch.project_id, existing.project_id),
+    extra_labor_minutes: patchField(patch.extra_labor_minutes, existing.extra_labor_minutes),
   });
+
   invalidateJobPriceCache(id);
   invalidateProjectPriceCache();
   return stmts.getJobById.get(id);
@@ -239,7 +242,7 @@ function getUsageForJob(job: Job, activeSessionUsage?: Map<string, SessionUsage>
 function resolveFinalPrice(
   breakdown: PriceBreakdown,
   materialCost: number,
-  laborConfig: Parameters<typeof totalPricingMultiplier>[0],
+  laborConfig: LaborConfig,
 ): number {
   const basePrice =
     materialCost + breakdown.machine_cost + breakdown.labor_cost + breakdown.extra_labor_cost;
