@@ -33,7 +33,6 @@ type Project = {
   total_weight_g?: number | null;
   total_time_s?: number | null;
   cover_url?: string | null;
-  [key: string]: unknown;
 };
 
 type Job = {
@@ -47,7 +46,6 @@ type Job = {
   total_weight_g?: number | null;
   total_time_s?: number | null;
   final_price?: number | null;
-  [key: string]: unknown;
 };
 
 type ProjectPrice = {
@@ -58,11 +56,25 @@ type ProjectPrice = {
   final_price: number;
 };
 
+function onOverlayClick(onClose: () => void) {
+  return (e: MouseEvent) => {
+    if (e.target === e.currentTarget) onClose();
+  };
+}
+
 function filterProjects(projects: Project[], q: string): Project[] {
   if (!q) return projects;
   const lc = q.toLowerCase();
   return projects.filter((p) =>
     [p.name, p.customer, p.notes].filter(Boolean).join(" ").toLowerCase().includes(lc),
+  );
+}
+
+function filterJobs(unassignedJobs: Job[], q: string): Job[] {
+  if (!q) return unassignedJobs;
+  const lc = q.toLowerCase();
+  return unassignedJobs.filter((j) =>
+    `${j.designTitle || ""} ${j.customer || ""}`.toLowerCase().includes(lc),
   );
 }
 
@@ -119,7 +131,7 @@ function NewProjectModal({
   );
 
   return html`
-    <div class="overlay" onClick=${(e: MouseEvent) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${onOverlayClick(onClose)}>
       <div class="modal">
         <div class="modal-header">
           <h2>New Project</h2>
@@ -194,8 +206,7 @@ function ProjectCard({
         <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? "s" : ""}</span>
         ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
         ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
-        ${totalPrice != null &&
-        html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
+        ${totalPrice != null && html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
     </div>
@@ -213,15 +224,10 @@ function AddJobsModal({
 }) {
   const [q, setQ] = useState("");
   useEscapeClose(onClose);
-  const filtered = useMemo(() => {
-    if (!q) return unassignedJobs;
-    const lc = q.toLowerCase();
-    return unassignedJobs.filter((j: Job) =>
-      ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase().includes(lc),
-    );
-  }, [unassignedJobs, q]);
+  const filtered = useMemo(() => filterJobs(unassignedJobs, q), [unassignedJobs, q]);
+
   return html`
-    <div class="overlay" onClick=${(e: MouseEvent) => e.target === e.currentTarget && onClose()}>
+    <div class="overlay" onClick=${onOverlayClick(onClose)}>
       <div class="modal">
         <div class="modal-header">
           <h2>Add Jobs to Project</h2>
@@ -261,6 +267,83 @@ function AddJobsModal({
   `;
 }
 
+function ProjectPriceSummary({ price }: { price: ProjectPrice | null }) {
+  if (!price) return null;
+
+  return html`
+    <span>Material: <strong>${fmtCurrency(price.material_cost)}</strong></span>
+    <span>Machine: <strong>${fmtCurrency(price.machine_cost)}</strong></span>
+    <span>Labor: <strong>${fmtCurrency(price.labor_cost)}</strong></span>
+    ${price.extra_labor_cost > 0 &&
+    html`<span>Extra labor: <strong>${fmtCurrency(price.extra_labor_cost)}</strong></span>`}
+    <span class="totals-total">Total: <strong>${fmtCurrency(price.final_price)}</strong></span>
+  `;
+}
+
+function ProjectJobsTable({
+  jobs,
+  onJobClick,
+  onRemoveJob,
+}: {
+  jobs: Job[];
+  onJobClick: (job: Job) => void;
+  onRemoveJob: (jobId: number) => void;
+}) {
+  if (jobs.length === 0) {
+    return html`<div class="empty">No jobs assigned yet. Use "+ Add Jobs" to assign them.</div>`;
+  }
+
+  return html`
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th class="td-thumb"></th>
+            <th>Title</th>
+            <th>Printer</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th class="td-num">Filament</th>
+            <th class="td-num">Time</th>
+            <th class="td-num">Price</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${jobs.map(
+            (job: Job) => html`
+              <tr key=${job.id} onClick=${() => onJobClick(job)}>
+                <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
+                <td class="td-title"><span class="row-title">${job.designTitle || "Untitled Job"}</span></td>
+                <td>${job.deviceModel || "—"}</td>
+                <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
+                <td><${Badge} status=${job.status} /></td>
+                <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
+                <td class="td-num">${fmtTime(job.total_time_s)}</td>
+                <td class="td-num">
+                  ${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}
+                </td>
+                <td>
+                  <button
+                    class="btn-remove-job"
+                    title="Remove from project"
+                    onClick=${(e: MouseEvent) => {
+                      e.stopPropagation();
+                      onRemoveJob(job.id);
+                    }}
+                  >
+                    ×
+                  </button>
+                </td>
+              </tr>
+            `,
+          )}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 function ProjectDetail({
   project,
   jobs,
@@ -286,20 +369,14 @@ function ProjectDetail({
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetchJsonOrToast<ProjectPrice>(
-      `/projects/${project.id}/price`,
-      "Failed to load project price.",
-    ).then((d) => {
-      if (d) setPrice(d);
-    });
+    fetchJsonOrToast<ProjectPrice>(`/projects/${project.id}/price`, "Failed to load project price.").then(
+      (d) => {
+        if (d) setPrice(d);
+      },
+    );
   }, [project.id, jobs.length]);
 
-  const handleAdd = useCallback(
-    (jobId: number) => {
-      onAddJob(jobId);
-    },
-    [onAddJob],
-  );
+  const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
 
   return html`
     <div class="proj-detail">
@@ -317,79 +394,52 @@ function ProjectDetail({
         <span>Jobs: <strong>${jobs.length}</strong></span>
         <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
         <span>Print time: <strong>${fmtTime(totT)}</strong></span>
-        ${price &&
-        html`
-          <span>Material: <strong>${fmtCurrency(price.material_cost)}</strong></span>
-          <span>Machine: <strong>${fmtCurrency(price.machine_cost)}</strong></span>
-          <span>Labor: <strong>${fmtCurrency(price.labor_cost)}</strong></span>
-          ${price.extra_labor_cost > 0 &&
-          html`<span>Extra labor: <strong>${fmtCurrency(price.extra_labor_cost)}</strong></span>`}
-          <span class="totals-total"
-            >Total: <strong>${fmtCurrency(price.final_price)}</strong></span
-          >
-        `}
+        <${ProjectPriceSummary} price=${price} />
       </div>
-      ${jobs.length === 0
-        ? html`<div class="empty">No jobs assigned yet. Use "+ Add Jobs" to assign them.</div>`
-        : html`
-            <div class="table-wrap">
-              <table>
-                <thead>
-                  <tr>
-                    <th class="td-thumb"></th>
-                    <th>Title</th>
-                    <th>Printer</th>
-                    <th>Date</th>
-                    <th>Status</th>
-                    <th class="td-num">Filament</th>
-                    <th class="td-num">Time</th>
-                    <th class="td-num">Price</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${jobs.map(
-                    (job: Job) => html`
-                      <tr key=${job.id} onClick=${() => onJobClick(job)}>
-                        <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
-                        <td class="td-title">
-                          <span class="row-title">${job.designTitle || "Untitled Job"}</span>
-                        </td>
-                        <td>${job.deviceModel || "—"}</td>
-                        <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
-                        <td><${Badge} status=${job.status} /></td>
-                        <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
-                        <td class="td-num">${fmtTime(job.total_time_s)}</td>
-                        <td class="td-num">
-                          ${job.final_price != null
-                            ? html`<strong>${fmtCurrency(job.final_price)}</strong>`
-                            : "—"}
-                        </td>
-                        <td>
-                          <button
-                            class="btn-remove-job"
-                            title="Remove from project"
-                            onClick=${(e: MouseEvent) => {
-                              e.stopPropagation();
-                              onRemoveJob(job.id);
-                            }}
-                          >
-                            ×
-                          </button>
-                        </td>
-                      </tr>
-                    `,
-                  )}
-                </tbody>
-              </table>
-            </div>
-          `}
+      <${ProjectJobsTable} jobs=${jobs} onJobClick=${onJobClick} onRemoveJob=${onRemoveJob} />
       ${showAddJobs &&
       html`<${AddJobsModal}
         unassignedJobs=${unassignedJobs}
         onClose=${() => setShowAddJobs(false)}
         onAdd=${handleAdd}
       />`}
+    </div>
+  `;
+}
+
+function ProjectsBody({
+  loading,
+  filtered,
+  q,
+  projectPrices,
+  navigate,
+}: {
+  loading: boolean;
+  filtered: Project[];
+  q: string;
+  projectPrices: Record<number, number>;
+  navigate: (path: string) => void;
+}) {
+  if (loading) return html`<div class="empty">Loading projects…</div>`;
+
+  if (filtered.length === 0) {
+    const emptyText = q
+      ? "No projects match your search."
+      : "No projects yet. Create one to group related jobs together.";
+    return html`<div class="empty">${emptyText}</div>`;
+  }
+
+  return html`
+    <div class="proj-grid">
+      ${filtered.map(
+        (p) =>
+          html`<${ProjectCard}
+            key=${p.id}
+            project=${p}
+            totalPrice=${projectPrices[p.id] ?? null}
+            onClick=${() => navigate(`/projects/${p.id}`)}
+          />`,
+      )}
     </div>
   `;
 }
@@ -439,30 +489,6 @@ export function ProjectsView({
 
   const filtered = useMemo(() => filterProjects(projects, q), [projects, q]);
 
-  let body: unknown;
-  if (loading) {
-    body = html`<div class="empty">Loading projects…</div>`;
-  } else if (filtered.length === 0) {
-    const emptyText = q
-      ? "No projects match your search."
-      : "No projects yet. Create one to group related jobs together.";
-    body = html`<div class="empty">${emptyText}</div>`;
-  } else {
-    body = html`
-      <div class="proj-grid">
-        ${filtered.map(
-          (p) =>
-            html`<${ProjectCard}
-              key=${p.id}
-              project=${p}
-              totalPrice=${projectPrices[p.id] ?? null}
-              onClick=${() => navigate(`/projects/${p.id}`)}
-            />`,
-        )}
-      </div>
-    `;
-  }
-
   return html`
     <div class="proj-list-header">
       <input
@@ -478,9 +504,14 @@ export function ProjectsView({
       </button>
       <button class="btn-primary" onClick=${() => setShowNew(true)}>+ New Project</button>
     </div>
-    ${body}
-    ${showNew &&
-    html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
+    <${ProjectsBody}
+      loading=${loading}
+      filtered=${filtered}
+      q=${q}
+      projectPrices=${projectPrices}
+      navigate=${navigate}
+    />
+    ${showNew && html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
   `;
 }
 

@@ -1,20 +1,22 @@
-type LogLevel = "error" | "warn" | "info" | "debug";
+type LogLevel = "error" | "warn" | "info";
 
 const LEVELS: Record<LogLevel, number> = {
   error: 0,
   warn: 1,
   info: 2,
-  debug: 3,
 };
 
 function resolveLogLevel(): LogLevel {
   const raw = (process.env["LOG_LEVEL"] ?? "info").toLowerCase();
-  if (raw === "error" || raw === "warn" || raw === "info" || raw === "debug") return raw;
+  if (raw === "error") return "error";
+  if (raw === "warn") return "warn";
   return "info";
 }
 
+const CURRENT_LEVEL = LEVELS[resolveLogLevel()];
+
 function shouldLog(level: LogLevel): boolean {
-  return LEVELS[level] <= LEVELS[resolveLogLevel()];
+  return LEVELS[level] <= CURRENT_LEVEL;
 }
 
 export function logError(...args: unknown[]): void {
@@ -32,7 +34,3 @@ export function logInfo(...args: unknown[]): void {
   console.log(...args);
 }
 
-export function logDebug(...args: unknown[]): void {
-  if (!shouldLog("debug")) return;
-  console.debug(...args);
-}
