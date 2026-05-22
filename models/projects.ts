@@ -39,9 +39,7 @@ export function listProjects(): ProjectWithStats[] {
   }));
 }
 
-export function getProjectById(id: number): Project | undefined {
-  return stmts.getProjectById.get(id);
-}
+export const getProjectById = (id: number): Project | undefined => stmts.getProjectById.get(id);
 
 export interface ProjectCreate {
   name: string;
@@ -68,15 +66,22 @@ export interface ProjectPatch {
   notes?: string | null;
 }
 
+function patchField<T>(next: T | null | undefined, existing: T | null | undefined): T | null {
+  if (next !== undefined) return next ?? null;
+  return existing ?? null;
+}
+
 export function patchProject(id: number, patch: ProjectPatch): Project | undefined {
   const existing = stmts.getProjectById.get(id);
   if (!existing) return undefined;
+
   stmts.patchProject.run({
     id,
     name: patch.name ?? existing.name,
-    customer: "customer" in patch ? (patch.customer ?? null) : existing.customer,
-    notes: "notes" in patch ? (patch.notes ?? null) : existing.notes,
+    customer: patchField(patch.customer, existing.customer),
+    notes: patchField(patch.notes, existing.notes),
   });
+
   invalidateProjectPriceCache();
   return stmts.getProjectById.get(id);
 }
