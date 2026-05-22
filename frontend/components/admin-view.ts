@@ -41,15 +41,23 @@ type RatesResponse = {
   material_rates: MaterialRate[];
 };
 
+type SaveState = "idle" | "saving" | "saved";
+
 function replaceByKey<T>(items: T[], keyOf: (item: T) => string, next: T): T[] {
   const key = keyOf(next);
   return items.map((item) => (keyOf(item) === key ? next : item));
 }
 
-function saveButtonLabel(saving: boolean, saved: boolean): string {
-  if (saving) return "Saving…";
-  if (saved) return "✓ Saved";
+function saveButtonLabel(state: SaveState): string {
+  if (state === "saving") return "Saving…";
+  if (state === "saved") return "✓ Saved";
   return "Save";
+}
+
+function getSaveState(activeSavingKey: string, activeSavedKey: string, key: string): SaveState {
+  if (activeSavingKey === key) return "saving";
+  if (activeSavedKey === key) return "saved";
+  return "idle";
 }
 
 type RateFieldProps = {
@@ -69,171 +77,173 @@ function RateField({ label, value, onChange, step = "0.01", min = "0" }: RateFie
         class="form-input"
         step=${step}
         min=${min}
-        value=${value}
-        onInput=${(e: Event) => onChange(Number((e.target as HTMLInputElement).value))}
+        value=${Number.isFinite(value) ? value : 0}
+        onInput=${(e: Event) => onChange(Number((e.target as HTMLInputElement).value || 0))}
       />
     </label>
   `;
 }
 
+function SaveButton({ state }: { state: SaveState }) {
+  return html`<button type="submit" class="btn-primary" disabled=${state === "saving"}>
+    ${saveButtonLabel(state)}
+  </button>`;
+}
+
+function Section({ title, description, children }: { title: string; description: string; children: unknown }) {
+  return html`
+    <section class="admin-section">
+      <h3 class="admin-section-title">${title}</h3>
+      <p class="admin-section-desc">${description}</p>
+      ${children}
+    </section>
+  `;
+}
+
 function LaborForm({
   labor,
-  saving,
-  saved,
+  saveState,
   onSave,
 }: {
   labor: LaborConfig;
-  saving: boolean;
-  saved: boolean;
-  onSave: (labor: LaborConfig) => void;
+  saveState: SaveState;
+  onSave: (next: LaborConfig) => void;
 }) {
   const [v, setV] = useState(labor);
   useEffect(() => setV(labor), [labor]);
+
   return html`
-    <div class="admin-card">
+    <form class="admin-card" onSubmit=${(e: Event) => (e.preventDefault(), onSave(v))}>
       <div class="admin-card-fields">
         <${RateField}
           label="Hourly rate ($)"
           value=${v.hourly_rate}
           step="0.5"
-          onChange=${(val: number) => setV((x) => ({ ...x, hourly_rate: val }))}
+          onChange=${(hourly_rate: number) => setV({ ...v, hourly_rate })}
         />
         <${RateField}
-          label="Minimum minutes"
+          label="Minimum labor minutes"
           value=${v.minimum_minutes}
           step="1"
-          onChange=${(val: number) => setV((x) => ({ ...x, minimum_minutes: val }))}
+          onChange=${(minimum_minutes: number) => setV({ ...v, minimum_minutes })}
         />
         <${RateField}
           label="Profit markup (%)"
-          value=${Math.round(v.profit_markup_pct * 100)}
+          value=${v.profit_markup_pct * 100}
           step="1"
-          onChange=${(val: number) => setV((x) => ({ ...x, profit_markup_pct: val / 100 }))}
+          onChange=${(profit_markup_pct: number) => setV({ ...v, profit_markup_pct: profit_markup_pct / 100 })}
         />
         <${RateField}
           label="Failure buffer (%)"
-          value=${Math.round(v.failure_buffer_pct * 100)}
+          value=${v.failure_buffer_pct * 100}
           step="1"
-          onChange=${(val: number) => setV((x) => ({ ...x, failure_buffer_pct: val / 100 }))}
+          onChange=${(failure_buffer_pct: number) => setV({ ...v, failure_buffer_pct: failure_buffer_pct / 100 })}
         />
         <${RateField}
           label="Overhead buffer (%)"
-          value=${Math.round(v.overhead_buffer_pct * 100)}
+          value=${v.overhead_buffer_pct * 100}
           step="1"
-          onChange=${(val: number) => setV((x) => ({ ...x, overhead_buffer_pct: val / 100 }))}
+          onChange=${(overhead_buffer_pct: number) => setV({ ...v, overhead_buffer_pct: overhead_buffer_pct / 100 })}
         />
       </div>
-      <div class="admin-card-footer">
-        <span class="admin-derived"
-          >→ Min charge: ${fmtCurrency((Math.max(v.minimum_minutes, 0) / 60) * v.hourly_rate)}</span
-        >
-        <button class="btn-primary" onClick=${() => onSave(v)} disabled=${saving}>
-          ${saveButtonLabel(saving, saved)}
-        </button>
-      </div>
-    </div>
+      <div class="admin-card-actions"><${SaveButton} state=${saveState} /></div>
+    </form>
   `;
 }
 
 function MachineForm({
   machine,
-  saving,
-  saved,
+  saveState,
   onSave,
 }: {
   machine: MachineRate;
-  saving: boolean;
-  saved: boolean;
-  onSave: (machine: MachineRate) => void;
+  saveState: SaveState;
+  onSave: (next: MachineRate) => void;
 }) {
   const [v, setV] = useState(machine);
   useEffect(() => setV(machine), [machine]);
   const rate = v.purchase_price / v.lifetime_hrs + v.electricity_rate + v.maintenance_buffer;
+
   return html`
-    <div class="admin-card">
+    <form class="admin-card" onSubmit=${(e: Event) => (e.preventDefault(), onSave(v))}>
       <div class="admin-card-name">${v.device_model}</div>
       <div class="admin-card-fields">
         <${RateField}
           label="Purchase price ($)"
           value=${v.purchase_price}
           step="1"
-          onChange=${(val: number) => setV((x) => ({ ...x, purchase_price: val }))}
+          onChange=${(purchase_price: number) => setV({ ...v, purchase_price })}
         />
         <${RateField}
-          label="Lifetime hours"
+          label="Lifetime (hours)"
           value=${v.lifetime_hrs}
           step="100"
-          onChange=${(val: number) => setV((x) => ({ ...x, lifetime_hrs: val }))}
+          min="1"
+          onChange=${(lifetime_hrs: number) => setV({ ...v, lifetime_hrs })}
         />
         <${RateField}
           label="Electricity ($/hr)"
           value=${v.electricity_rate}
           step="0.01"
-          onChange=${(val: number) => setV((x) => ({ ...x, electricity_rate: val }))}
+          onChange=${(electricity_rate: number) => setV({ ...v, electricity_rate })}
         />
         <${RateField}
           label="Maintenance ($/hr)"
           value=${v.maintenance_buffer}
           step="0.01"
-          onChange=${(val: number) => setV((x) => ({ ...x, maintenance_buffer: val }))}
+          onChange=${(maintenance_buffer: number) => setV({ ...v, maintenance_buffer })}
         />
       </div>
       <div class="admin-card-footer">
-        <span class="admin-derived">→ ${fmtCurrency(rate)}/hr</span>
-        <button class="btn-primary" onClick=${() => onSave(v)} disabled=${saving}>
-          ${saveButtonLabel(saving, saved)}
-        </button>
+        <div class="admin-rate-preview">Computed rate: <strong>${fmtCurrency(rate)}</strong>/hr</div>
+        <div class="admin-card-actions"><${SaveButton} state=${saveState} /></div>
       </div>
-    </div>
+    </form>
   `;
 }
 
 function MaterialForm({
   material,
-  saving,
-  saved,
+  saveState,
   onSave,
 }: {
   material: MaterialRate;
-  saving: boolean;
-  saved: boolean;
-  onSave: (material: MaterialRate) => void;
+  saveState: SaveState;
+  onSave: (next: MaterialRate) => void;
 }) {
   const [v, setV] = useState(material);
   useEffect(() => setV(material), [material]);
   const rate = v.cost_per_g * (1 + v.waste_buffer_pct);
+
   return html`
-    <div class="admin-card">
+    <form class="admin-card" onSubmit=${(e: Event) => (e.preventDefault(), onSave(v))}>
       <div class="admin-card-name">${v.filament_type}</div>
       <div class="admin-card-fields">
         <${RateField}
           label="Cost per gram ($/g)"
           value=${v.cost_per_g}
           step="0.001"
-          onChange=${(val: number) => setV((x) => ({ ...x, cost_per_g: val }))}
+          onChange=${(cost_per_g: number) => setV({ ...v, cost_per_g })}
         />
         <${RateField}
-          label="Waste buffer fraction"
-          value=${v.waste_buffer_pct}
-          step="0.01"
-          onChange=${(val: number) => setV((x) => ({ ...x, waste_buffer_pct: val }))}
+          label="Waste buffer (%)"
+          value=${v.waste_buffer_pct * 100}
+          step="1"
+          onChange=${(waste_buffer_pct: number) => setV({ ...v, waste_buffer_pct: waste_buffer_pct / 100 })}
         />
-        <p class="form-help">Stored as a fraction: 0.10 = 10% waste.</p>
       </div>
       <div class="admin-card-footer">
-        <span class="admin-derived">→ ${(rate * 1000).toFixed(2)}¢/g effective</span>
-        <button class="btn-primary" onClick=${() => onSave(v)} disabled=${saving}>
-          ${saveButtonLabel(saving, saved)}
-        </button>
+        <div class="admin-rate-preview">Computed rate: <strong>${fmtCurrency(rate)}</strong>/g</div>
+        <div class="admin-card-actions"><${SaveButton} state=${saveState} /></div>
       </div>
-    </div>
+    </form>
   `;
 }
 
 export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () => void }) {
   const [rates, setRates] = useState<RatesResponse | null>(null);
-  const [saving, setSaving] = useState("");
-  const [saved, setSaved] = useState("");
+  const [savingKey, setSavingKey] = useState("");
+  const [savedKey, setSavedKey] = useState("");
 
   useEffect(() => {
     fetchJsonOrToast<RatesResponse>("/rates", "Failed to load rates.").then((data) => {
@@ -242,19 +252,19 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
   }, []);
 
   const flash = (key: string) => {
-    setSaved(key);
-    setTimeout(() => setSaved(""), 2000);
+    setSavedKey(key);
+    setTimeout(() => setSavedKey(""), 2000);
   };
 
   const runSave = async (saveKey: string, action: () => Promise<boolean>) => {
-    setSaving(saveKey);
+    setSavingKey(saveKey);
     try {
       const ok = await action();
       if (!ok) return;
       flash(saveKey);
       onRatesChanged();
     } finally {
-      setSaving("");
+      setSavingKey("");
     }
   };
 
@@ -273,8 +283,7 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
   };
 
   const saveMachine = async (machine: MachineRate) => {
-    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } =
-      machine;
+    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = machine;
     await runSave(device_model, async () => {
       const data = await patchJsonOrToast<{ machine_rate?: MachineRate }>(
         `/rates/machines/${encodeURIComponent(device_model)}`,
@@ -317,11 +326,12 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
     });
   };
 
-  if (!rates)
+  if (!rates) {
     return html`<div class="loading">
       <div class="spinner"></div>
       Loading rates…
     </div>`;
+  }
 
   const { labor_config: lc, machine_rates, material_rates } = rates;
 
@@ -329,55 +339,48 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
     <div class="admin-page">
       <h2 class="admin-title">Rates &amp; Pricing</h2>
 
-      <section class="admin-section">
-        <h3 class="admin-section-title">Labor</h3>
-        <p class="admin-section-desc">
-          Applied once per job (or once per project for project pricing).
-        </p>
+      <${Section}
+        title="Labor"
+        description="Applied once per job (or once per project for project pricing)."
+      >
         <${LaborForm}
           labor=${lc}
-          saving=${saving === "labor"}
-          saved=${saved === "labor"}
+          saveState=${getSaveState(savingKey, savedKey, "labor")}
           onSave=${saveLaborConfig}
         />
-      </section>
+      </${Section}>
 
-      <section class="admin-section">
-        <h3 class="admin-section-title">Machine Rates</h3>
-        <p class="admin-section-desc">
-          Depreciation + electricity + maintenance per hour of print time. Rate = purchase ÷
-          lifetime + electricity + maintenance.
-        </p>
+      <${Section}
+        title="Machine Rates"
+        description="Depreciation + electricity + maintenance per hour of print time. Rate = purchase ÷ lifetime + electricity + maintenance."
+      >
         ${machine_rates.map(
           (m: MachineRate) => html`
             <${MachineForm}
               key=${m.device_model}
               machine=${m}
-              saving=${saving === m.device_model}
-              saved=${saved === m.device_model}
+              saveState=${getSaveState(savingKey, savedKey, m.device_model)}
               onSave=${saveMachine}
             />
           `,
         )}
-      </section>
+      </${Section}>
 
-      <section class="admin-section">
-        <h3 class="admin-section-title">Material Rates</h3>
-        <p class="admin-section-desc">
-          Cost per gram including waste. Rate = cost × (1 + waste fraction).
-        </p>
+      <${Section}
+        title="Material Rates"
+        description="Cost per gram including waste. Rate = cost × (1 + waste fraction)."
+      >
         ${material_rates.map(
           (m: MaterialRate) => html`
             <${MaterialForm}
               key=${m.filament_type}
               material=${m}
-              saving=${saving === m.filament_type}
-              saved=${saved === m.filament_type}
+              saveState=${getSaveState(savingKey, savedKey, m.filament_type)}
               onSave=${saveMaterial}
             />
           `,
         )}
-      </section>
+      </${Section}>
     </div>
   `;
 }
