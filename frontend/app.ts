@@ -48,6 +48,8 @@ type Project = {
   [key: string]: unknown;
 };
 
+type SortDir = "asc" | "desc";
+
 function filterJobs(jobs: Job[], q: string, statusFilter: string, deviceFilter: string) {
   return jobs.filter((j) => {
     const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
@@ -58,7 +60,7 @@ function filterJobs(jobs: Job[], q: string, statusFilter: string, deviceFilter: 
   });
 }
 
-function sortJobs(filtered: Job[], sortCol: string, sortDir: "asc" | "desc") {
+function sortJobs(filtered: Job[], sortCol: string, sortDir: SortDir) {
   return [...filtered].sort((a, b) => {
     let av = a[sortCol] as string | number | null | undefined;
     let bv = b[sortCol] as string | number | null | undefined;
@@ -72,6 +74,49 @@ function sortJobs(filtered: Job[], sortCol: string, sortDir: "asc" | "desc") {
     const bvn = Number(bv);
     return sortDir === "asc" ? avn - bvn : bvn - avn;
   });
+}
+
+function useAppState() {
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [projectPrices, setProjectPrices] = useState<Record<number, number>>({});
+  const [summary, setSummary] = useState<Summary>(null);
+  const [dataRange, setDataRange] = useState<DataRange>(null);
+
+  const [view, setView] = useState("table");
+  const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [deviceFilter, setDeviceFilter] = useState("");
+  const [sortCol, setSortCol] = useState("startTime");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+
+  return {
+    jobs,
+    setJobs,
+    projects,
+    setProjects,
+    projectPrices,
+    setProjectPrices,
+    summary,
+    setSummary,
+    dataRange,
+    setDataRange,
+    view,
+    setView,
+    q,
+    setQ,
+    statusFilter,
+    setStatusFilter,
+    deviceFilter,
+    setDeviceFilter,
+    sortCol,
+    setSortCol,
+    sortDir,
+    setSortDir,
+    selectedJob,
+    setSelectedJob,
+  };
 }
 
 type UseJobActionsArgs = {
@@ -90,9 +135,9 @@ type UseJobsViewStateArgs = {
   statusFilter: string;
   deviceFilter: string;
   sortCol: string;
-  sortDir: "asc" | "desc";
+  sortDir: SortDir;
   setSortCol: (col: string) => void;
-  setSortDir: (updater: (dir: "asc" | "desc") => "asc" | "desc") => void;
+  setSortDir: (updater: (dir: SortDir) => SortDir) => void;
   loc: string;
 };
 
@@ -113,22 +158,20 @@ function useJobsViewState({
   );
 
   const isFiltered = !!(q || statusFilter || deviceFilter);
-
   const filtered = useMemo(
     () => filterJobs(jobs, q, statusFilter, deviceFilter),
     [jobs, q, statusFilter, deviceFilter],
   );
-
   const sorted = useMemo(() => sortJobs(filtered, sortCol, sortDir), [filtered, sortCol, sortDir]);
 
   const handleSort = useCallback(
     (col: string) => {
       if (sortCol === col) {
         setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-      } else {
-        setSortCol(col);
-        setSortDir(() => (col === "startTime" ? "desc" : "asc"));
+        return;
       }
+      setSortCol(col);
+      setSortDir(() => (col === "startTime" ? "desc" : "asc"));
     },
     [sortCol, setSortCol, setSortDir],
   );
@@ -243,35 +286,45 @@ function useJobActions({
   };
 }
 
+function SelectedJobModal({
+  selectedJob,
+  closeModal,
+  patchJob,
+  projects,
+  handleJobProjectChange,
+  handleJobStatusChange,
+  handleJobExtraLaborChange,
+  handleNavigateToProject,
+}: {
+  selectedJob: Job | null;
+  closeModal: () => void;
+  patchJob: (jobId: number, fields: Record<string, unknown>) => Promise<unknown>;
+  projects: Project[];
+  handleJobProjectChange: (jobId: number, projectId: number | null) => Promise<void>;
+  handleJobStatusChange: (jobId: number, statusOverride: string | null) => void;
+  handleJobExtraLaborChange: (jobId: number, minutes: number | null) => void;
+  handleNavigateToProject: (projectId: number) => void;
+}) {
+  if (!selectedJob) return null;
+
+  return html`<${Modal}
+    key=${selectedJob.id}
+    job=${selectedJob}
+    onClose=${closeModal}
+    onPatch=${patchJob}
+    projects=${projects}
+    onJobProjectChange=${handleJobProjectChange}
+    onJobStatusChange=${handleJobStatusChange}
+    onJobExtraLaborChange=${handleJobExtraLaborChange}
+    onNavigateToProject=${handleNavigateToProject}
+  />`;
+}
+
 // ── App ──────────────────────────────────────────────────────────────────────
 
 function App() {
-  const [jobs, setJobs] = useState<Job[]>([]);
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [projectPrices, setProjectPrices] = useState<Record<number, number>>({});
-  const [summary, setSummary] = useState<Summary>(null);
-  const [dataRange, setDataRange] = useState<DataRange>(null);
-
-  const [view, setView] = useState("table");
-  const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [deviceFilter, setDeviceFilter] = useState("");
-  const [sortCol, setSortCol] = useState("startTime");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const state = useAppState();
   const [loc, navigate] = useLocation();
-
-  const setProjectsFromBootstrap = useCallback((items: unknown[]) => {
-    setProjects(items as Project[]);
-  }, []);
-
-  const setSummaryFromBootstrap = useCallback((next: unknown) => {
-    setSummary(next as Summary);
-  }, []);
-
-  const setDataRangeFromBootstrap = useCallback((next: unknown) => {
-    setDataRange(next as DataRange);
-  }, []);
 
   const {
     loading,
@@ -282,23 +335,23 @@ function App() {
     refreshProjectsAndPrices,
     refreshJobPrices,
   } = useDashboardBootstrap({
-    setJobs,
-    setProjects: setProjectsFromBootstrap,
-    setProjectPrices,
-    setSummary: setSummaryFromBootstrap,
-    setDataRange: setDataRangeFromBootstrap,
+    setJobs: state.setJobs,
+    setProjects: (items: unknown[]) => state.setProjects(items as Project[]),
+    setProjectPrices: state.setProjectPrices,
+    setSummary: (next: unknown) => state.setSummary(next as Summary),
+    setDataRange: (next: unknown) => state.setDataRange(next as DataRange),
     toast,
   });
 
   const { devices, isFiltered, filtered, sorted, handleSort, route } = useJobsViewState({
-    jobs,
-    q,
-    statusFilter,
-    deviceFilter,
-    sortCol,
-    sortDir,
-    setSortCol,
-    setSortDir,
+    jobs: state.jobs,
+    q: state.q,
+    statusFilter: state.statusFilter,
+    deviceFilter: state.deviceFilter,
+    sortCol: state.sortCol,
+    sortDir: state.sortDir,
+    setSortCol: state.setSortCol,
+    setSortDir: state.setSortDir,
     loc,
   });
 
@@ -312,62 +365,61 @@ function App() {
     handleRatesChanged,
     handleAutoGroup,
   } = useJobActions({
-    setJobs,
-    setProjects: (items: Project[]) => setProjects(items),
-    setSummary,
-    setSelectedJob,
+    setJobs: state.setJobs,
+    setProjects: state.setProjects,
+    setSummary: state.setSummary,
+    setSelectedJob: state.setSelectedJob,
     navigate,
     refreshProjectsAndPrices,
     refreshJobPrices,
   });
 
-  if (loading)
+  if (loading) {
     return html`<${LoadingView} bootStatus=${bootStatus} loadProgress=${loadProgress} />`;
+  }
   if (error) return html`<${ErrorView} error=${error} />`;
 
   return html`
-    <${Header} summary=${summary} dataRange=${dataRange} />
+    <${Header} summary=${state.summary} dataRange=${state.dataRange} />
     ${renderMainContent({
       route,
-      summary,
-      projects,
-      setProjects,
-      jobs,
+      summary: state.summary,
+      projects: state.projects,
+      setProjects: state.setProjects,
+      jobs: state.jobs,
       projectsLoading,
       navigate,
-      setSelectedJob,
+      setSelectedJob: state.setSelectedJob,
       handleJobProjectChange,
       handleRatesChanged,
       handleAutoGroup,
-      projectPrices,
-      q,
-      setQ,
-      statusFilter,
-      setStatusFilter,
-      deviceFilter,
-      setDeviceFilter,
+      projectPrices: state.projectPrices,
+      q: state.q,
+      setQ: state.setQ,
+      statusFilter: state.statusFilter,
+      setStatusFilter: state.setStatusFilter,
+      deviceFilter: state.deviceFilter,
+      setDeviceFilter: state.setDeviceFilter,
       devices,
-      view,
-      setView,
+      view: state.view,
+      setView: state.setView,
       filtered,
       isFiltered,
       sorted,
-      sortCol,
-      sortDir,
+      sortCol: state.sortCol,
+      sortDir: state.sortDir,
       handleSort,
     })}
-    ${selectedJob &&
-    html`<${Modal}
-      key=${selectedJob.id}
-      job=${selectedJob}
-      onClose=${closeModal}
-      onPatch=${patchJob}
-      projects=${projects}
-      onJobProjectChange=${handleJobProjectChange}
-      onJobStatusChange=${handleJobStatusChange}
-      onJobExtraLaborChange=${handleJobExtraLaborChange}
-      onNavigateToProject=${handleNavigateToProject}
-    />`}
+    <${SelectedJobModal}
+      selectedJob=${state.selectedJob}
+      closeModal=${closeModal}
+      patchJob=${patchJob}
+      projects=${state.projects}
+      handleJobProjectChange=${handleJobProjectChange}
+      handleJobStatusChange=${handleJobStatusChange}
+      handleJobExtraLaborChange=${handleJobExtraLaborChange}
+      handleNavigateToProject=${handleNavigateToProject}
+    />
     <${ToastContainer} />
   `;
 }
