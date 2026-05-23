@@ -8,10 +8,9 @@ import {
 } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
 import { invalidateJobPriceCache, invalidateProjectPriceCache } from "../lib/price-cache.js";
+import { ESTIMATE_STATUSES, shouldUseEstimatedUsage } from "../lib/job-estimation.js";
+import { readPriceCache, writePriceCache } from "../lib/price-cache-store.js";
 import type { Job, PrintTask, JobFilament, PriceBreakdown } from "../lib/types.js";
-
-const ACTIVE_STATUSES = new Set(["running", "pause", "created"]);
-const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
 
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
 type UsageTotals = { total_weight_g: number; total_time_s: number };
@@ -102,12 +101,8 @@ export function getJobWithDetails(
   return { job, plates, filaments };
 }
 
-function isActiveJob(job: Job): boolean {
-  return ACTIVE_STATUSES.has((job.status_override ?? job.status ?? "").toLowerCase());
-}
-
 function shouldUseEstimate(job: Job): boolean {
-  return (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+  return shouldUseEstimatedUsage(job);
 }
 
 function estimateStatusesForJob(job: Job): readonly string[] {
@@ -160,48 +155,17 @@ function loadSessionUsageByStatuses(statuses: readonly string[]): Map<string, Se
 }
 
 function getCachedJobPrices(): Record<number, number> | null {
-  try {
-    const hasActiveJobs = db
-      .prepare<
-        [],
-        { exists: number }
-      >("SELECT 1 AS exists FROM jobs WHERE lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1")
-      .get();
-    if (hasActiveJobs?.exists) return null;
-
-    const totalJobs = (db.prepare("SELECT COUNT(*) AS n FROM jobs").get() as { n: number }).n;
-    const cachedCount = (
-      db.prepare("SELECT COUNT(*) AS n FROM job_price_cache").get() as { n: number }
-    ).n;
-    if (totalJobs <= 0 || cachedCount !== totalJobs) return null;
-
-    const rows = db
-      .prepare<
-        [],
-        { job_id: number; final_price: number }
-      >("SELECT job_id, final_price FROM job_price_cache")
-      .all();
-    return Object.fromEntries(rows.map((r) => [r.job_id, r.final_price]));
-  } catch {
-    // cache table unavailable (tests/older DB)
-    return null;
-  }
+  return readPriceCache({
+    cacheTable: "job_price_cache",
+    idColumn: "job_id",
+    targetCountSql: "SELECT COUNT(*) AS n FROM jobs",
+    hasActiveSql:
+      "SELECT 1 AS exists FROM jobs WHERE lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1",
+  });
 }
 
 function writeJobPriceCache(prices: Record<number, number>): void {
-  try {
-    const now = new Date().toISOString();
-    const writeCache = db.transaction((entries: Array<[number, number]>) => {
-      db.exec("DELETE FROM job_price_cache");
-      const insert = db.prepare(
-        "INSERT INTO job_price_cache (job_id, final_price, computed_at) VALUES (?, ?, ?)",
-      );
-      for (const [jobId, finalPrice] of entries) insert.run(jobId, finalPrice, now);
-    });
-    writeCache(Object.entries(prices).map(([jobId, finalPrice]) => [Number(jobId), finalPrice]));
-  } catch {
-    // cache table unavailable (tests/older DB)
-  }
+  writePriceCache({ cacheTable: "job_price_cache", idColumn: "job_id" }, prices);
 }
 
 function loadEstimatedUsage(sessionId: string): UsageTotals {

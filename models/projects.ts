@@ -11,10 +11,9 @@ import {
 } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
 import { invalidateProjectPriceCache } from "../lib/price-cache.js";
+import { ESTIMATE_STATUSES, shouldUseEstimatedUsage } from "../lib/job-estimation.js";
+import { readPriceCache, writePriceCache } from "../lib/price-cache-store.js";
 import type { Project, Job, PriceBreakdown, MaterialRate, MachineRate } from "../lib/types.js";
-
-const ACTIVE_STATUSES = new Set(["running", "pause", "created"]);
-const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
 
 export type ProjectWithStats = Project & {
@@ -136,12 +135,8 @@ function loadSessionFilaments(
   return sessionFilaments;
 }
 
-function isActiveJob(job: Job): boolean {
-  return ACTIVE_STATUSES.has((job.status_override ?? job.status ?? "").toLowerCase());
-}
-
 function shouldUseEstimate(job: Job): boolean {
-  return (job.total_weight_g ?? 0) <= 0 && (job.total_time_s ?? 0) <= 0 && isActiveJob(job);
+  return shouldUseEstimatedUsage(job);
 }
 
 function loadSessionUsage(
@@ -214,63 +209,80 @@ function calculateProjectVariableCosts(
       fallbackMaterialRate,
     );
     machine_cost += calcMachineCost(usage.total_time_s, machineRate);
-    if (job.extra_labor_minutes) {
-      extra_labor_cost += (job.extra_labor_minutes / 60) * hourlyRate;
-    }
+    if (job.extra_labor_minutes) extra_labor_cost += (job.extra_labor_minutes / 60) * hourlyRate;
   }
 
   return { material_cost, machine_cost, extra_labor_cost };
 }
 
-function readCachedProjectPrices(): Record<number, number> | null {
-  try {
-    const hasActiveJobs = db
-      .prepare<
-        [],
-        { exists: number }
-      >("SELECT 1 AS exists FROM jobs WHERE project_id IS NOT NULL AND lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1")
-      .get();
-    if (hasActiveJobs?.exists) return null;
+interface ProjectUsageInputs {
+  finishedSessionFilaments: ReadonlyMap<string, FilamentWeight[]>;
+  activeSessionFilaments: ReadonlyMap<string, FilamentWeight[]>;
+  activeSessionUsage: ReadonlyMap<string, SessionUsage>;
+}
 
-    const targetCount = (
-      db
-        .prepare("SELECT COUNT(DISTINCT project_id) AS n FROM jobs WHERE project_id IS NOT NULL")
-        .get() as { n: number }
-    ).n;
-    const cachedCount = (
-      db.prepare("SELECT COUNT(*) AS n FROM project_price_cache").get() as { n: number }
-    ).n;
-    if (targetCount <= 0 || cachedCount !== targetCount) return null;
+function buildProjectPriceFromJobs(
+  jobs: Job[],
+  usageInputs: ProjectUsageInputs,
+  materialRates: ReadonlyMap<string, MaterialRate>,
+  machineRates: ReadonlyMap<string, MachineRate>,
+  fallbackMachine: MachineRate,
+  laborConfig: { hourly_rate: number },
+): {
+  material_cost: number;
+  machine_cost: number;
+  labor_cost: number;
+  extra_labor_cost: number;
+  base_price: number;
+  final_price: number;
+} {
+  const { material_cost, machine_cost, extra_labor_cost } = calculateProjectVariableCosts(
+    jobs,
+    usageInputs.finishedSessionFilaments,
+    usageInputs.activeSessionFilaments,
+    usageInputs.activeSessionUsage,
+    materialRates,
+    machineRates,
+    fallbackMachine,
+    laborConfig.hourly_rate,
+  );
 
-    const rows = db
-      .prepare<
-        [],
-        { project_id: number; final_price: number }
-      >("SELECT project_id, final_price FROM project_price_cache")
-      .all();
-    return Object.fromEntries(rows.map((r) => [r.project_id, r.final_price]));
-  } catch {
-    // cache table unavailable (tests/older DB)
-    return null;
+  const labor_cost = calcLaborCost(0, laborConfig as Parameters<typeof calcLaborCost>[1]);
+  const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
+  const final_price = Math.ceil(
+    base_price *
+      totalPricingMultiplier(laborConfig as Parameters<typeof totalPricingMultiplier>[0]),
+  );
+  return { material_cost, machine_cost, labor_cost, extra_labor_cost, base_price, final_price };
+}
+
+function groupJobsByProject(allJobs: Job[]): Map<number, Job[]> {
+  const grouped = new Map<number, Job[]>();
+  for (const job of allJobs) {
+    const projectId = job.project_id;
+    if (projectId == null) continue;
+    const list = grouped.get(projectId);
+    if (list) {
+      list.push(job);
+      continue;
+    }
+    grouped.set(projectId, [job]);
   }
+  return grouped;
+}
+
+function readCachedProjectPrices(): Record<number, number> | null {
+  return readPriceCache({
+    cacheTable: "project_price_cache",
+    idColumn: "project_id",
+    targetCountSql: "SELECT COUNT(DISTINCT project_id) AS n FROM jobs WHERE project_id IS NOT NULL",
+    hasActiveSql:
+      "SELECT 1 AS exists FROM jobs WHERE project_id IS NOT NULL AND lower(COALESCE(status_override, status)) IN ('running','pause','created') LIMIT 1",
+  });
 }
 
 function writeProjectPriceCache(prices: Record<number, number>): void {
-  try {
-    const now = new Date().toISOString();
-    const writeCache = db.transaction((entries: Array<[number, number]>) => {
-      db.exec("DELETE FROM project_price_cache");
-      const insert = db.prepare(
-        "INSERT INTO project_price_cache (project_id, final_price, computed_at) VALUES (?, ?, ?)",
-      );
-      for (const [projectId, finalPrice] of entries) insert.run(projectId, finalPrice, now);
-    });
-    writeCache(
-      Object.entries(prices).map(([projectId, finalPrice]) => [Number(projectId), finalPrice]),
-    );
-  } catch {
-    // cache table unavailable (tests/older DB)
-  }
+  writePriceCache({ cacheTable: "project_price_cache", idColumn: "project_id" }, prices);
 }
 
 function buildProjectPrice(projectId: number): PriceBreakdown | null {
@@ -282,35 +294,28 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
   if (!jobs.length) return null;
 
   const sessionIds = jobs.map((j) => j.session_id);
-  const finishedSessionFilaments = loadSessionFilaments(sessionIds, ["finish"]);
-  const activeSessionFilaments = loadSessionFilaments(sessionIds, ESTIMATE_STATUSES);
-  const activeSessionUsage = loadSessionUsage(sessionIds, ESTIMATE_STATUSES);
+  const usageInputs: ProjectUsageInputs = {
+    finishedSessionFilaments: loadSessionFilaments(sessionIds, ["finish"]),
+    activeSessionFilaments: loadSessionFilaments(sessionIds, ESTIMATE_STATUSES),
+    activeSessionUsage: loadSessionUsage(sessionIds, ESTIMATE_STATUSES),
+  };
 
-  const { material_cost, machine_cost, extra_labor_cost } = calculateProjectVariableCosts(
+  const breakdown = buildProjectPriceFromJobs(
     jobs,
-    finishedSessionFilaments,
-    activeSessionFilaments,
-    activeSessionUsage,
+    usageInputs,
     materialRates,
     machineRates,
     fallbackMachine,
-    laborConfig.hourly_rate,
+    laborConfig,
   );
 
-  // Single labor charge for the whole project — one setup, not proportional to
-  // machine run time (that's already in machine_cost). Passes 0 so the minimum
-  // kicks in, same as a single job would bill.
-  const labor_cost = calcLaborCost(0, laborConfig);
-  const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
-  const final_price = Math.ceil(base_price * totalPricingMultiplier(laborConfig));
-
   return {
-    material_cost: round2(material_cost),
-    machine_cost: round2(machine_cost),
-    labor_cost: round2(labor_cost),
-    extra_labor_cost: round2(extra_labor_cost),
-    base_price: round2(base_price),
-    final_price: round2(final_price),
+    material_cost: round2(breakdown.material_cost),
+    machine_cost: round2(breakdown.machine_cost),
+    labor_cost: round2(breakdown.labor_cost),
+    extra_labor_cost: round2(breakdown.extra_labor_cost),
+    base_price: round2(breakdown.base_price),
+    final_price: round2(breakdown.final_price),
     is_override: false,
   };
 }
@@ -331,34 +336,27 @@ export function getAllProjectPrices(): Record<number, number> {
   const allJobs = db.prepare<[], Job>("SELECT * FROM jobs WHERE project_id IS NOT NULL").all();
   if (!allJobs.length) return {};
 
-  const jobsByProject = new Map<number, Job[]>();
-  for (const job of allJobs) {
-    const pid = job.project_id!;
-    if (!jobsByProject.has(pid)) jobsByProject.set(pid, []);
-    jobsByProject.get(pid)!.push(job);
-  }
+  const jobsByProject = groupJobsByProject(allJobs);
 
   const allSessionIds = [...new Set(allJobs.map((j) => j.session_id))];
-  const finishedSessionFilaments = loadSessionFilaments(allSessionIds, ["finish"]);
-  const activeSessionFilaments = loadSessionFilaments(allSessionIds, ESTIMATE_STATUSES);
-  const activeSessionUsage = loadSessionUsage(allSessionIds, ESTIMATE_STATUSES);
+  const usageInputs: ProjectUsageInputs = {
+    finishedSessionFilaments: loadSessionFilaments(allSessionIds, ["finish"]),
+    activeSessionFilaments: loadSessionFilaments(allSessionIds, ESTIMATE_STATUSES),
+    activeSessionUsage: loadSessionUsage(allSessionIds, ESTIMATE_STATUSES),
+  };
 
   const prices: Record<number, number> = {};
   for (const [projectId, jobs] of jobsByProject) {
     try {
-      const { material_cost, machine_cost, extra_labor_cost } = calculateProjectVariableCosts(
+      const breakdown = buildProjectPriceFromJobs(
         jobs,
-        finishedSessionFilaments,
-        activeSessionFilaments,
-        activeSessionUsage,
+        usageInputs,
         materialRates,
         machineRates,
         fallbackMachine,
-        laborConfig.hourly_rate,
+        laborConfig,
       );
-      const labor_cost = calcLaborCost(0, laborConfig);
-      const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
-      prices[projectId] = Math.ceil(base_price * totalPricingMultiplier(laborConfig));
+      prices[projectId] = breakdown.final_price;
     } catch {
       // skip — pricing config incomplete for this project
     }
