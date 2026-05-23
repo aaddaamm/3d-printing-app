@@ -33,4 +33,3 @@ export function logInfo(...args: unknown[]): void {
   if (!shouldLog("info")) return;
   console.log(...args);
 }
-

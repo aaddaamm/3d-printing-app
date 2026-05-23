@@ -206,7 +206,8 @@ function ProjectCard({
         <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? "s" : ""}</span>
         ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
         ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
-        ${totalPrice != null && html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
+        ${totalPrice != null &&
+        html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
     </div>
@@ -314,14 +315,18 @@ function ProjectJobsTable({
             (job: Job) => html`
               <tr key=${job.id} onClick=${() => onJobClick(job)}>
                 <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
-                <td class="td-title"><span class="row-title">${job.designTitle || "Untitled Job"}</span></td>
+                <td class="td-title">
+                  <span class="row-title">${job.designTitle || "Untitled Job"}</span>
+                </td>
                 <td>${job.deviceModel || "—"}</td>
                 <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
                 <td><${Badge} status=${job.status} /></td>
                 <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
                 <td class="td-num">${fmtTime(job.total_time_s)}</td>
                 <td class="td-num">
-                  ${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}
+                  ${job.final_price != null
+                    ? html`<strong>${fmtCurrency(job.final_price)}</strong>`
+                    : "—"}
                 </td>
                 <td>
                   <button
@@ -369,11 +374,12 @@ function ProjectDetail({
   useEffect(() => {
     setPrice(null);
     if (!jobs.length) return;
-    fetchJsonOrToast<ProjectPrice>(`/projects/${project.id}/price`, "Failed to load project price.").then(
-      (d) => {
-        if (d) setPrice(d);
-      },
-    );
+    fetchJsonOrToast<ProjectPrice>(
+      `/projects/${project.id}/price`,
+      "Failed to load project price.",
+    ).then((d) => {
+      if (d) setPrice(d);
+    });
   }, [project.id, jobs.length]);
 
   const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
@@ -511,7 +517,8 @@ export function ProjectsView({
       projectPrices=${projectPrices}
       navigate=${navigate}
     />
-    ${showNew && html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
+    ${showNew &&
+    html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
   `;
 }
 

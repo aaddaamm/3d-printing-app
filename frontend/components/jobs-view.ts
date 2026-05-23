@@ -52,7 +52,12 @@ type Summary = {
 type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
 
 const NAV_ITEMS = [
-  { label: "Jobs", path: "/", active: (loc: string) => !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers") },
+  {
+    label: "Jobs",
+    path: "/",
+    active: (loc: string) =>
+      !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers"),
+  },
   { label: "Projects", path: "/projects", active: (loc: string) => loc.startsWith("/projects") },
   { label: "Printers", path: "/printers", active: (loc: string) => loc.startsWith("/printers") },
   { label: "Rates", path: "/admin", active: (loc: string) => loc.startsWith("/admin") },
@@ -87,7 +92,8 @@ function metricBreakdownTitle(summary: Summary, metric: "jobs" | "plates" | "hou
     .map((row) => {
       const label = row.deviceModel || "Unknown printer";
       if (metric === "jobs") return `${label}: ${(row.total_jobs ?? 0).toLocaleString()} jobs`;
-      if (metric === "plates") return `${label}: ${(row.total_plates ?? 0).toLocaleString()} plates`;
+      if (metric === "plates")
+        return `${label}: ${(row.total_plates ?? 0).toLocaleString()} plates`;
       return `${label}: ${((row.total_time_s ?? 0) / 3600).toFixed(1).toLocaleString()} h`;
     })
     .join("\n");
@@ -199,7 +205,9 @@ export function Toolbar({
         value=${statusFilter}
         onChange=${(e: Event) => setStatusFilter((e.target as HTMLSelectElement).value)}
       >
-        ${STATUS_OPTIONS.map(([value, label]) => html`<option key=${value} value=${value}>${label}</option> `)}
+        ${STATUS_OPTIONS.map(
+          ([value, label]) => html`<option key=${value} value=${value}>${label}</option> `,
+        )}
       </select>
       <select
         value=${deviceFilter}
@@ -209,10 +217,16 @@ export function Toolbar({
         ${devices.map((d) => html`<option key=${d} value=${d}>${d}</option> `)}
       </select>
       <div class="view-toggle">
-        <button class=${"view-btn" + (view === "table" ? " active" : "")} onClick=${() => setView("table")}>
+        <button
+          class=${"view-btn" + (view === "table" ? " active" : "")}
+          onClick=${() => setView("table")}
+        >
           ☰ Table
         </button>
-        <button class=${"view-btn" + (view === "grid" ? " active" : "")} onClick=${() => setView("grid")}>
+        <button
+          class=${"view-btn" + (view === "grid" ? " active" : "")}
+          onClick=${() => setView("grid")}
+        >
           ⊞ Grid
         </button>
       </div>
@@ -275,7 +289,9 @@ function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void 
     <tr onClick=${() => onJobClick(job)}>
       <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
       <td class="td-title">
-        <span class="row-title" title=${job.designTitle || "Untitled"}>${job.designTitle || "Untitled Job"}</span>
+        <span class="row-title" title=${job.designTitle || "Untitled"}
+          >${job.designTitle || "Untitled Job"}</span
+        >
         ${(job.print_run ?? 1) > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
         <${FilamentSwatches} colors=${job.filament_colors} />
       </td>
@@ -284,7 +300,9 @@ function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void 
       <td><${Badge} status=${job.status} /></td>
       <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
       <td class="td-num">${fmtTime(job.total_time_s)}</td>
-      <td class="td-num">${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}</td>
+      <td class="td-num">
+        ${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}
+      </td>
       <td class="td-num">${job.plate_count ?? "—"}</td>
       <td>${job.customer && html`<span class="customer-pill">${job.customer}</span>`}</td>
     </tr>
@@ -314,7 +332,11 @@ export function TableView({
               const active = col && col === sortCol;
               const thCls = [cls, active ? `sort-${sortDir}` : ""].filter(Boolean).join(" ");
               return html`
-                <th key=${label} class=${thCls || undefined} onClick=${col ? () => onSort(col) : undefined}>
+                <th
+                  key=${label}
+                  class=${thCls || undefined}
+                  onClick=${col ? () => onSort(col) : undefined}
+                >
                   ${label}
                 </th>
               `;
@@ -322,7 +344,9 @@ export function TableView({
           </tr>
         </thead>
         <tbody>
-          ${sorted.map((job) => html`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
+          ${sorted.map(
+            (job) => html`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
+          )}
         </tbody>
       </table>
     </div>

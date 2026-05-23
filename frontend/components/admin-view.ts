@@ -90,7 +90,15 @@ function SaveButton({ state }: { state: SaveState }) {
   </button>`;
 }
 
-function Section({ title, description, children }: { title: string; description: string; children: unknown }) {
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: unknown;
+}) {
   return html`
     <section class="admin-section">
       <h3 class="admin-section-title">${title}</h3>
@@ -131,19 +139,22 @@ function LaborForm({
           label="Profit markup (%)"
           value=${v.profit_markup_pct * 100}
           step="1"
-          onChange=${(profit_markup_pct: number) => setV({ ...v, profit_markup_pct: profit_markup_pct / 100 })}
+          onChange=${(profit_markup_pct: number) =>
+            setV({ ...v, profit_markup_pct: profit_markup_pct / 100 })}
         />
         <${RateField}
           label="Failure buffer (%)"
           value=${v.failure_buffer_pct * 100}
           step="1"
-          onChange=${(failure_buffer_pct: number) => setV({ ...v, failure_buffer_pct: failure_buffer_pct / 100 })}
+          onChange=${(failure_buffer_pct: number) =>
+            setV({ ...v, failure_buffer_pct: failure_buffer_pct / 100 })}
         />
         <${RateField}
           label="Overhead buffer (%)"
           value=${v.overhead_buffer_pct * 100}
           step="1"
-          onChange=${(overhead_buffer_pct: number) => setV({ ...v, overhead_buffer_pct: overhead_buffer_pct / 100 })}
+          onChange=${(overhead_buffer_pct: number) =>
+            setV({ ...v, overhead_buffer_pct: overhead_buffer_pct / 100 })}
         />
       </div>
       <div class="admin-card-actions"><${SaveButton} state=${saveState} /></div>
@@ -195,7 +206,9 @@ function MachineForm({
         />
       </div>
       <div class="admin-card-footer">
-        <div class="admin-rate-preview">Computed rate: <strong>${fmtCurrency(rate)}</strong>/hr</div>
+        <div class="admin-rate-preview">
+          Computed rate: <strong>${fmtCurrency(rate)}</strong>/hr
+        </div>
         <div class="admin-card-actions"><${SaveButton} state=${saveState} /></div>
       </div>
     </form>
@@ -229,7 +242,8 @@ function MaterialForm({
           label="Waste buffer (%)"
           value=${v.waste_buffer_pct * 100}
           step="1"
-          onChange=${(waste_buffer_pct: number) => setV({ ...v, waste_buffer_pct: waste_buffer_pct / 100 })}
+          onChange=${(waste_buffer_pct: number) =>
+            setV({ ...v, waste_buffer_pct: waste_buffer_pct / 100 })}
         />
       </div>
       <div class="admin-card-footer">
@@ -283,7 +297,8 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
   };
 
   const saveMachine = async (machine: MachineRate) => {
-    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } = machine;
+    const { device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer } =
+      machine;
     await runSave(device_model, async () => {
       const data = await patchJsonOrToast<{ machine_rate?: MachineRate }>(
         `/rates/machines/${encodeURIComponent(device_model)}`,

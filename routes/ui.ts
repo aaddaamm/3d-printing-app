@@ -112,7 +112,10 @@ function serveShell(c: Context): Response {
 function registerAuthRoutes(ui: Hono, apiKey: string): void {
   ui.get("/login", (c) => {
     const error = c.req.query("error");
-    const page = LOGIN_HTML.replace("__ERROR__", error ? '<p class="error">Incorrect key.</p>' : "");
+    const page = LOGIN_HTML.replace(
+      "__ERROR__",
+      error ? '<p class="error">Incorrect key.</p>' : "",
+    );
     return c.html(page);
   });
 
