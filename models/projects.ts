@@ -1,19 +1,13 @@
 import { db, stmts } from "../lib/db.js"; // db used in buildProjectPrice/getAllProjectPrices
 import { localCoverExists } from "../lib/covers.js";
 import { autoGroupProjects } from "../lib/auto-group.js";
-import {
-  calcWeightedMaterialCost,
-  calcMachineCost,
-  calcLaborCost,
-  round2,
-  totalPricingMultiplier,
-  type FilamentWeight,
-} from "../lib/pricing.js";
+import { calcWeightedMaterialCost, calcMachineCost, calcLaborCost, type FilamentWeight } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
 import { invalidateProjectPriceCache } from "../lib/price-cache.js";
 import { ESTIMATE_STATUSES, shouldUseEstimatedUsage } from "../lib/job-estimation.js";
 import { readPriceCache, writePriceCache } from "../lib/price-cache-store.js";
-import type { Project, Job, PriceBreakdown, MaterialRate, MachineRate } from "../lib/types.js";
+import { buildPriceBreakdown } from "../lib/pricing-engine.js";
+import type { Project, Job, PriceBreakdown, MaterialRate, MachineRate, LaborConfig } from "../lib/types.js";
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
 
 export type ProjectWithStats = Project & {
@@ -227,15 +221,8 @@ function buildProjectPriceFromJobs(
   materialRates: ReadonlyMap<string, MaterialRate>,
   machineRates: ReadonlyMap<string, MachineRate>,
   fallbackMachine: MachineRate,
-  laborConfig: { hourly_rate: number },
-): {
-  material_cost: number;
-  machine_cost: number;
-  labor_cost: number;
-  extra_labor_cost: number;
-  base_price: number;
-  final_price: number;
-} {
+  laborConfig: LaborConfig,
+): PriceBreakdown {
   const { material_cost, machine_cost, extra_labor_cost } = calculateProjectVariableCosts(
     jobs,
     usageInputs.finishedSessionFilaments,
@@ -247,13 +234,11 @@ function buildProjectPriceFromJobs(
     laborConfig.hourly_rate,
   );
 
-  const labor_cost = calcLaborCost(0, laborConfig as Parameters<typeof calcLaborCost>[1]);
-  const base_price = material_cost + machine_cost + labor_cost + extra_labor_cost;
-  const final_price = Math.ceil(
-    base_price *
-      totalPricingMultiplier(laborConfig as Parameters<typeof totalPricingMultiplier>[0]),
+  const labor_cost = calcLaborCost(0, laborConfig);
+  return buildPriceBreakdown(
+    { material_cost, machine_cost, labor_cost, extra_labor_cost },
+    laborConfig,
   );
-  return { material_cost, machine_cost, labor_cost, extra_labor_cost, base_price, final_price };
 }
 
 function groupJobsByProject(allJobs: Job[]): Map<number, Job[]> {
@@ -309,15 +294,7 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
     laborConfig,
   );
 
-  return {
-    material_cost: round2(breakdown.material_cost),
-    machine_cost: round2(breakdown.machine_cost),
-    labor_cost: round2(breakdown.labor_cost),
-    extra_labor_cost: round2(breakdown.extra_labor_cost),
-    base_price: round2(breakdown.base_price),
-    final_price: round2(breakdown.final_price),
-    is_override: false,
-  };
+  return breakdown;
 }
 
 export function getProjectPrice(id: number): PriceBreakdown | null {

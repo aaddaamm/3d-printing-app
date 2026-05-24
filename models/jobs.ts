@@ -1,21 +1,19 @@
 import { db, stmts } from "../lib/db.js";
-import {
-  calcPrice,
-  calcWeightedMaterialCost,
-  round2,
-  totalPricingMultiplier,
-  type FilamentWeight,
-} from "../lib/pricing.js";
+import { calcPrice, type FilamentWeight } from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
 import { invalidateJobPriceCache, invalidateProjectPriceCache } from "../lib/price-cache.js";
 import { ESTIMATE_STATUSES, shouldUseEstimatedUsage } from "../lib/job-estimation.js";
 import { readPriceCache, writePriceCache } from "../lib/price-cache-store.js";
+import {
+  buildPriceBreakdown,
+  calcMaterialCostWithFallback,
+  getFallbackMaterialRate,
+} from "../lib/pricing-engine.js";
 import type { Job, PrintTask, JobFilament, PriceBreakdown } from "../lib/types.js";
 
 type SessionUsage = { session_id: string; total_weight_g: number; total_time_s: number };
 type UsageTotals = { total_weight_g: number; total_time_s: number };
 type SqlCondition = [string, string];
-type LaborConfig = Parameters<typeof totalPricingMultiplier>[0];
 
 export interface ListJobsFilter {
   status?: string | undefined;
@@ -203,16 +201,6 @@ function getUsageForJob(job: Job, activeSessionUsage?: Map<string, SessionUsage>
   return activeSessionUsage.get(job.session_id) ?? directUsage(job);
 }
 
-function resolveFinalPrice(
-  breakdown: PriceBreakdown,
-  materialCost: number,
-  laborConfig: LaborConfig,
-): number {
-  const basePrice =
-    materialCost + breakdown.machine_cost + breakdown.labor_cost + breakdown.extra_labor_cost;
-  if (breakdown.is_override) return breakdown.final_price;
-  return Math.ceil(basePrice * totalPricingMultiplier(laborConfig));
-}
 
 export function getJobPrice(
   id: number,
@@ -229,7 +217,7 @@ export function getJobPrice(
   if (!config) throw new Error("No labor config found — configure rates first");
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
 
-  const fallbackMaterialRate = materialRates.get("PLA");
+  const fallbackMaterialRate = getFallbackMaterialRate(materialRates);
   const machineRate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
 
   if (!fallbackMaterialRate) throw new Error('No material rate for fallback filament type "PLA"');
@@ -243,27 +231,23 @@ export function getJobPrice(
     materialRate: fallbackMaterialRate,
     laborConfig,
   });
-  breakdown.material_cost = round2(
-    calcWeightedMaterialCost(
-      usage.total_weight_g,
-      filamentTotals,
-      materialRates,
-      fallbackMaterialRate,
-    ),
+  const pricedBreakdown = buildPriceBreakdown(
+    {
+      material_cost: calcMaterialCostWithFallback(
+        usage.total_weight_g,
+        filamentTotals,
+        materialRates,
+      ),
+      machine_cost: breakdown.machine_cost,
+      labor_cost: breakdown.labor_cost,
+      extra_labor_cost: breakdown.extra_labor_cost,
+    },
+    laborConfig,
+    breakdown.is_override,
+    breakdown.final_price,
   );
-  breakdown.base_price = round2(
-    breakdown.material_cost +
-      breakdown.machine_cost +
-      breakdown.labor_cost +
-      breakdown.extra_labor_cost,
-  );
-  if (!breakdown.is_override) {
-    breakdown.final_price = round2(
-      Math.ceil(breakdown.base_price * totalPricingMultiplier(laborConfig)),
-    );
-  }
 
-  return { id, filament_type: filamentType, ...breakdown };
+  return { id, filament_type: filamentType, ...pricedBreakdown };
 }
 
 export function getAllJobPrices(): Record<number, number> {
@@ -273,7 +257,7 @@ export function getAllJobPrices(): Record<number, number> {
   const config = loadRatesConfig();
   if (!config) return {};
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
-  const fallbackMaterialRate = materialRates.get("PLA");
+  const fallbackMaterialRate = getFallbackMaterialRate(materialRates);
   if (!fallbackMaterialRate) return {};
 
   const finishedSessionFilaments = loadSessionFilaments(["finish"]);
@@ -301,13 +285,22 @@ export function getAllJobPrices(): Record<number, number> {
         materialRate: fallbackMaterialRate,
         laborConfig,
       });
-      const materialCost = calcWeightedMaterialCost(
-        usage.total_weight_g,
-        getFilamentsForJob(job),
-        materialRates,
-        fallbackMaterialRate,
+      const pricedBreakdown = buildPriceBreakdown(
+        {
+          material_cost: calcMaterialCostWithFallback(
+            usage.total_weight_g,
+            getFilamentsForJob(job),
+            materialRates,
+          ),
+          machine_cost: breakdown.machine_cost,
+          labor_cost: breakdown.labor_cost,
+          extra_labor_cost: breakdown.extra_labor_cost,
+        },
+        laborConfig,
+        breakdown.is_override,
+        breakdown.final_price,
       );
-      prices[job.id] = resolveFinalPrice(breakdown, materialCost, laborConfig);
+      prices[job.id] = pricedBreakdown.final_price;
     } catch {
       // skip — pricing config incomplete for this job
     }
