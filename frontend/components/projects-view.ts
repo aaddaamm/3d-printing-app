@@ -1,7 +1,7 @@
 // ── Projects view ─────────────────────────────────────────────────────────────
 
 import { h } from "preact";
-import { useState, useEffect, useMemo, useCallback } from "preact/hooks";
+import { useState, useMemo, useCallback } from "preact/hooks";
 import htm from "htm";
 
 import {
@@ -13,10 +13,20 @@ import {
   fmtWeight,
 } from "./helpers.js";
 import { Badge, RowThumb } from "./atoms.js";
-import { toast } from "./toast.js";
 import { useLocation } from "./router.js";
-import { fetchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import {
+  filterJobs,
+  filterProjects,
+  projectCountLabel,
+  showAutoGroupToast,
+  sumJobTime,
+  sumJobWeight,
+  type Job,
+  type Project,
+} from "./projects-view-helpers.js";
+import { postJsonOrToast } from "../lib/api.js";
 import { useEscapeClose } from "../hooks/use-escape-close.js";
+import { useProjectPrice, type ProjectPrice } from "../hooks/use-project-price.js";
 
 const html = (
   htm as unknown as {
@@ -24,37 +34,6 @@ const html = (
   }
 ).bind(h);
 
-type Project = {
-  id: number;
-  name?: string;
-  customer?: string | null;
-  notes?: string | null;
-  job_count?: number;
-  total_weight_g?: number | null;
-  total_time_s?: number | null;
-  cover_url?: string | null;
-};
-
-type Job = {
-  id: number;
-  designTitle?: string;
-  customer?: string | null;
-  cover_url?: string | null;
-  startTime?: string;
-  deviceModel?: string;
-  status?: string;
-  total_weight_g?: number | null;
-  total_time_s?: number | null;
-  final_price?: number | null;
-};
-
-type ProjectPrice = {
-  material_cost: number;
-  machine_cost: number;
-  labor_cost: number;
-  extra_labor_cost: number;
-  final_price: number;
-};
 
 function onOverlayClick(onClose: () => void) {
   return (e: MouseEvent) => {
@@ -62,38 +41,6 @@ function onOverlayClick(onClose: () => void) {
   };
 }
 
-function filterProjects(projects: Project[], q: string): Project[] {
-  if (!q) return projects;
-  const lc = q.toLowerCase();
-  return projects.filter((p) =>
-    [p.name, p.customer, p.notes].filter(Boolean).join(" ").toLowerCase().includes(lc),
-  );
-}
-
-function filterJobs(unassignedJobs: Job[], q: string): Job[] {
-  if (!q) return unassignedJobs;
-  const lc = q.toLowerCase();
-  return unassignedJobs.filter((j) =>
-    `${j.designTitle || ""} ${j.customer || ""}`.toLowerCase().includes(lc),
-  );
-}
-
-function projectCountLabel(projects: Project[], filtered: Project[], q: string): string {
-  const prefix = q ? `${filtered.length} of ${projects.length}` : String(projects.length);
-  return `${prefix} project${projects.length !== 1 ? "s" : ""}`;
-}
-
-function autoGroupToast(projectsCreated: number, jobsAssigned: number): void {
-  if (projectsCreated === 0) {
-    toast("No ungrouped jobs found — everything is already assigned to a project.", "info");
-    return;
-  }
-
-  toast(
-    `Created ${projectsCreated} project${projectsCreated !== 1 ? "s" : ""}, assigned ${jobsAssigned} job${jobsAssigned !== 1 ? "s" : ""}.`,
-    "success",
-  );
-}
 
 function NewProjectModal({
   onClose,
@@ -367,20 +314,9 @@ function ProjectDetail({
   onRemoveJob: (jobId: number) => void;
 }) {
   const [showAddJobs, setShowAddJobs] = useState(false);
-  const [price, setPrice] = useState<ProjectPrice | null>(null);
-  const totW = jobs.reduce((s: number, j: Job) => s + (j.total_weight_g || 0), 0);
-  const totT = jobs.reduce((s: number, j: Job) => s + (j.total_time_s || 0), 0);
-
-  useEffect(() => {
-    setPrice(null);
-    if (!jobs.length) return;
-    fetchJsonOrToast<ProjectPrice>(
-      `/projects/${project.id}/price`,
-      "Failed to load project price.",
-    ).then((d) => {
-      if (d) setPrice(d);
-    });
-  }, [project.id, jobs.length]);
+  const price = useProjectPrice(project.id, jobs.length);
+  const totW = sumJobWeight(jobs);
+  const totT = sumJobTime(jobs);
 
   const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
 
@@ -479,7 +415,7 @@ export function ProjectsView({
       if (!data) return;
       const { projects_created, jobs_assigned } = data;
       await onAutoGroup();
-      autoGroupToast(projects_created, jobs_assigned);
+      showAutoGroupToast(projects_created, jobs_assigned);
     } finally {
       setGrouping(false);
     }
