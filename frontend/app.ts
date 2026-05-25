@@ -14,6 +14,7 @@ import {
 import { toast, ToastContainer } from "./components/toast.js";
 import { fetchJson, patchJsonOrToast } from "./lib/api.js";
 import { useDashboardBootstrap } from "./components/bootstrap.js";
+import { filterDashboardJobs, sortDashboardJobs } from "./components/dashboard-job-helpers.js";
 
 const html = (
   htm as unknown as {
@@ -50,31 +51,6 @@ type Project = {
 
 type SortDir = "asc" | "desc";
 
-function filterJobs(jobs: Job[], q: string, statusFilter: string, deviceFilter: string) {
-  return jobs.filter((j) => {
-    const text = ((j.designTitle || "") + " " + (j.customer || "")).toLowerCase();
-    if (q && !text.includes(q.toLowerCase())) return false;
-    if (statusFilter && (j.status || "").toLowerCase() !== statusFilter) return false;
-    if (deviceFilter && j.deviceModel !== deviceFilter) return false;
-    return true;
-  });
-}
-
-function sortJobs(filtered: Job[], sortCol: string, sortDir: SortDir) {
-  return [...filtered].sort((a, b) => {
-    let av = a[sortCol] as string | number | null | undefined;
-    let bv = b[sortCol] as string | number | null | undefined;
-    if (av == null) av = sortDir === "asc" ? Infinity : -Infinity;
-    if (bv == null) bv = sortDir === "asc" ? Infinity : -Infinity;
-    if (typeof av === "string") {
-      const bvs = typeof bv === "string" ? bv : String(bv);
-      return sortDir === "asc" ? av.localeCompare(bvs) : bvs.localeCompare(av);
-    }
-    const avn = Number(av);
-    const bvn = Number(bv);
-    return sortDir === "asc" ? avn - bvn : bvn - avn;
-  });
-}
 
 function useAppState() {
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -159,10 +135,13 @@ function useJobsViewState({
 
   const isFiltered = !!(q || statusFilter || deviceFilter);
   const filtered = useMemo(
-    () => filterJobs(jobs, q, statusFilter, deviceFilter),
+    () => filterDashboardJobs(jobs, q, statusFilter, deviceFilter),
     [jobs, q, statusFilter, deviceFilter],
   );
-  const sorted = useMemo(() => sortJobs(filtered, sortCol, sortDir), [filtered, sortCol, sortDir]);
+  const sorted = useMemo(
+    () => sortDashboardJobs(filtered, sortCol, sortDir),
+    [filtered, sortCol, sortDir],
+  );
 
   const handleSort = useCallback(
     (col: string) => {
