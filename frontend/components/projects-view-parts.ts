@@ -19,7 +19,7 @@ const html = (
   }
 ).bind(h);
 
-export function ProjectCard({
+function ProjectCard({
   project,
   totalPrice,
   onClick,

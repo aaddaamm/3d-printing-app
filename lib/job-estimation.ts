@@ -1,9 +1,9 @@
 import type { Job } from "./types.js";
 
-export const ACTIVE_JOB_STATUSES = new Set(["running", "pause", "created"]);
+const ACTIVE_JOB_STATUSES = new Set(["running", "pause", "created"]);
 export const ESTIMATE_STATUSES = ["finish", "running", "pause", "created"] as const;
 
-export function isActiveJobStatus(status: string | null | undefined): boolean {
+function isActiveJobStatus(status: string | null | undefined): boolean {
   return ACTIVE_JOB_STATUSES.has((status ?? "").toLowerCase());
 }
 

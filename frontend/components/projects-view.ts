@@ -26,7 +26,6 @@ const html = (
   }
 ).bind(h);
 
-
 function ProjectDetail({
   project,
   jobs,
