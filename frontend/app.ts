@@ -51,6 +51,8 @@ type Project = {
 
 type SortDir = "asc" | "desc";
 
+type AppState = ReturnType<typeof useAppState>;
+
 function useAppState() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -298,12 +300,7 @@ function SelectedJobModal({
   />`;
 }
 
-// ── App ──────────────────────────────────────────────────────────────────────
-
-function App() {
-  const state = useAppState();
-  const [loc, navigate] = useLocation();
-
+function useBootstrapData(state: AppState) {
   const setProjectsFromBootstrap = useCallback(
     (items: unknown[]) => state.setProjects(items as Project[]),
     [state.setProjects],
@@ -317,6 +314,22 @@ function App() {
     [state.setDataRange],
   );
 
+  return useDashboardBootstrap({
+    setJobs: state.setJobs,
+    setProjects: setProjectsFromBootstrap,
+    setProjectPrices: state.setProjectPrices,
+    setSummary: setSummaryFromBootstrap,
+    setDataRange: setDataRangeFromBootstrap,
+    toast,
+  });
+}
+
+// ── App ──────────────────────────────────────────────────────────────────────
+
+function App() {
+  const state = useAppState();
+  const [loc, navigate] = useLocation();
+
   const {
     loading,
     projectsLoading,
@@ -325,14 +338,7 @@ function App() {
     bootStatus,
     refreshProjectsAndPrices,
     refreshJobPrices,
-  } = useDashboardBootstrap({
-    setJobs: state.setJobs,
-    setProjects: setProjectsFromBootstrap,
-    setProjectPrices: state.setProjectPrices,
-    setSummary: setSummaryFromBootstrap,
-    setDataRange: setDataRangeFromBootstrap,
-    toast,
-  });
+  } = useBootstrapData(state);
 
   const { devices, isFiltered, filtered, sorted, handleSort, route } = useJobsViewState({
     jobs: state.jobs,

@@ -43,6 +43,8 @@ type RatesResponse = {
 
 type SaveState = "idle" | "saving" | "saved";
 
+const SAVED_FLASH_MS = 2000;
+
 function replaceByKey<T>(items: T[], keyOf: (item: T) => string, next: T): T[] {
   const key = keyOf(next);
   return items.map((item) => (keyOf(item) === key ? next : item));
@@ -58,6 +60,32 @@ function getSaveState(activeSavingKey: string, activeSavedKey: string, key: stri
   if (activeSavingKey === key) return "saving";
   if (activeSavedKey === key) return "saved";
   return "idle";
+}
+
+function useSaveFeedback(onRatesChanged: () => void) {
+  const [savingKey, setSavingKey] = useState("");
+  const [savedKey, setSavedKey] = useState("");
+
+  const flashSaved = (key: string) => {
+    setSavedKey(key);
+    setTimeout(() => setSavedKey(""), SAVED_FLASH_MS);
+  };
+
+  const runSave = async (saveKey: string, action: () => Promise<boolean>) => {
+    setSavingKey(saveKey);
+    try {
+      const ok = await action();
+      if (!ok) return;
+      flashSaved(saveKey);
+      onRatesChanged();
+    } finally {
+      setSavingKey("");
+    }
+  };
+
+  const getStateFor = (key: string) => getSaveState(savingKey, savedKey, key);
+
+  return { runSave, getStateFor };
 }
 
 type RateFieldProps = {
@@ -256,31 +284,13 @@ function MaterialForm({
 
 export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () => void }) {
   const [rates, setRates] = useState<RatesResponse | null>(null);
-  const [savingKey, setSavingKey] = useState("");
-  const [savedKey, setSavedKey] = useState("");
+  const { runSave, getStateFor } = useSaveFeedback(onRatesChanged);
 
   useEffect(() => {
     fetchJsonOrToast<RatesResponse>("/rates", "Failed to load rates.").then((data) => {
       if (data) setRates(data);
     });
   }, []);
-
-  const flash = (key: string) => {
-    setSavedKey(key);
-    setTimeout(() => setSavedKey(""), 2000);
-  };
-
-  const runSave = async (saveKey: string, action: () => Promise<boolean>) => {
-    setSavingKey(saveKey);
-    try {
-      const ok = await action();
-      if (!ok) return;
-      flash(saveKey);
-      onRatesChanged();
-    } finally {
-      setSavingKey("");
-    }
-  };
 
   const saveLaborConfig = async (labor: LaborConfig) => {
     await runSave("labor", async () => {
@@ -360,7 +370,7 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
       >
         <${LaborForm}
           labor=${lc}
-          saveState=${getSaveState(savingKey, savedKey, "labor")}
+          saveState=${getStateFor("labor")}
           onSave=${saveLaborConfig}
         />
       </${Section}>
@@ -374,7 +384,7 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
             <${MachineForm}
               key=${m.device_model}
               machine=${m}
-              saveState=${getSaveState(savingKey, savedKey, m.device_model)}
+              saveState=${getStateFor(m.device_model)}
               onSave=${saveMachine}
             />
           `,
@@ -390,7 +400,7 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
             <${MaterialForm}
               key=${m.filament_type}
               material=${m}
-              saveState=${getSaveState(savingKey, savedKey, m.filament_type)}
+              saveState=${getStateFor(m.filament_type)}
               onSave=${saveMaterial}
             />
           `,
