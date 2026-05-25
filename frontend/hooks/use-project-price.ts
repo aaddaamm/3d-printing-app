@@ -13,7 +13,9 @@ export type ProjectPrice = {
 const projectPriceCache = new Map<number, ProjectPrice>();
 
 export function useProjectPrice(projectId: number, jobCount: number): ProjectPrice | null {
-  const [price, setPrice] = useState<ProjectPrice | null>(() => projectPriceCache.get(projectId) ?? null);
+  const [price, setPrice] = useState<ProjectPrice | null>(
+    () => projectPriceCache.get(projectId) ?? null,
+  );
 
   useEffect(() => {
     setPrice(projectPriceCache.get(projectId) ?? null);
@@ -24,13 +26,14 @@ export function useProjectPrice(projectId: number, jobCount: number): ProjectPri
     }
 
     let cancelled = false;
-    fetchJsonOrToast<ProjectPrice>(`/projects/${projectId}/price`, "Failed to load project price.").then(
-      (data) => {
-        if (!data || cancelled) return;
-        projectPriceCache.set(projectId, data);
-        setPrice(data);
-      },
-    );
+    fetchJsonOrToast<ProjectPrice>(
+      `/projects/${projectId}/price`,
+      "Failed to load project price.",
+    ).then((data) => {
+      if (!data || cancelled) return;
+      projectPriceCache.set(projectId, data);
+      setPrice(data);
+    });
 
     return () => {
       cancelled = true;

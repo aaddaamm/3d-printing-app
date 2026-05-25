@@ -34,13 +34,11 @@ const html = (
   }
 ).bind(h);
 
-
 function onOverlayClick(onClose: () => void) {
   return (e: MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
   };
 }
-
 
 function NewProjectModal({
   onClose,
