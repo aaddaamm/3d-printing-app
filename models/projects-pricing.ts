@@ -184,7 +184,7 @@ function writeProjectPriceCache(prices: Record<number, number>): void {
   writePriceCache({ cacheTable: "project_price_cache", idColumn: "project_id" }, prices);
 }
 
-function buildProjectPrice(projectId: number): PriceBreakdown | null {
+export function getProjectPrice(projectId: number): PriceBreakdown | null {
   const config = loadRatesConfig();
   if (!config) return null;
   const { laborConfig, machineRates, materialRates, fallbackMachine } = config;
@@ -207,10 +207,6 @@ function buildProjectPrice(projectId: number): PriceBreakdown | null {
     fallbackMachine,
     laborConfig,
   );
-}
-
-export function getProjectPrice(id: number): PriceBreakdown | null {
-  return buildProjectPrice(id);
 }
 
 export function getAllProjectPrices(): Record<number, number> {
