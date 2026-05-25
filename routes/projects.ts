@@ -72,9 +72,9 @@ projects.post("/", async (c) => {
   const customer = body.customer;
   const notes = body.notes;
 
-  if (!name || typeof name !== "string" || !name.trim()) {
-    return jsonError(c, "name is required", 400);
-  }
+  const hasName = typeof name === "string";
+  const hasNonEmptyName = hasName && !!name.trim();
+  if (!hasNonEmptyName) return jsonError(c, "name is required", 400);
   const createValidationError = validateOptionalTextFields(body);
   if (createValidationError) return jsonError(c, createValidationError, 400);
   const project = createProject({
@@ -118,7 +118,10 @@ projects.patch("/:id", async (c) => {
   const customer = body.customer;
   const notes = body.notes;
 
-  if ("name" in body && (typeof name !== "string" || !name.trim())) {
+  const includesName = "name" in body;
+  const patchNameIsString = typeof name === "string";
+  const patchNameNonEmpty = patchNameIsString && !!name.trim();
+  if (includesName && !patchNameNonEmpty) {
     return jsonError(c, "name must be a non-empty string", 400);
   }
   const patchValidationError = validateOptionalTextFields(body);

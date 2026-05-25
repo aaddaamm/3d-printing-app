@@ -43,13 +43,12 @@ function readToken(raw: string): string {
   const s = raw.trim();
   try {
     const parsed = JSON.parse(s) as unknown;
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      "token" in parsed &&
-      typeof (parsed as { token: unknown }).token === "string"
-    ) {
-      return (parsed as { token: string }).token.trim();
+    const isObject = parsed !== null && typeof parsed === "object";
+    const hasToken = isObject && "token" in parsed;
+    const tokenValue = hasToken ? (parsed as { token: unknown }).token : null;
+    const hasStringToken = typeof tokenValue === "string";
+    if (hasStringToken) {
+      return tokenValue.trim();
     }
   } catch {
     // not JSON — treat as raw token string

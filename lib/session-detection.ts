@@ -49,7 +49,9 @@ export interface RawTask {
 // Returns a Map<taskId, sessionId> covering every task.
 
 function isSoloTask(task: RawTask): boolean {
-  return task.instanceId == null || task.instanceId === 0;
+  const missingInstanceId = task.instanceId == null;
+  const zeroInstanceId = task.instanceId === 0;
+  return missingInstanceId || zeroInstanceId;
 }
 
 function groupTasks(tasks: RawTask[]): Map<string, RawTask[]> {
@@ -83,12 +85,14 @@ function shouldStartNewSession(
   prevEnd: string | null,
   sessionPlateIndexes: Set<number>,
 ): boolean {
-  const repeatsPlate = task.plateIndex != null && sessionPlateIndexes.has(task.plateIndex);
+  const plateIndex = task.plateIndex;
+  const repeatsPlate = plateIndex != null && sessionPlateIndexes.has(plateIndex);
   if (repeatsPlate) return true;
 
-  if (!task.startTime || !prevEnd) return false;
+  const startTime = task.startTime;
+  if (!startTime || !prevEnd) return false;
 
-  const gapS = (Date.parse(task.startTime) - Date.parse(prevEnd)) / 1000;
+  const gapS = (Date.parse(startTime) - Date.parse(prevEnd)) / 1000;
   return gapS > SESSION_GAP_S;
 }
 
@@ -115,7 +119,9 @@ function assignGroupSessions(group: RawTask[], taskToSession: Map<string, string
 
     taskToSession.set(task.id, sessionStart.id);
     if (task.plateIndex != null) sessionPlateIndexes.add(task.plateIndex);
-    if (task.endTime && (!prevEnd || task.endTime > prevEnd)) prevEnd = task.endTime;
+    const endTime = task.endTime;
+    const shouldAdvancePrevEnd = !!endTime && (!prevEnd || endTime > prevEnd);
+    if (shouldAdvancePrevEnd) prevEnd = endTime;
   }
 }
 
