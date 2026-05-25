@@ -1,19 +1,13 @@
 // ── Projects view ─────────────────────────────────────────────────────────────
 
 import { h } from "preact";
-import { useState, useMemo, useCallback } from "preact/hooks";
+import { useState, useMemo, useCallback, useRef } from "preact/hooks";
 import htm from "htm";
 
-import {
-  fmtCurrency,
-  fmtTime,
-  fmtWeightTotal,
-  fmtDateShort,
-  fmtDate,
-  fmtWeight,
-} from "./helpers.js";
-import { Badge, RowThumb } from "./atoms.js";
+import { fmtTime, fmtWeightTotal, fmtDateShort } from "./helpers.js";
+import { RowThumb } from "./atoms.js";
 import { useLocation } from "./router.js";
+import { ProjectJobsTable, ProjectPriceSummary, ProjectsBody } from "./projects-view-parts.js";
 import {
   filterJobs,
   filterProjects,
@@ -26,7 +20,7 @@ import {
 } from "./projects-view-helpers.js";
 import { postJsonOrToast } from "../lib/api.js";
 import { useEscapeClose } from "../hooks/use-escape-close.js";
-import { useProjectPrice, type ProjectPrice } from "../hooks/use-project-price.js";
+import { useProjectPrice } from "../hooks/use-project-price.js";
 
 const html = (
   htm as unknown as {
@@ -127,38 +121,6 @@ function NewProjectModal({
   `;
 }
 
-function ProjectCard({
-  project,
-  totalPrice,
-  onClick,
-}: {
-  project: Project;
-  totalPrice: number | null;
-  onClick: () => void;
-}) {
-  const totalW = project.total_weight_g;
-  const totalT = project.total_time_s;
-  return html`
-    <div class="proj-card" onClick=${onClick}>
-      ${project.cover_url
-        ? html`<img class="proj-card-cover" src=${project.cover_url} alt="" />`
-        : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`}
-      <div class="proj-card-name">${project.name}</div>
-      <div class="proj-card-meta">
-        ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
-      </div>
-      <div class="proj-card-stats">
-        <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? "s" : ""}</span>
-        ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
-        ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
-        ${totalPrice != null &&
-        html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
-      </div>
-      ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
-    </div>
-  `;
-}
-
 function AddJobsModal({
   unassignedJobs,
   onClose,
@@ -213,87 +175,6 @@ function AddJobsModal({
   `;
 }
 
-function ProjectPriceSummary({ price }: { price: ProjectPrice | null }) {
-  if (!price) return null;
-
-  return html`
-    <span>Material: <strong>${fmtCurrency(price.material_cost)}</strong></span>
-    <span>Machine: <strong>${fmtCurrency(price.machine_cost)}</strong></span>
-    <span>Labor: <strong>${fmtCurrency(price.labor_cost)}</strong></span>
-    ${price.extra_labor_cost > 0 &&
-    html`<span>Extra labor: <strong>${fmtCurrency(price.extra_labor_cost)}</strong></span>`}
-    <span class="totals-total">Total: <strong>${fmtCurrency(price.final_price)}</strong></span>
-  `;
-}
-
-function ProjectJobsTable({
-  jobs,
-  onJobClick,
-  onRemoveJob,
-}: {
-  jobs: Job[];
-  onJobClick: (job: Job) => void;
-  onRemoveJob: (jobId: number) => void;
-}) {
-  if (jobs.length === 0) {
-    return html`<div class="empty">No jobs assigned yet. Use "+ Add Jobs" to assign them.</div>`;
-  }
-
-  return html`
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th class="td-thumb"></th>
-            <th>Title</th>
-            <th>Printer</th>
-            <th>Date</th>
-            <th>Status</th>
-            <th class="td-num">Filament</th>
-            <th class="td-num">Time</th>
-            <th class="td-num">Price</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          ${jobs.map(
-            (job: Job) => html`
-              <tr key=${job.id} onClick=${() => onJobClick(job)}>
-                <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
-                <td class="td-title">
-                  <span class="row-title">${job.designTitle || "Untitled Job"}</span>
-                </td>
-                <td>${job.deviceModel || "—"}</td>
-                <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
-                <td><${Badge} status=${job.status} /></td>
-                <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
-                <td class="td-num">${fmtTime(job.total_time_s)}</td>
-                <td class="td-num">
-                  ${job.final_price != null
-                    ? html`<strong>${fmtCurrency(job.final_price)}</strong>`
-                    : "—"}
-                </td>
-                <td>
-                  <button
-                    class="btn-remove-job"
-                    title="Remove from project"
-                    onClick=${(e: MouseEvent) => {
-                      e.stopPropagation();
-                      onRemoveJob(job.id);
-                    }}
-                  >
-                    ×
-                  </button>
-                </td>
-              </tr>
-            `,
-          )}
-        </tbody>
-      </table>
-    </div>
-  `;
-}
-
 function ProjectDetail({
   project,
   jobs,
@@ -315,6 +196,20 @@ function ProjectDetail({
   const price = useProjectPrice(project.id, jobs.length);
   const totW = sumJobWeight(jobs);
   const totT = sumJobTime(jobs);
+  const stableJobPricesRef = useRef(new Map<number, number>());
+
+  const jobsWithStablePrices = useMemo(() => {
+    for (const job of jobs) {
+      if (job.final_price != null) stableJobPricesRef.current.set(job.id, job.final_price);
+    }
+
+    return jobs.map((job) => {
+      if (job.final_price != null) return job;
+      const cachedPrice = stableJobPricesRef.current.get(job.id);
+      if (cachedPrice == null) return job;
+      return { ...job, final_price: cachedPrice };
+    });
+  }, [jobs]);
 
   const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
 
@@ -336,50 +231,17 @@ function ProjectDetail({
         <span>Print time: <strong>${fmtTime(totT)}</strong></span>
         <${ProjectPriceSummary} price=${price} />
       </div>
-      <${ProjectJobsTable} jobs=${jobs} onJobClick=${onJobClick} onRemoveJob=${onRemoveJob} />
+      <${ProjectJobsTable}
+        jobs=${jobsWithStablePrices}
+        onJobClick=${onJobClick}
+        onRemoveJob=${onRemoveJob}
+      />
       ${showAddJobs &&
       html`<${AddJobsModal}
         unassignedJobs=${unassignedJobs}
         onClose=${() => setShowAddJobs(false)}
         onAdd=${handleAdd}
       />`}
-    </div>
-  `;
-}
-
-function ProjectsBody({
-  loading,
-  filtered,
-  q,
-  projectPrices,
-  navigate,
-}: {
-  loading: boolean;
-  filtered: Project[];
-  q: string;
-  projectPrices: Record<number, number>;
-  navigate: (path: string) => void;
-}) {
-  if (loading) return html`<div class="empty">Loading projects…</div>`;
-
-  if (filtered.length === 0) {
-    const emptyText = q
-      ? "No projects match your search."
-      : "No projects yet. Create one to group related jobs together.";
-    return html`<div class="empty">${emptyText}</div>`;
-  }
-
-  return html`
-    <div class="proj-grid">
-      ${filtered.map(
-        (p) =>
-          html`<${ProjectCard}
-            key=${p.id}
-            project=${p}
-            totalPrice=${projectPrices[p.id] ?? null}
-            onClick=${() => navigate(`/projects/${p.id}`)}
-          />`,
-      )}
     </div>
   `;
 }

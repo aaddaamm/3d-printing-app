@@ -51,7 +51,6 @@ type Project = {
 
 type SortDir = "asc" | "desc";
 
-
 function useAppState() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);

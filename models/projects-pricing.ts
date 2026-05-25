@@ -1,5 +1,10 @@
 import { db, stmts } from "../lib/db.js";
-import { calcWeightedMaterialCost, calcMachineCost, calcLaborCost, type FilamentWeight } from "../lib/pricing.js";
+import {
+  calcWeightedMaterialCost,
+  calcMachineCost,
+  calcLaborCost,
+  type FilamentWeight,
+} from "../lib/pricing.js";
 import { loadRatesConfig } from "./rates.js";
 import { ESTIMATE_STATUSES, shouldUseEstimatedUsage } from "../lib/job-estimation.js";
 import { readPriceCache, writePriceCache } from "../lib/price-cache-store.js";

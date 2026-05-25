@@ -112,7 +112,9 @@ export function cleanupJunkProjects(): {
       .all();
 
     for (const { id } of junkProjects) {
-      const { changes } = db.prepare(`UPDATE jobs SET project_id = NULL WHERE project_id = ?`).run(id);
+      const { changes } = db
+        .prepare(`UPDATE jobs SET project_id = NULL WHERE project_id = ?`)
+        .run(id);
       jobs_unassigned += changes;
       db.prepare(`DELETE FROM projects WHERE id = ?`).run(id);
       junk_projects_deleted++;
