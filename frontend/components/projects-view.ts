@@ -44,7 +44,8 @@ function ProjectDetail({
   onRemoveJob: (jobId: number) => void;
 }) {
   const [showAddJobs, setShowAddJobs] = useState(false);
-  const price = useProjectPrice(project.id, jobs.length);
+  const effectiveJobCount = project.job_count ?? jobs.length;
+  const price = useProjectPrice(project.id, effectiveJobCount);
   const totW = sumJobWeight(jobs);
   const totT = sumJobTime(jobs);
   const stableJobPricesRef = useRef(new Map<number, number>());
@@ -77,7 +78,7 @@ function ProjectDetail({
       ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
       <div class="totals-bar">
         <span class="totals-label">Project</span>
-        <span>Jobs: <strong>${jobs.length}</strong></span>
+        <span>Jobs: <strong>${effectiveJobCount}</strong></span>
         <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
         <span>Print time: <strong>${fmtTime(totT)}</strong></span>
         <${ProjectPriceSummary} price=${price} />

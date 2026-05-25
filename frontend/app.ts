@@ -304,6 +304,19 @@ function App() {
   const state = useAppState();
   const [loc, navigate] = useLocation();
 
+  const setProjectsFromBootstrap = useCallback(
+    (items: unknown[]) => state.setProjects(items as Project[]),
+    [state.setProjects],
+  );
+  const setSummaryFromBootstrap = useCallback(
+    (next: unknown) => state.setSummary(next as Summary),
+    [state.setSummary],
+  );
+  const setDataRangeFromBootstrap = useCallback(
+    (next: unknown) => state.setDataRange(next as DataRange),
+    [state.setDataRange],
+  );
+
   const {
     loading,
     projectsLoading,
@@ -314,10 +327,10 @@ function App() {
     refreshJobPrices,
   } = useDashboardBootstrap({
     setJobs: state.setJobs,
-    setProjects: (items: unknown[]) => state.setProjects(items as Project[]),
+    setProjects: setProjectsFromBootstrap,
     setProjectPrices: state.setProjectPrices,
-    setSummary: (next: unknown) => state.setSummary(next as Summary),
-    setDataRange: (next: unknown) => state.setDataRange(next as DataRange),
+    setSummary: setSummaryFromBootstrap,
+    setDataRange: setDataRangeFromBootstrap,
     toast,
   });
 

@@ -123,8 +123,8 @@ function ProjectRouteView({
   setSelectedJob: (job: Job | null) => void;
   handleJobProjectChange: (jobId: number, projectId: number | null) => void;
 }) {
-  const project = projects.find((p) => p.id === projectId);
-  const projectJobs = jobs.filter((j) => j.project_id === projectId);
+  const project = projects.find((p) => Number(p.id) === projectId);
+  const projectJobs = jobs.filter((j) => Number(j.project_id) === projectId);
 
   if (!project) {
     if (projectsLoading) {
