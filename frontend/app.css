@@ -332,10 +332,16 @@ thead th {
   color: var(--muted);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  user-select: none;
+}
+
+/* Sticky table headers are opt-in.
+   Keeping this scoped prevents overlap/ghosting on views that reuse table styles
+   but do not need sticky headers (e.g. printers/projects tables). */
+.table-sticky-head thead th {
   position: sticky;
   top: 56px;
   z-index: 1;
-  user-select: none;
 }
 thead th.sortable {
   cursor: pointer;

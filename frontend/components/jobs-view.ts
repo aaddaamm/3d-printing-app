@@ -51,12 +51,34 @@ type Summary = {
 
 type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
 
+function isJobsRoute(loc: string): boolean {
+  return !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers");
+}
+
+function buildJobsCsvUrl(statusFilter: string, deviceFilter: string): string {
+  const params = new URLSearchParams();
+  if (statusFilter) params.set("status", statusFilter);
+  if (deviceFilter) params.set("device", deviceFilter);
+  const query = params.toString();
+  return "/jobs/export.csv" + (query ? "?" + query : "");
+}
+
+function getFilteredTotals(filtered: Job[]) {
+  return filtered.reduce(
+    (totals, job) => {
+      totals.weight += job.total_weight_g || 0;
+      totals.time += job.total_time_s || 0;
+      return totals;
+    },
+    { weight: 0, time: 0 },
+  );
+}
+
 const NAV_ITEMS = [
   {
     label: "Jobs",
     path: "/",
-    active: (loc: string) =>
-      !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers"),
+    active: isJobsRoute,
   },
   { label: "Projects", path: "/projects", active: (loc: string) => loc.startsWith("/projects") },
   { label: "Printers", path: "/printers", active: (loc: string) => loc.startsWith("/printers") },
@@ -142,16 +164,18 @@ function HeaderStats({ summary }: { summary: Summary }) {
 
 export function Header({ summary, dataRange }: { summary: Summary; dataRange: DataRange }) {
   const [loc, navigate] = useLocation();
+  const hasHistoryRange = Boolean(dataRange?.min_start && dataRange?.max_start);
+  const minStart = dataRange?.min_start ?? "";
+  const maxStart = dataRange?.max_start ?? "";
 
   return html`
     <header>
       <div class="header-left">
         <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
-        ${dataRange?.min_start &&
-        dataRange?.max_start &&
+        ${hasHistoryRange &&
         html`<div class="header-range">
-          History: ${fmtDateShort(dataRange.min_start)} → ${fmtDateShort(dataRange.max_start)}
-          (${(dataRange.task_count || 0).toLocaleString()} tasks)
+          History: ${fmtDateShort(minStart)} → ${fmtDateShort(maxStart)}
+          (${(dataRange?.task_count || 0).toLocaleString()} tasks)
         </div>`}
         <${HeaderNav} loc=${loc} navigate=${navigate} />
       </div>
@@ -185,13 +209,10 @@ export function Toolbar({
   filteredCount: number;
   totalCount: number;
 }) {
-  const csvUrl = useMemo(() => {
-    const p = new URLSearchParams();
-    if (statusFilter) p.set("status", statusFilter);
-    if (deviceFilter) p.set("device", deviceFilter);
-    const qs = p.toString();
-    return "/jobs/export.csv" + (qs ? "?" + qs : "");
-  }, [statusFilter, deviceFilter]);
+  const csvUrl = useMemo(
+    () => buildJobsCsvUrl(statusFilter, deviceFilter),
+    [statusFilter, deviceFilter],
+  );
 
   return html`
     <div class="toolbar">
@@ -272,16 +293,21 @@ export function PrinterBreakdownView({ summary }: { summary: Summary }) {
 
 export function TotalsBar({ filtered, isFiltered }: { filtered: Job[]; isFiltered: boolean }) {
   if (!isFiltered || !filtered.length) return null;
-  const totW = filtered.reduce((s, j) => s + (j.total_weight_g || 0), 0);
-  const totT = filtered.reduce((s, j) => s + (j.total_time_s || 0), 0);
+
+  const totals = getFilteredTotals(filtered);
   return html`
     <div class="totals-bar">
       <span class="totals-label">Selection</span>
       <span>Jobs: <strong>${filtered.length}</strong></span>
-      <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
-      <span>Print time: <strong>${fmtTime(totT)}</strong></span>
+      <span>Filament: <strong>${fmtWeightTotal(totals.weight)}</strong></span>
+      <span>Print time: <strong>${fmtTime(totals.time)}</strong></span>
     </div>
   `;
+}
+
+function JobRunBadge({ printRun }: { printRun?: number }) {
+  if ((printRun ?? 1) <= 1) return null;
+  return html`<span class="run-badge">Run ${printRun}</span>`;
 }
 
 function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
@@ -292,7 +318,7 @@ function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void 
         <span class="row-title" title=${job.designTitle || "Untitled"}
           >${job.designTitle || "Untitled Job"}</span
         >
-        ${(job.print_run ?? 1) > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+        <${JobRunBadge} printRun=${job.print_run} />
         <${FilamentSwatches} colors=${job.filament_colors} />
       </td>
       <td>${job.deviceModel || "—"}</td>
@@ -323,20 +349,19 @@ export function TableView({
   onJobClick: (job: Job) => void;
 }) {
   return html`
-    <div class="table-wrap">
+    <div class="table-wrap table-sticky-head">
       <table>
         <thead>
           <tr>
             <th class="td-thumb"></th>
             ${TABLE_COLS.map(({ col, label, cls }) => {
-              const active = col && col === sortCol;
-              const thCls = [cls, active ? `sort-${sortDir}` : ""].filter(Boolean).join(" ");
+              const isActiveSort = col != null && col === sortCol;
+              const headerClass = [cls, isActiveSort ? `sort-${sortDir}` : ""]
+                .filter(Boolean)
+                .join(" ");
+              const onHeaderClick = col ? () => onSort(col) : undefined;
               return html`
-                <th
-                  key=${label}
-                  class=${thCls || undefined}
-                  onClick=${col ? () => onSort(col) : undefined}
-                >
+                <th key=${label} class=${headerClass || undefined} onClick=${onHeaderClick}>
                   ${label}
                 </th>
               `;
@@ -368,7 +393,7 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
         </div>
         <div class="card-footer">
           <${Badge} status=${job.status} />
-          ${(job.print_run ?? 1) > 1 && html`<span class="run-badge">Run ${job.print_run}</span>`}
+          <${JobRunBadge} printRun=${job.print_run} />
           ${job.customer && html`<span class="customer-pill">${job.customer}</span>`}
           <${FilamentSwatches} colors=${job.filament_colors} />
         </div>
