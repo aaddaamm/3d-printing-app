@@ -16,20 +16,30 @@ type LocationTuple = [string, Navigate];
 const LocationContext = createContext<LocationTuple | null>(null);
 
 export function RouterProvider({ base, children }: { base: string; children: ComponentChildren }) {
-  const strip = (path: string) => (path.startsWith(base) ? path.slice(base.length) || "/" : path);
+  const normalizedBase = base.endsWith("/") ? base.slice(0, -1) : base;
+
+  const strip = (path: string) => {
+    if (path === normalizedBase || path === normalizedBase + "/") return "/";
+    if (path.startsWith(normalizedBase + "/")) return path.slice(normalizedBase.length) || "/";
+    return path;
+  };
+
   const [path, setPath] = useState(() => strip(location.pathname));
   useEffect(() => {
     const onPop = () => setPath(strip(location.pathname));
     window.addEventListener("popstate", onPop);
     return () => window.removeEventListener("popstate", onPop);
-  }, [base]);
+  }, [normalizedBase]);
+
   const navigate = useCallback(
     (to: string) => {
-      history.pushState(null, "", base + (to === "/" ? "" : to));
+      const nextPath = to === "/" ? normalizedBase + "/" : normalizedBase + to;
+      history.pushState(null, "", nextPath);
       setPath(to);
     },
-    [base],
+    [normalizedBase],
   );
+
   return html`<${LocationContext.Provider} value=${[path, navigate]}>${children}</${LocationContext.Provider}>`;
 }
 
