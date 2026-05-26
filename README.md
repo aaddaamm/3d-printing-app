@@ -41,7 +41,9 @@ The browser UI is available at `/ui` and stores a same-key session cookie after 
 ## Scripts
 
 ```bash
-npm run dev          # Hot-reload API server (tsx watch)
+npm run dev          # API watch + Vite UI together
+npm run dev:api      # Hot-reload API server only (tsx watch)
+npm run dev:ui       # Vite dev server for UI (HMR)
 npm run api          # Start API server
 npm run sync         # Fetch Bambu API → SQLite → normalize → download covers
 npm run normalize    # Rebuild sessions/jobs from existing print_tasks
@@ -83,6 +85,16 @@ npm run dev
 ```
 
 Open `http://localhost:3000/ui` for the browser UI.
+
+### Vite UI dev (HMR)
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:5173/ui/` for HMR UI development.
+Vite proxies API/UI data routes to `http://localhost:3000` by default.
+Override target with `VITE_API_PROXY_TARGET` if needed.
 
 ### API environment variables
 
