@@ -362,7 +362,7 @@ export function AdminView({ onRatesChanged = () => {} }: { onRatesChanged?: () =
 
   return html`
     <div class="admin-page">
-      <h2 class="admin-title">Rates &amp; Pricing</h2>
+      <h2 class="admin-title">Rates & Pricing</h2>
 
       <${Section}
         title="Labor"
