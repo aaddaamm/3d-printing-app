@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "dist/api.js": {
+      "includeFiles": [
+        "a1_mini.webp",
+        "bambu-lab-P1S.webp",
+        "frontend/public/printers/**",
+        "frontend/dist/**",
+        "frontend/fonts/**"
+      ]
+    }
+  }
+}

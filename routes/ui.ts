@@ -20,8 +20,24 @@ const INTER_FONT_PATH = fileURLToPath(
 const JETBRAINS_FONT_PATH = fileURLToPath(
   new URL("../frontend/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
 );
-const A1_MINI_PHOTO_PATH = fileURLToPath(new URL("../a1_mini.webp", import.meta.url));
-const P1S_PHOTO_PATH = fileURLToPath(new URL("../bambu-lab-P1S.webp", import.meta.url));
+const PRINTER_PHOTO_CANDIDATES = new Map<string, string[]>([
+  [
+    "a1-mini",
+    [
+      path.resolve(process.cwd(), "a1_mini.webp"),
+      path.resolve(process.cwd(), "frontend/public/printers/a1-mini.webp"),
+      path.resolve(process.cwd(), "dist/frontend/public/printers/a1-mini.webp"),
+    ],
+  ],
+  [
+    "p1s",
+    [
+      path.resolve(process.cwd(), "bambu-lab-P1S.webp"),
+      path.resolve(process.cwd(), "frontend/public/printers/p1s.webp"),
+      path.resolve(process.cwd(), "dist/frontend/public/printers/p1s.webp"),
+    ],
+  ],
+]);
 
 const isProd = process.env["NODE_ENV"] === "production";
 const fileCache = new Map<string, string>();
@@ -60,10 +76,13 @@ function isSafeFontFile(file: string): boolean {
   return /^[\w,.-]+\.(woff2|ttf)$/.test(file);
 }
 
-const PRINTER_PHOTOS = new Map<string, string>([
-  ["a1-mini", A1_MINI_PHOTO_PATH],
-  ["p1s", P1S_PHOTO_PATH],
-]);
+function resolvePrinterPhotoPath(slug: string): string | null {
+  const candidates = PRINTER_PHOTO_CANDIDATES.get(slug) ?? [];
+  for (const filePath of candidates) {
+    if (existsSync(filePath)) return filePath;
+  }
+  return null;
+}
 
 function serveOptionalTextFile(c: Context, filePath: string, contentType: string): Response {
   if (!existsSync(filePath)) return notFound(c);
@@ -203,8 +222,8 @@ function registerStaticRoutes(ui: Hono): void {
 
   ui.get("/printers/:slug", (c) => {
     const slug = c.req.param("slug");
-    const filePath = PRINTER_PHOTOS.get(slug);
-    if (!filePath || !existsSync(filePath)) return notFound(c);
+    const filePath = resolvePrinterPhotoPath(slug);
+    if (!filePath) return notFound(c);
     return binaryResponse(readFileSync(filePath), "image/webp", "public, max-age=86400");
   });
 }
