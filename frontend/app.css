@@ -39,8 +39,8 @@
   --orange-soft: rgba(255, 159, 67, 0.12);
   --cyan: #00f5ff;
   --text: #f4f7ff;
-  --subtext: #a6b0cf;
-  --muted: #7780a2;
+  --subtext: #bcc6e4;
+  --muted: #95a2cb;
   --radius: 8px;
   --ui-panel-bg: linear-gradient(180deg, #0f1321 0%, #141a2d 100%);
   --ui-panel-border: rgba(0, 245, 255, 0.2);
@@ -240,13 +240,14 @@ header h1 span:last-child {
   margin-left: 4px;
 }
 .view-btn {
-  background: rgba(17, 21, 34, 0.8);
-  border: 1px solid var(--border);
-  color: var(--subtext);
+  background: rgba(17, 21, 34, 0.9);
+  border: 1px solid rgba(148, 170, 230, 0.38);
+  color: #d7e4ff;
   padding: 0 12px;
   height: 34px;
   cursor: pointer;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  font-weight: 560;
   border-radius: var(--radius);
   transition:
     background 0.16s,
@@ -288,11 +289,12 @@ header h1 span:last-child {
 }
 
 .density-btn {
-  background: rgba(17, 21, 34, 0.8);
-  border: 1px solid var(--ui-panel-border);
-  color: var(--subtext);
+  background: rgba(17, 21, 34, 0.9);
+  border: 1px solid rgba(148, 170, 230, 0.4);
+  color: #d7e4ff;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
+  font-weight: 560;
   padding: 4px 10px;
   cursor: pointer;
 }
@@ -303,19 +305,20 @@ header h1 span:last-child {
   border-color: var(--ui-panel-border-strong);
 }
 .job-count {
-  font-size: 0.78rem;
-  color: var(--subtext);
+  font-size: 0.8rem;
+  color: #d8e4ff;
   white-space: nowrap;
 }
 .btn-csv {
-  font-size: 0.75rem;
-  color: #bcf9ff;
+  font-size: 0.78rem;
+  font-weight: 560;
+  color: #dff8ff;
   text-decoration: none;
-  padding: 5px 10px;
-  border: 1px solid rgba(0, 245, 255, 0.35);
+  padding: 6px 11px;
+  border: 1px solid rgba(0, 245, 255, 0.45);
   border-radius: var(--radius);
   white-space: nowrap;
-  background: rgba(0, 245, 255, 0.07);
+  background: rgba(0, 245, 255, 0.12);
   transition:
     border-color 0.16s,
     background 0.16s,
@@ -379,10 +382,10 @@ thead th {
   text-align: left;
   font-family: var(--font-mono);
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 3px;
-  color: color-mix(in srgb, var(--ui-header-text) 88%, #d8e4ff);
+  color: #c9d8ff;
   border-bottom: 1px solid var(--ui-panel-border);
   white-space: nowrap;
   user-select: none;
@@ -828,12 +831,12 @@ tbody td {
 }
 
 .jobs-record-sort-btn {
-  background: rgba(17, 21, 34, 0.8);
+  background: rgba(17, 21, 34, 0.85);
   border: 1px solid var(--ui-panel-border);
-  color: var(--subtext);
+  color: #c6d2f3;
   border-radius: 999px;
-  font-size: 0.75rem;
-  padding: 4px 10px;
+  font-size: 0.76rem;
+  padding: 5px 10px;
   cursor: pointer;
 }
 
@@ -875,8 +878,8 @@ tbody td {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
-  color: var(--subtext);
-  font-size: 0.78rem;
+  color: #ced8f6;
+  font-size: 0.82rem;
 }
 
 .jobs-record-bottom strong {
@@ -1478,12 +1481,13 @@ tbody td {
   cursor: not-allowed;
 }
 .btn-secondary {
-  background: rgba(17, 21, 34, 0.8);
-  border: 1px solid var(--border);
-  color: var(--text);
+  background: rgba(17, 21, 34, 0.92);
+  border: 1px solid rgba(148, 170, 230, 0.4);
+  color: #e2ecff;
   padding: 8px 16px;
   border-radius: var(--radius);
-  font-size: 0.85rem;
+  font-size: 0.86rem;
+  font-weight: 560;
   cursor: pointer;
   transition:
     border-color 0.16s,
