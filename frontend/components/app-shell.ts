@@ -152,6 +152,7 @@ function renderJobsBody({
   sortDir,
   onSort,
   onJobClick,
+  density,
 }: {
   sorted: Job[];
   view: string;
@@ -159,6 +160,7 @@ function renderJobsBody({
   sortDir: "asc" | "desc";
   onSort: (col: string) => void;
   onJobClick: (job: Job) => void;
+  density: "compact" | "comfy";
 }) {
   if (sorted.length === 0) {
     return html`<div class="empty">No jobs match your filters.</div>`;
@@ -171,10 +173,11 @@ function renderJobsBody({
       sortDir=${sortDir}
       onSort=${onSort}
       onJobClick=${onJobClick}
+      density=${density}
     />`;
   }
 
-  return html`<${GridView} sorted=${sorted} onJobClick=${onJobClick} />`;
+  return html`<${GridView} sorted=${sorted} onJobClick=${onJobClick} density=${density} />`;
 }
 
 function JobsRouteView({
@@ -195,6 +198,8 @@ function JobsRouteView({
   sortDir,
   onSort,
   onJobClick,
+  density,
+  setDensity,
 }: {
   q: string;
   setQ: (q: string) => void;
@@ -213,6 +218,8 @@ function JobsRouteView({
   sortDir: "asc" | "desc";
   onSort: (col: string) => void;
   onJobClick: (job: Job) => void;
+  density: "compact" | "comfy";
+  setDensity: (density: "compact" | "comfy") => void;
 }) {
   return html`
     <${Toolbar}
@@ -225,11 +232,13 @@ function JobsRouteView({
       devices=${devices}
       view=${view}
       setView=${setView}
+      density=${density}
+      setDensity=${setDensity}
       filteredCount=${filtered.length}
       totalCount=${jobs.length}
     />
     <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
-    ${renderJobsBody({ sorted, view, sortCol, sortDir, onSort, onJobClick })}
+    ${renderJobsBody({ sorted, view, sortCol, sortDir, onSort, onJobClick, density })}
   `;
 }
 
@@ -277,6 +286,8 @@ export function renderMainContent({
   sorted,
   sortCol,
   sortDir,
+  density,
+  setDensity,
   handleSort,
 }: {
   route: RouteState;
@@ -305,6 +316,8 @@ export function renderMainContent({
   sorted: Job[];
   sortCol: string;
   sortDir: "asc" | "desc";
+  density: "compact" | "comfy";
+  setDensity: (density: "compact" | "comfy") => void;
   handleSort: (col: string) => void;
 }) {
   if (route.isAdmin) return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
@@ -356,5 +369,7 @@ export function renderMainContent({
     sortDir=${sortDir}
     onSort=${handleSort}
     onJobClick=${setSelectedJob}
+    density=${density}
+    setDensity=${setDensity}
   />`;
 }

@@ -61,6 +61,7 @@ function useAppState() {
   const [dataRange, setDataRange] = useState<DataRange>(null);
 
   const [view, setView] = useState("table");
+  const [density, setDensity] = useState<"compact" | "comfy">("comfy");
   const [q, setQ] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [deviceFilter, setDeviceFilter] = useState("");
@@ -81,6 +82,8 @@ function useAppState() {
     setDataRange,
     view,
     setView,
+    density,
+    setDensity,
     q,
     setQ,
     statusFilter,
@@ -400,6 +403,8 @@ function App() {
       devices,
       view: state.view,
       setView: state.setView,
+      density: state.density,
+      setDensity: state.setDensity,
       filtered,
       isFiltered,
       sorted,

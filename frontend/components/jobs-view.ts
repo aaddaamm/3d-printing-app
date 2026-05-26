@@ -101,18 +101,6 @@ const STATUS_OPTIONS = [
   ["pause", "Paused"],
 ] as const;
 
-const TABLE_COLS: Array<{ col: string | null; label: string; cls: string }> = [
-  { col: "designTitle", label: "Title", cls: "sortable td-title" },
-  { col: "deviceModel", label: "Printer", cls: "sortable" },
-  { col: "startTime", label: "Date", cls: "sortable" },
-  { col: null, label: "Status", cls: "" },
-  { col: "total_weight_g", label: "Filament", cls: "sortable td-num" },
-  { col: "total_time_s", label: "Time", cls: "sortable td-num" },
-  { col: "final_price", label: "Price", cls: "sortable td-num" },
-  { col: null, label: "Plates", cls: "td-num" },
-  { col: null, label: "Customer", cls: "" },
-];
-
 function metricBreakdownTitle(summary: Summary, metric: "jobs" | "plates" | "hours") {
   const rows = summary?.by_device ?? [];
   if (!rows.length) return "No printer breakdown available";
@@ -201,6 +189,8 @@ export function Toolbar({
   devices,
   view,
   setView,
+  density,
+  setDensity,
   filteredCount,
   totalCount,
 }: {
@@ -213,6 +203,8 @@ export function Toolbar({
   devices: string[];
   view: string;
   setView: (v: string) => void;
+  density: "compact" | "comfy";
+  setDensity: (density: "compact" | "comfy") => void;
   filteredCount: number;
   totalCount: number;
 }) {
@@ -259,6 +251,20 @@ export function Toolbar({
         </button>
       </div>
       <div class="toolbar-right">
+        <div class="density-toggle">
+          <button
+            class=${"density-btn" + (density === "compact" ? " active" : "")}
+            onClick=${() => setDensity("compact")}
+          >
+            Compact
+          </button>
+          <button
+            class=${"density-btn" + (density === "comfy" ? " active" : "")}
+            onClick=${() => setDensity("comfy")}
+          >
+            Comfy
+          </button>
+        </div>
         <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
         <span class="job-count">${filteredCount} / ${totalCount} jobs</span>
       </div>
@@ -381,28 +387,67 @@ function JobRunBadge({ printRun }: { printRun?: number }) {
   return html`<span class="run-badge">Run ${printRun}</span>`;
 }
 
-function JobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
-  return html`
-    <tr onClick=${() => onJobClick(job)}>
-      <td class="td-thumb"><${RowThumb} url=${job.cover_url} /></td>
-      <td class="td-title">
-        <span class="row-title" title=${job.designTitle || "Untitled"}
-          >${job.designTitle || "Untitled Job"}</span
+function JobsSortBar({
+  sortCol,
+  sortDir,
+  onSort,
+}: {
+  sortCol: string;
+  sortDir: "asc" | "desc";
+  onSort: (col: string) => void;
+}) {
+  const sortOptions = [
+    { col: "startTime", label: "Date" },
+    { col: "designTitle", label: "Title" },
+    { col: "deviceModel", label: "Printer" },
+    { col: "total_weight_g", label: "Filament" },
+    { col: "total_time_s", label: "Time" },
+    { col: "final_price", label: "Price" },
+  ];
+
+  return html`<div class="jobs-record-sortbar">
+    <span class="jobs-record-sort-label">Sort</span>
+    ${sortOptions.map(({ col, label }) => {
+      const active = sortCol === col;
+      return html`
+        <button
+          key=${col}
+          class=${"jobs-record-sort-btn" + (active ? " active" : "")}
+          onClick=${() => onSort(col)}
         >
-        <${JobRunBadge} printRun=${job.print_run} />
-        <${FilamentSwatches} colors=${job.filament_colors} />
-      </td>
-      <td>${job.deviceModel || "—"}</td>
-      <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
-      <td><${Badge} status=${job.status} /></td>
-      <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
-      <td class="td-num">${fmtTime(job.total_time_s)}</td>
-      <td class="td-num">
-        ${job.final_price != null ? html`<strong>${fmtCurrency(job.final_price)}</strong>` : "—"}
-      </td>
-      <td class="td-num">${job.plate_count ?? "—"}</td>
-      <td>${job.customer && html`<span class="customer-pill">${job.customer}</span>`}</td>
-    </tr>
+          ${label}${active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+        </button>
+      `;
+    })}
+  </div>`;
+}
+
+function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
+  return html`
+    <article class="jobs-record-row" onClick=${() => onJobClick(job)}>
+      <div class="jobs-record-top">
+        <div class="td-thumb"><${RowThumb} url=${job.cover_url} /></div>
+        <div class="td-title">
+          <span class="row-title" title=${job.designTitle || "Untitled"}
+            >${job.designTitle || "Untitled Job"}</span
+          >
+          <${JobRunBadge} printRun=${job.print_run} />
+          <${FilamentSwatches} colors=${job.filament_colors} />
+        </div>
+        <div><${Badge} status=${job.status} /></div>
+      </div>
+      <div class="jobs-record-bottom">
+        <span>🖨 ${job.deviceModel || "—"}</span>
+        <span title=${fmtDate(job.startTime)}>📅 ${fmtDateShort(job.startTime)}</span>
+        <span>🧵 <strong>${fmtWeight(job.total_weight_g)}</strong></span>
+        <span>⏱ <strong>${fmtTime(job.total_time_s)}</strong></span>
+        <span
+          >💰 <strong>${job.final_price != null ? fmtCurrency(job.final_price) : "—"}</strong></span
+        >
+        <span>🧱 <strong>${job.plate_count ?? "—"}</strong></span>
+        ${job.customer ? html`<span class="customer-pill">${job.customer}</span>` : null}
+      </div>
+    </article>
   `;
 }
 
@@ -412,39 +457,23 @@ export function TableView({
   sortDir,
   onSort,
   onJobClick,
+  density,
 }: {
   sorted: Job[];
   sortCol: string;
   sortDir: "asc" | "desc";
   onSort: (col: string) => void;
   onJobClick: (job: Job) => void;
+  density: "compact" | "comfy";
 }) {
   return html`
-    <div class="table-wrap table-sticky-head">
-      <table>
-        <thead>
-          <tr>
-            <th class="td-thumb"></th>
-            ${TABLE_COLS.map(({ col, label, cls }) => {
-              const isActiveSort = col != null && col === sortCol;
-              const headerClass = [cls, isActiveSort ? `sort-${sortDir}` : ""]
-                .filter(Boolean)
-                .join(" ");
-              const onHeaderClick = col ? () => onSort(col) : undefined;
-              return html`
-                <th key=${label} class=${headerClass || undefined} onClick=${onHeaderClick}>
-                  ${label}
-                </th>
-              `;
-            })}
-          </tr>
-        </thead>
-        <tbody>
-          ${sorted.map(
-            (job) => html`<${JobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
-          )}
-        </tbody>
-      </table>
+    <div class=${"jobs-record-list-wrap density-" + density}>
+      <${JobsSortBar} sortCol=${sortCol} sortDir=${sortDir} onSort=${onSort} />
+      <div class="jobs-record-list">
+        ${sorted.map(
+          (job) => html`<${JobRecordRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
+        )}
+      </div>
     </div>
   `;
 }
@@ -476,12 +505,14 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
 export function GridView({
   sorted,
   onJobClick,
+  density,
 }: {
   sorted: Job[];
   onJobClick: (job: Job) => void;
+  density: "compact" | "comfy";
 }) {
   return html`
-    <div class="grid-view">
+    <div class=${"grid-view density-" + density}>
       ${sorted.map((job) => html`<${JobCard} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
     </div>
   `;
