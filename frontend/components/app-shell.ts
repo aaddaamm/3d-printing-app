@@ -308,7 +308,13 @@ export function renderMainContent({
   handleSort: (col: string) => void;
 }) {
   if (route.isAdmin) return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
-  if (route.isPrinters) return html`<${PrinterBreakdownView} summary=${summary} />`;
+  if (route.isPrinters) {
+    return html`<${PrinterBreakdownView}
+      summary=${summary}
+      jobs=${jobs}
+      onJobClick=${setSelectedJob}
+    />`;
+  }
 
   if (route.projectId != null) {
     return html`<${ProjectRouteView}

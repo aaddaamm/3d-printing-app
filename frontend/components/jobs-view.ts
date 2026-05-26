@@ -74,6 +74,13 @@ function getFilteredTotals(filtered: Job[]) {
   );
 }
 
+function getPrinterPhotoUrl(deviceModel: string): string | null {
+  const normalized = deviceModel.toLowerCase();
+  if (normalized.includes("a1 mini")) return "/ui/printers/a1-mini";
+  if (normalized.includes("p1s")) return "/ui/printers/p1s";
+  return null;
+}
+
 const NAV_ITEMS = [
   {
     label: "Jobs",
@@ -259,34 +266,98 @@ export function Toolbar({
   `;
 }
 
-export function PrinterBreakdownView({ summary }: { summary: Summary }) {
+export function PrinterBreakdownView({
+  summary,
+  jobs,
+  onJobClick,
+}: {
+  summary: Summary;
+  jobs: Job[];
+  onJobClick: (job: Job) => void;
+}) {
   const rows = summary?.by_device ?? [];
   if (!rows.length) return html`<div class="empty">No printer totals available yet.</div>`;
 
+  const jobsByPrinter = new Map<string, Job[]>();
+  for (const job of jobs) {
+    const key = job.deviceModel || "Unknown printer";
+    const list = jobsByPrinter.get(key) ?? [];
+    list.push(job);
+    jobsByPrinter.set(key, list);
+  }
+
   return html`
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Printer</th>
-            <th class="td-num">Jobs</th>
-            <th class="td-num">Plates</th>
-            <th class="td-num">Print Hours</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(
-            (row) => html`
-              <tr key=${row.deviceModel || "unknown"}>
-                <td>${row.deviceModel || "Unknown printer"}</td>
-                <td class="td-num"><strong>${(row.total_jobs ?? 0).toLocaleString()}</strong></td>
-                <td class="td-num">${(row.total_plates ?? 0).toLocaleString()}</td>
-                <td class="td-num">${((row.total_time_s ?? 0) / 3600).toFixed(1)} h</td>
-              </tr>
-            `,
-          )}
-        </tbody>
-      </table>
+    <div class="printer-grid">
+      ${rows.map((row) => {
+        const printerName = row.deviceModel || "Unknown printer";
+        const printerJobs = jobsByPrinter.get(printerName) ?? [];
+        const recentJobs = printerJobs
+          .slice()
+          .sort((a, b) => String(b.startTime || "").localeCompare(String(a.startTime || "")))
+          .slice(0, 6);
+
+        return html`
+          <section class="printer-card" key=${printerName}>
+            <div class="printer-card-head">
+              <div class="printer-identity">
+                ${(() => {
+                  const printerPhotoUrl = getPrinterPhotoUrl(printerName);
+                  return printerPhotoUrl
+                    ? html`<img class="printer-photo" src=${printerPhotoUrl} alt=${printerName} />`
+                    : html`<div class="printer-photo">🖨️</div>`;
+                })()}
+                <div>
+                  <h3>${printerName}</h3>
+                  <p class="printer-meta">
+                    <span class="printer-meta-jobs"
+                      >${(row.total_jobs ?? 0).toLocaleString()} jobs</span
+                    >
+                    <span class="printer-meta-dot">•</span>
+                    <span class="printer-meta-hours"
+                      >${((row.total_time_s ?? 0) / 3600).toFixed(1)} h total</span
+                    >
+                  </p>
+                </div>
+              </div>
+              <div class="printer-kpis">
+                <span><strong>${(row.total_jobs ?? 0).toLocaleString()}</strong> Jobs</span>
+                <span><strong>${(row.total_plates ?? 0).toLocaleString()}</strong> Plates</span>
+                <span><strong>${((row.total_time_s ?? 0) / 3600).toFixed(1)}</strong> Hours</span>
+              </div>
+            </div>
+
+            <div class="printer-jobs-list">
+              ${recentJobs.length
+                ? recentJobs.map(
+                    (job) => html`
+                      <article
+                        class="printer-job-row"
+                        key=${job.id}
+                        onClick=${() => onJobClick(job)}
+                      >
+                        <div class="printer-job-top">
+                          <div class="td-thumb"><${RowThumb} url=${job.cover_url} /></div>
+                          <div class="td-title">
+                            <span class="row-title">${job.designTitle || "Untitled Job"}</span>
+                            <${FilamentSwatches} colors=${job.filament_colors} />
+                          </div>
+                          <${Badge} status=${job.status} />
+                        </div>
+                        <div class="printer-job-bottom">
+                          <span title=${fmtDate(job.startTime)}
+                            >${fmtDateShort(job.startTime)}</span
+                          >
+                          <span>Filament: <strong>${fmtWeight(job.total_weight_g)}</strong></span>
+                          <span>Time: <strong>${fmtTime(job.total_time_s)}</strong></span>
+                        </div>
+                      </article>
+                    `,
+                  )
+                : html`<div class="empty">No jobs for this printer yet.</div>`}
+            </div>
+          </section>
+        `;
+      })}
     </div>
   `;
 }

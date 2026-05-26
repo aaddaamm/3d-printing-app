@@ -20,6 +20,8 @@ const INTER_FONT_PATH = fileURLToPath(
 const JETBRAINS_FONT_PATH = fileURLToPath(
   new URL("../frontend/fonts/JetBrainsMono-VariableFont_wght.ttf", import.meta.url),
 );
+const A1_MINI_PHOTO_PATH = fileURLToPath(new URL("../a1_mini.webp", import.meta.url));
+const P1S_PHOTO_PATH = fileURLToPath(new URL("../bambu-lab-P1S.webp", import.meta.url));
 
 const isProd = process.env["NODE_ENV"] === "production";
 const fileCache = new Map<string, string>();
@@ -57,6 +59,11 @@ function isSafeAssetFile(file: string): boolean {
 function isSafeFontFile(file: string): boolean {
   return /^[\w,.-]+\.(woff2|ttf)$/.test(file);
 }
+
+const PRINTER_PHOTOS = new Map<string, string>([
+  ["a1-mini", A1_MINI_PHOTO_PATH],
+  ["p1s", P1S_PHOTO_PATH],
+]);
 
 function serveOptionalTextFile(c: Context, filePath: string, contentType: string): Response {
   if (!existsSync(filePath)) return notFound(c);
@@ -192,6 +199,13 @@ function registerStaticRoutes(ui: Hono): void {
       "image/png",
       "public, max-age=31536000, immutable",
     );
+  });
+
+  ui.get("/printers/:slug", (c) => {
+    const slug = c.req.param("slug");
+    const filePath = PRINTER_PHOTOS.get(slug);
+    if (!filePath || !existsSync(filePath)) return notFound(c);
+    return binaryResponse(readFileSync(filePath), "image/webp", "public, max-age=86400");
   });
 }
 
