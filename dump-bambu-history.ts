@@ -2,8 +2,7 @@ import "dotenv/config";
 import fs from "node:fs";
 import os from "node:os";
 import { db, stmts, insertBatch } from "./lib/db.js";
-import { fetchTasks } from "./lib/fetch.js";
-import { normalizeTask } from "./lib/normalize.js";
+import { BambuCloudProvider } from "./lib/providers/bambu/cloud.js";
 import { runNormalize } from "./normalize.js";
 import { downloadCovers, COVERS_DIR } from "./lib/covers.js";
 import { autoGroupProjects } from "./lib/auto-group.js";
@@ -104,7 +103,10 @@ function printHeader(): void {
   logInfo("");
 }
 
-async function fetchAndStoreTasks(token: string, syncId: number): Promise<FetchSummary> {
+async function fetchAndStoreTasks(
+  provider: BambuCloudProvider,
+  syncId: number,
+): Promise<FetchSummary> {
   let total = 0;
   let inserted = 0;
   let updated = 0;
@@ -114,19 +116,13 @@ async function fetchAndStoreTasks(token: string, syncId: number): Promise<FetchS
   try {
     while (true) {
       process.stdout.write(`\r  Fetching tasks: offset ${offset}...   `);
-      const page = await fetchTasks({
-        baseUrl: BASE_URL,
-        token,
-        limit: LIMIT,
-        offset,
-        deviceId: DEVICE_ID,
-      });
+      const page = await provider.fetchTaskPage(offset);
 
-      const tasks = page.hits ?? [];
-      apiTotal = page.total ?? "?";
+      const tasks = page.tasks;
+      apiTotal = page.apiTotal;
       if (tasks.length === 0) break;
 
-      const counts = insertBatch(tasks.map(normalizeTask));
+      const counts = insertBatch(page.printTasks);
       total += tasks.length;
       inserted += counts.inserted;
       updated += counts.updated;
@@ -239,7 +235,14 @@ async function main(): Promise<void> {
     process.exit(0);
   });
 
-  await fetchAndStoreTasks(token, syncId);
+  const provider = new BambuCloudProvider({
+    baseUrl: BASE_URL,
+    token,
+    limit: LIMIT,
+    deviceId: DEVICE_ID,
+  });
+
+  await fetchAndStoreTasks(provider, syncId);
   postSyncSteps(startedAt);
   await runCoverSyncAndSummary();
 

@@ -93,12 +93,7 @@ describe.sequential("provider-aware schema migration", () => {
     runDatabaseMigrations(database!);
 
     expect(columnNames("print_tasks")).toEqual(
-      expect.arrayContaining([
-        "provider",
-        "provider_task_id",
-        "provider_printer_id",
-        "printer_id",
-      ]),
+      expect.arrayContaining(["provider", "provider_task_id", "provider_printer_id", "printer_id"]),
     );
     expect(columnNames("jobs")).toEqual(
       expect.arrayContaining([

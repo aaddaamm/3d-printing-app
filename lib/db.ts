@@ -159,9 +159,10 @@ for (const sql of [
   db.exec(sql);
 }
 
-db.prepare(
-  "INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)",
-).run("bambu", "Bambu Lab");
+db.prepare("INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)").run(
+  "bambu",
+  "Bambu Lab",
+);
 
 // ── Migrations ────────────────────────────────────────────────────────────────
 
