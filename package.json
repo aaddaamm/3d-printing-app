@@ -6,6 +6,7 @@
   "scripts": {
     "sync": "npx tsx dump-bambu-history.ts",
     "normalize": "npx tsx normalize.ts",
+    "baseline": "npx tsx scripts/baseline-report.ts",
     "api": "npx tsx api.ts",
     "dev": "npx tsx watch api.ts & vite",
     "dev:api": "npx tsx watch api.ts",
