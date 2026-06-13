@@ -17,6 +17,10 @@ import { logInfo } from "./lib/logger.js";
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
 
 interface SessionAccumulator {
+  provider: string;
+  provider_session_id: string;
+  provider_printer_id: string | null;
+  printer_id: number | null;
   session_id: string;
   instanceId: number | null;
   print_run: number;
@@ -126,6 +130,10 @@ function createAccumulator(
   printRun: number,
 ): SessionAccumulator {
   return {
+    provider: "bambu",
+    provider_session_id: sessionId,
+    provider_printer_id: asString(payload["deviceId"]),
+    printer_id: null,
     session_id: sessionId,
     instanceId,
     print_run: printRun,
@@ -241,6 +249,10 @@ function upsertJobs(sessionAccumulators: Map<string, SessionAccumulator>): numbe
   db.transaction(() => {
     for (const acc of sessionAccumulators.values()) {
       stmts.upsertJob.run({
+        provider: acc.provider,
+        provider_session_id: acc.provider_session_id,
+        provider_printer_id: acc.provider_printer_id,
+        printer_id: acc.printer_id,
         session_id: acc.session_id,
         instanceId: acc.instanceId,
         print_run: acc.print_run,

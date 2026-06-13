@@ -27,8 +27,13 @@ function toStatus(status: unknown): string | null {
 }
 
 export function normalizeTask(t: BambuApiTask): PrintTask {
+  const id = String(t.id);
   return {
-    id: String(t.id),
+    id,
+    provider: "bambu",
+    provider_task_id: id,
+    provider_printer_id: t.deviceId ?? null,
+    printer_id: null,
     session_id: null, // assigned later by normalize step
     instanceId: t.instanceId ?? null,
     plateIndex: t.plateIndex ?? null,

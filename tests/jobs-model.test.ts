@@ -54,6 +54,10 @@ import { getAllJobPrices, getJobPrice, patchJob } from "../models/jobs.js";
 function job(overrides: Partial<Job> = {}): Job {
   return {
     id: 1,
+    provider: "bambu",
+    provider_session_id: "s1",
+    provider_printer_id: "dev1",
+    printer_id: null,
     session_id: "s1",
     instanceId: 123,
     print_run: 1,

@@ -42,8 +42,29 @@ export interface BambuApiResponse {
 
 // ── DB row shapes ─────────────────────────────────────────────────────────────
 
+export interface ProviderRow {
+  id: string;
+  display_name: string;
+  created_at: string;
+}
+
+export interface PrinterRow {
+  id: number;
+  provider: string;
+  provider_printer_id: string;
+  name: string | null;
+  model: string | null;
+  serial: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PrintTask {
   id: string;
+  provider: string;
+  provider_task_id: string | null;
+  provider_printer_id: string | null;
+  printer_id: number | null;
   session_id: string | null;
   instanceId: number | null;
   plateIndex: number | null;
@@ -70,6 +91,10 @@ export interface PrintTask {
 
 export interface Job {
   id: number; // auto-increment PK, used in API URLs
+  provider: string;
+  provider_session_id: string | null;
+  provider_printer_id: string | null;
+  printer_id: number | null;
   session_id: string; // first task id in the session — stable upsert key
   instanceId: number | null; // Bambu design id (repeats when same design printed multiple times)
   print_run: number; // 1st, 2nd, 3rd time this design was printed on this device
@@ -140,6 +165,8 @@ export interface LaborConfig {
 
 export interface SyncLog {
   id: number;
+  provider: string;
+  provider_printer_id: string | null;
   started_at: string;
   ended_at: string | null;
   inserted: number | null;

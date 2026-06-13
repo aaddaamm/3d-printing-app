@@ -125,6 +125,97 @@ const DB_MIGRATIONS: Migration[] = [
     },
   },
   LABOR_BUFFER_MIGRATION,
+  {
+    id: 10,
+    description: "add provider-aware print history schema",
+    up(database) {
+      database.exec(`CREATE TABLE IF NOT EXISTS providers (
+        id           TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec(`CREATE TABLE IF NOT EXISTS printers (
+        id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+        provider            TEXT NOT NULL REFERENCES providers(id),
+        provider_printer_id TEXT NOT NULL,
+        name                TEXT,
+        model               TEXT,
+        serial              TEXT,
+        created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(provider, provider_printer_id)
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_printers_provider ON printers(provider)");
+      database
+        .prepare("INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)")
+        .run("bambu", "Bambu Lab");
+
+      for (const [tableName, columns] of [
+        [
+          "print_tasks",
+          [
+            ["provider", "TEXT NOT NULL DEFAULT 'bambu'"],
+            ["provider_task_id", "TEXT"],
+            ["provider_printer_id", "TEXT"],
+            ["printer_id", "INTEGER REFERENCES printers(id)"],
+          ],
+        ],
+        [
+          "jobs",
+          [
+            ["provider", "TEXT NOT NULL DEFAULT 'bambu'"],
+            ["provider_session_id", "TEXT"],
+            ["provider_printer_id", "TEXT"],
+            ["printer_id", "INTEGER REFERENCES printers(id)"],
+          ],
+        ],
+        [
+          "sync_log",
+          [
+            ["provider", "TEXT NOT NULL DEFAULT 'bambu'"],
+            ["provider_printer_id", "TEXT"],
+          ],
+        ],
+      ] as const) {
+        for (const [columnName, columnDefinition] of columns) {
+          addColumnIfMissing(database, tableName, columnName, columnDefinition);
+        }
+      }
+
+      database.exec("UPDATE print_tasks SET provider_task_id = id WHERE provider_task_id IS NULL");
+      database.exec(
+        "UPDATE print_tasks SET provider_printer_id = deviceId WHERE provider_printer_id IS NULL AND deviceId IS NOT NULL",
+      );
+      database.exec(
+        "INSERT OR IGNORE INTO printers (provider, provider_printer_id, name, model) SELECT 'bambu', deviceId, MAX(deviceName), MAX(deviceModel) FROM print_tasks WHERE deviceId IS NOT NULL AND deviceId != '' GROUP BY deviceId",
+      );
+      database.exec(
+        "UPDATE print_tasks SET printer_id = (SELECT p.id FROM printers p WHERE p.provider = print_tasks.provider AND p.provider_printer_id = print_tasks.provider_printer_id) WHERE printer_id IS NULL AND provider_printer_id IS NOT NULL",
+      );
+      database.exec(
+        "UPDATE jobs SET provider_session_id = session_id WHERE provider_session_id IS NULL",
+      );
+      database.exec(
+        "UPDATE jobs SET provider_printer_id = deviceId WHERE provider_printer_id IS NULL AND deviceId IS NOT NULL",
+      );
+      database.exec(
+        "UPDATE jobs SET printer_id = (SELECT p.id FROM printers p WHERE p.provider = jobs.provider AND p.provider_printer_id = jobs.provider_printer_id) WHERE printer_id IS NULL AND provider_printer_id IS NOT NULL",
+      );
+
+      database.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_print_tasks_provider_task ON print_tasks(provider, provider_task_id) WHERE provider_task_id IS NOT NULL",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_print_tasks_provider_printer ON print_tasks(provider, provider_printer_id)",
+      );
+      database.exec(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_jobs_provider_session ON jobs(provider, provider_session_id) WHERE provider_session_id IS NOT NULL",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_jobs_provider_printer ON jobs(provider, provider_printer_id)",
+      );
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

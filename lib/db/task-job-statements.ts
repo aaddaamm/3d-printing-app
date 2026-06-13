@@ -5,14 +5,16 @@ export function createTaskJobStatements(db: Database.Database) {
   return {
     upsertTask: db.prepare<PrintTask>(`
       INSERT INTO print_tasks (
-        id, session_id, instanceId, plateIndex,
+        id, provider, provider_task_id, provider_printer_id, printer_id,
+        session_id, instanceId, plateIndex,
         deviceId, deviceName, deviceModel,
         designId, designTitle, modelId, profileId, title,
         status, failedType, bedType,
         weight, length, costTime, startTime, endTime,
         cover, thumbnail, raw_json
       ) VALUES (
-        @id, @session_id, @instanceId, @plateIndex,
+        @id, @provider, @provider_task_id, @provider_printer_id, @printer_id,
+        @session_id, @instanceId, @plateIndex,
         @deviceId, @deviceName, @deviceModel,
         @designId, @designTitle, @modelId, @profileId, @title,
         @status, @failedType, @bedType,
@@ -20,6 +22,8 @@ export function createTaskJobStatements(db: Database.Database) {
         @cover, @thumbnail, @raw_json
       )
       ON CONFLICT(id) DO UPDATE SET
+        provider=excluded.provider,       provider_task_id=excluded.provider_task_id,
+        provider_printer_id=excluded.provider_printer_id, printer_id=excluded.printer_id,
         session_id=excluded.session_id,
         instanceId=excluded.instanceId,   plateIndex=excluded.plateIndex,
         deviceId=excluded.deviceId,       deviceName=excluded.deviceName,     deviceModel=excluded.deviceModel,
@@ -47,13 +51,17 @@ export function createTaskJobStatements(db: Database.Database) {
       >
     >(`
       INSERT INTO jobs (
+        provider, provider_session_id, provider_printer_id, printer_id,
         session_id, instanceId, print_run, designId, designTitle, modelId, deviceId, deviceModel,
         startTime, endTime, total_weight_g, total_time_s, plate_count, status
       ) VALUES (
+        @provider, @provider_session_id, @provider_printer_id, @printer_id,
         @session_id, @instanceId, @print_run, @designId, @designTitle, @modelId, @deviceId, @deviceModel,
         @startTime, @endTime, @total_weight_g, @total_time_s, @plate_count, @status
       )
       ON CONFLICT(session_id) DO UPDATE SET
+        provider=excluded.provider,         provider_session_id=excluded.provider_session_id,
+        provider_printer_id=excluded.provider_printer_id, printer_id=excluded.printer_id,
         instanceId=excluded.instanceId,     print_run=excluded.print_run,
         designId=excluded.designId,         designTitle=excluded.designTitle,
         modelId=excluded.modelId,

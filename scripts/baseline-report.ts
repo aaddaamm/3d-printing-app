@@ -93,6 +93,8 @@ function buildReport(): BaselineReport {
       jobs: count("jobs"),
       projects: count("projects"),
       job_filaments: count("job_filaments"),
+      providers: count("providers"),
+      printers: count("printers"),
       machine_rates: count("machine_rates"),
       material_rates: count("material_rates"),
     },

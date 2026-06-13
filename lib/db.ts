@@ -19,8 +19,29 @@ db.pragma("foreign_keys = ON");
 // independently — a pre-existing table or index never blocks the others.
 
 for (const sql of [
+  `CREATE TABLE IF NOT EXISTS providers (
+    id           TEXT PRIMARY KEY,
+    display_name TEXT NOT NULL,
+    created_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS printers (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider            TEXT NOT NULL REFERENCES providers(id),
+    provider_printer_id TEXT NOT NULL,
+    name                TEXT,
+    model               TEXT,
+    serial              TEXT,
+    created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(provider, provider_printer_id)
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_printers_provider ON printers(provider)`,
   `CREATE TABLE IF NOT EXISTS print_tasks (
     id          TEXT PRIMARY KEY,
+    provider    TEXT NOT NULL DEFAULT 'bambu',
+    provider_task_id TEXT,
+    provider_printer_id TEXT,
+    printer_id  INTEGER REFERENCES printers(id),
     session_id  TEXT,
     instanceId  INTEGER,
     plateIndex  INTEGER,
@@ -50,6 +71,10 @@ for (const sql of [
   `CREATE INDEX IF NOT EXISTS idx_print_tasks_session_plate ON print_tasks(session_id, plateIndex)`,
   `CREATE TABLE IF NOT EXISTS jobs (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider       TEXT NOT NULL DEFAULT 'bambu',
+    provider_session_id TEXT,
+    provider_printer_id TEXT,
+    printer_id     INTEGER REFERENCES printers(id),
     session_id     TEXT UNIQUE NOT NULL,
     instanceId     INTEGER,
     print_run      INTEGER NOT NULL DEFAULT 1,
@@ -104,6 +129,8 @@ for (const sql of [
   LABOR_CONFIG_TABLE_SQL,
   `CREATE TABLE IF NOT EXISTS sync_log (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider   TEXT NOT NULL DEFAULT 'bambu',
+    provider_printer_id TEXT,
     started_at TEXT NOT NULL,
     ended_at   TEXT,
     inserted   INTEGER,
@@ -131,6 +158,10 @@ for (const sql of [
 ]) {
   db.exec(sql);
 }
+
+db.prepare(
+  "INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)",
+).run("bambu", "Bambu Lab");
 
 // ── Migrations ────────────────────────────────────────────────────────────────
 
