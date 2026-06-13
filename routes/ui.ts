@@ -89,6 +89,62 @@ function serveOptionalTextFile(c: Context, filePath: string, contentType: string
   return textResponse(readTextFile(filePath), contentType);
 }
 
+function getCssPath(): string {
+  return existsSync(DIST_APP_CSS_PATH) ? DIST_APP_CSS_PATH : SOURCE_APP_CSS_PATH;
+}
+
+function serveDistJavaScriptBundle(): Response {
+  if (!existsSync(DIST_APP_JS_PATH)) {
+    return new Response("UI bundle missing. Run npm run build:ui.", { status: 500 });
+  }
+  return textResponse(readTextFile(DIST_APP_JS_PATH), "application/javascript");
+}
+
+function serveAssetFile(c: Context): Response {
+  const file = c.req.param("file");
+  if (!isSafeAssetFile(file)) return notFound(c);
+
+  const filePath = path.join(DIST_ASSETS_PATH, file);
+  if (file.endsWith(".css")) return serveOptionalTextFile(c, filePath, "text/css");
+  if (file.endsWith(".js")) return serveOptionalTextFile(c, filePath, "application/javascript");
+  if (!existsSync(filePath)) return notFound(c);
+  return binaryResponse(readFileSync(filePath), "application/octet-stream");
+}
+
+function serveChunkFile(c: Context): Response {
+  const file = c.req.param("file");
+  if (!isSafeAssetFile(file)) return notFound(c);
+  const filePath = path.join(DIST_CHUNKS_PATH, file);
+  return serveOptionalTextFile(c, filePath, "application/javascript");
+}
+
+function serveFontFile(c: Context): Response {
+  const file = c.req.param("file");
+  if (!isSafeFontFile(file)) return notFound(c);
+  const content = FONT_CONTENTS.get(file);
+  if (!content) return notFound(c);
+  const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
+  return binaryResponse(new Uint8Array(content), contentType);
+}
+
+function serveCoverFile(c: Context): Response {
+  const taskId = c.req.param("taskId");
+  if (!/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
+  if (!localCoverExists(taskId)) return notFound(c);
+  return binaryResponse(
+    readFileSync(localCoverPath(taskId)),
+    "image/png",
+    "public, max-age=31536000, immutable",
+  );
+}
+
+function servePrinterPhotoFile(c: Context): Response {
+  const slug = c.req.param("slug");
+  const filePath = resolvePrinterPhotoPath(slug);
+  if (!filePath) return notFound(c);
+  return binaryResponse(readFileSync(filePath), "image/webp", "public, max-age=86400");
+}
+
 const FONT_CONTENTS = new Map<string, Buffer>([
   ["Inter-VariableFont_slnt,wght.woff2", readFileSync(INTER_FONT_PATH)],
   ["JetBrainsMono-VariableFont_wght.ttf", readFileSync(JETBRAINS_FONT_PATH)],
@@ -168,64 +224,19 @@ function registerStaticRoutes(ui: Hono): void {
   ui.get("/", (c) => serveShell(c));
   ui.get("", (c) => serveShell(c));
 
-  ui.get("/app.js", (_c) => {
-    if (!existsSync(DIST_APP_JS_PATH)) {
-      return new Response("UI bundle missing. Run npm run build:ui.", { status: 500 });
-    }
-    return textResponse(readTextFile(DIST_APP_JS_PATH), "application/javascript");
-  });
+  ui.get("/app.js", () => serveDistJavaScriptBundle());
 
-  ui.get("/app.css", (_c) => {
-    const cssPath = existsSync(DIST_APP_CSS_PATH) ? DIST_APP_CSS_PATH : SOURCE_APP_CSS_PATH;
-    return textResponse(readTextFile(cssPath), "text/css");
-  });
+  ui.get("/app.css", () => textResponse(readTextFile(getCssPath()), "text/css"));
 
-  ui.get("/assets/:file", (c) => {
-    const file = c.req.param("file");
-    if (!isSafeAssetFile(file)) return notFound(c);
+  ui.get("/assets/:file", (c) => serveAssetFile(c));
 
-    const filePath = path.join(DIST_ASSETS_PATH, file);
-    if (file.endsWith(".css")) return serveOptionalTextFile(c, filePath, "text/css");
-    if (file.endsWith(".js")) {
-      return serveOptionalTextFile(c, filePath, "application/javascript");
-    }
-    if (!existsSync(filePath)) return notFound(c);
-    return binaryResponse(readFileSync(filePath), "application/octet-stream");
-  });
+  ui.get("/chunks/:file", (c) => serveChunkFile(c));
 
-  ui.get("/chunks/:file", (c) => {
-    const file = c.req.param("file");
-    if (!isSafeAssetFile(file)) return notFound(c);
-    const filePath = path.join(DIST_CHUNKS_PATH, file);
-    return serveOptionalTextFile(c, filePath, "application/javascript");
-  });
+  ui.get("/fonts/:file", (c) => serveFontFile(c));
 
-  ui.get("/fonts/:file", (c) => {
-    const file = c.req.param("file");
-    if (!isSafeFontFile(file)) return notFound(c);
-    const content = FONT_CONTENTS.get(file);
-    if (!content) return notFound(c);
-    const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
-    return binaryResponse(new Uint8Array(content), contentType);
-  });
+  ui.get("/covers/:taskId", (c) => serveCoverFile(c));
 
-  ui.get("/covers/:taskId", (c) => {
-    const taskId = c.req.param("taskId");
-    if (!/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
-    if (!localCoverExists(taskId)) return notFound(c);
-    return binaryResponse(
-      readFileSync(localCoverPath(taskId)),
-      "image/png",
-      "public, max-age=31536000, immutable",
-    );
-  });
-
-  ui.get("/printers/:slug", (c) => {
-    const slug = c.req.param("slug");
-    const filePath = resolvePrinterPhotoPath(slug);
-    if (!filePath) return notFound(c);
-    return binaryResponse(readFileSync(filePath), "image/webp", "public, max-age=86400");
-  });
+  ui.get("/printers/:slug", (c) => servePrinterPhotoFile(c));
 }
 
 function registerDataRoutes(ui: Hono): void {
