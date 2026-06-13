@@ -193,14 +193,17 @@ function printMarkdown(report: BaselineReport): void {
 
   console.log("\n## Missing rate coverage");
   console.log(`- machine rates missing: ${report.missing_machine_rates.length}`);
-  for (const row of report.missing_machine_rates) console.log(`  - ${row.deviceModel}: ${row.jobs} jobs`);
+  for (const row of report.missing_machine_rates)
+    console.log(`  - ${row.deviceModel}: ${row.jobs} jobs`);
   console.log(`- material rates missing: ${report.missing_material_rates.length}`);
   for (const row of report.missing_material_rates) {
     console.log(`  - ${row.filament_type}: ${row.rows} rows, ${row.total_weight_g ?? 0}g`);
   }
 
   console.log("\n## Price samples");
-  console.log(`- jobs: ${report.price_samples.jobs.map((row) => `${row.id}=$${row.price}`).join(", ")}`);
+  console.log(
+    `- jobs: ${report.price_samples.jobs.map((row) => `${row.id}=$${row.price}`).join(", ")}`,
+  );
   console.log(
     `- projects: ${report.price_samples.projects.map((row) => `${row.id}=$${row.price}`).join(", ")}`,
   );
