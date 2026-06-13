@@ -73,6 +73,22 @@ function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
+function getSessionGroupKey(task: RawTask): string {
+  return task.instanceId && task.instanceId !== 0
+    ? `${task.instanceId}:${task.deviceId ?? ""}`
+    : `solo:${task.id}`;
+}
+
+function compareSessionStart(a: SessionInfo, b: SessionInfo): number {
+  if (!a.startTime) return 1;
+  if (!b.startTime) return -1;
+  return a.startTime < b.startTime ? -1 : 1;
+}
+
+function dedupeSessionsById(sessions: SessionInfo[]): SessionInfo[] {
+  return [...new Map(sessions.map((s) => [s.sessionId, s])).values()];
+}
+
 function computeSessionOrder(
   allTasks: RawTask[],
   taskToSession: Map<string, string>,
@@ -83,30 +99,21 @@ function computeSessionOrder(
     const sessionId = taskToSession.get(task.id);
     if (!sessionId) continue;
 
-    const groupKey =
-      task.instanceId && task.instanceId !== 0
-        ? `${task.instanceId}:${task.deviceId ?? ""}`
-        : `solo:${task.id}`;
-
+    const groupKey = getSessionGroupKey(task);
     const sessions = grouped.get(groupKey);
     const info: SessionInfo = { sessionId, startTime: task.startTime };
+
     if (sessions) {
       sessions.push(info);
-      continue;
+    } else {
+      grouped.set(groupKey, [info]);
     }
-    grouped.set(groupKey, [info]);
   }
 
   const sessionOrder = new Map<string, number>();
   for (const sessions of grouped.values()) {
-    sessions.sort((a, b) => {
-      if (!a.startTime) return 1;
-      if (!b.startTime) return -1;
-      return a.startTime < b.startTime ? -1 : 1;
-    });
-
-    const uniqueBySession = [...new Map(sessions.map((s) => [s.sessionId, s])).values()];
-    uniqueBySession.forEach((session, i) => sessionOrder.set(session.sessionId, i + 1));
+    const orderedSessions = dedupeSessionsById(sessions.sort(compareSessionStart));
+    orderedSessions.forEach((session, i) => sessionOrder.set(session.sessionId, i + 1));
   }
 
   return sessionOrder;
@@ -136,29 +143,57 @@ function createAccumulator(
   };
 }
 
+function getAmsMapping(payload: TaskPayload): Record<string, unknown>[] {
+  const amsMappingRaw = payload["amsDetailMapping"];
+  if (!Array.isArray(amsMappingRaw)) return [];
+
+  return amsMappingRaw.filter(
+    (slot): slot is Record<string, unknown> => !!slot && typeof slot === "object",
+  );
+}
+
+function buildFilamentRow(
+  taskId: string,
+  instanceId: number | null,
+  slot: Record<string, unknown>,
+): Omit<JobFilament, "id"> {
+  return {
+    task_id: taskId,
+    instanceId,
+    filament_type: asString(slot["filamentType"]),
+    filament_id: asString(slot["filamentId"]),
+    color: asString(slot["targetColor"]),
+    weight_g: asNumber(slot["weight"]),
+    ams_id: asNumber(slot["amsId"]),
+    slot_id: asNumber(slot["slotId"]),
+  };
+}
+
 function insertFilaments(taskId: string, instanceId: number | null, payload: TaskPayload): void {
   stmts.deleteJobFilaments.run(taskId);
 
-  const amsMappingRaw = payload["amsDetailMapping"];
-  const amsMapping = Array.isArray(amsMappingRaw)
-    ? (amsMappingRaw.filter(
-        (slot): slot is Record<string, unknown> => !!slot && typeof slot === "object",
-      ) as Record<string, unknown>[])
-    : [];
-
-  for (const slot of amsMapping) {
-    const filament: Omit<JobFilament, "id"> = {
-      task_id: taskId,
-      instanceId,
-      filament_type: asString(slot["filamentType"]),
-      filament_id: asString(slot["filamentId"]),
-      color: asString(slot["targetColor"]),
-      weight_g: asNumber(slot["weight"]),
-      ams_id: asNumber(slot["amsId"]),
-      slot_id: asNumber(slot["slotId"]),
-    };
-    stmts.insertFilament.run(filament);
+  for (const slot of getAmsMapping(payload)) {
+    stmts.insertFilament.run(buildFilamentRow(taskId, instanceId, slot));
   }
+}
+
+function updateAccumulator(
+  acc: SessionAccumulator,
+  payload: TaskPayload,
+  status: string | null,
+): void {
+  const startTime = asString(payload["startTime"]);
+  const endTime = asString(payload["endTime"]);
+  if (startTime) acc.startTimes.push(startTime);
+  if (endTime) acc.endTimes.push(endTime);
+
+  if (status === "finish") {
+    acc.total_weight_g += asNumber(payload["weight"]) ?? 0;
+    acc.total_time_s += asNumber(payload["costTime"]) ?? 0;
+  }
+
+  acc.plate_count += 1;
+  if (status) acc.statuses.push(status);
 }
 
 function backfillTasksAndBuildSessions(
@@ -192,19 +227,7 @@ function backfillTasksAndBuildSessions(
         createAccumulator(sessionId, payload, instanceId, sessionOrder.get(sessionId) ?? 1);
       if (!existing) sessionAccumulators.set(sessionId, acc);
 
-      const startTime = asString(payload["startTime"]);
-      const endTime = asString(payload["endTime"]);
-      if (startTime) acc.startTimes.push(startTime);
-      if (endTime) acc.endTimes.push(endTime);
-
-      if (status === "finish") {
-        acc.total_weight_g += asNumber(payload["weight"]) ?? 0;
-        acc.total_time_s += asNumber(payload["costTime"]) ?? 0;
-      }
-
-      acc.plate_count += 1;
-      if (status) acc.statuses.push(status);
-
+      updateAccumulator(acc, payload, status);
       insertFilaments(id, instanceId, payload);
     }
   })();
