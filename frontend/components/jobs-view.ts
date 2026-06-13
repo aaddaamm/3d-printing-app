@@ -81,6 +81,97 @@ function getPrinterPhotoUrl(deviceModel: string): string | null {
   return null;
 }
 
+function groupJobsByPrinter(jobs: Job[]): Map<string, Job[]> {
+  const jobsByPrinter = new Map<string, Job[]>();
+  for (const job of jobs) {
+    const key = job.deviceModel || "Unknown printer";
+    const list = jobsByPrinter.get(key) ?? [];
+    list.push(job);
+    jobsByPrinter.set(key, list);
+  }
+  return jobsByPrinter;
+}
+
+function getRecentPrinterJobs(jobs: Job[], limit = 6): Job[] {
+  return jobs
+    .slice()
+    .sort((a, b) => String(b.startTime || "").localeCompare(String(a.startTime || "")))
+    .slice(0, limit);
+}
+
+function PrinterIdentity({ printerName }: { printerName: string }) {
+  const printerPhotoUrl = getPrinterPhotoUrl(printerName);
+  return printerPhotoUrl
+    ? html`<img class="printer-photo" src=${printerPhotoUrl} alt=${printerName} />`
+    : html`<div class="printer-photo">🖨️</div>`;
+}
+
+function PrinterJobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
+  return html`
+    <article class="printer-job-row" key=${job.id} onClick=${() => onJobClick(job)}>
+      <div class="printer-job-top">
+        <div class="td-thumb"><${RowThumb} url=${job.cover_url} /></div>
+        <div class="td-title">
+          <span class="row-title">${job.designTitle || "Untitled Job"}</span>
+          <${FilamentSwatches} colors=${job.filament_colors} />
+        </div>
+        <${Badge} status=${job.status} />
+      </div>
+      <div class="printer-job-bottom">
+        <span title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</span>
+        <span>Filament: <strong>${fmtWeight(job.total_weight_g)}</strong></span>
+        <span>Time: <strong>${fmtTime(job.total_time_s)}</strong></span>
+      </div>
+    </article>
+  `;
+}
+
+function PrinterCard({
+  row,
+  jobs,
+  onJobClick,
+}: {
+  row: DeviceSummary;
+  jobs: Job[];
+  onJobClick: (job: Job) => void;
+}) {
+  const printerName = row.deviceModel || "Unknown printer";
+  const recentJobs = getRecentPrinterJobs(jobs);
+
+  return html`
+    <section class="printer-card" key=${printerName}>
+      <div class="printer-card-head">
+        <div class="printer-identity">
+          <${PrinterIdentity} printerName=${printerName} />
+          <div>
+            <h3>${printerName}</h3>
+            <p class="printer-meta">
+              <span class="printer-meta-jobs">${(row.total_jobs ?? 0).toLocaleString()} jobs</span>
+              <span class="printer-meta-dot">•</span>
+              <span class="printer-meta-hours"
+                >${((row.total_time_s ?? 0) / 3600).toFixed(1)} h total</span
+              >
+            </p>
+          </div>
+        </div>
+        <div class="printer-kpis">
+          <span><strong>${(row.total_jobs ?? 0).toLocaleString()}</strong> Jobs</span>
+          <span><strong>${(row.total_plates ?? 0).toLocaleString()}</strong> Plates</span>
+          <span><strong>${((row.total_time_s ?? 0) / 3600).toFixed(1)}</strong> Hours</span>
+        </div>
+      </div>
+
+      <div class="printer-jobs-list">
+        ${recentJobs.length
+          ? recentJobs.map(
+              (job) => html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
+            )
+          : html`<div class="empty">No jobs for this printer yet.</div>`}
+      </div>
+    </section>
+  `;
+}
+
 const NAV_ITEMS = [
   {
     label: "Jobs",
@@ -284,86 +375,19 @@ export function PrinterBreakdownView({
   const rows = summary?.by_device ?? [];
   if (!rows.length) return html`<div class="empty">No printer totals available yet.</div>`;
 
-  const jobsByPrinter = new Map<string, Job[]>();
-  for (const job of jobs) {
-    const key = job.deviceModel || "Unknown printer";
-    const list = jobsByPrinter.get(key) ?? [];
-    list.push(job);
-    jobsByPrinter.set(key, list);
-  }
+  const jobsByPrinter = groupJobsByPrinter(jobs);
 
   return html`
     <div class="printer-grid">
-      ${rows.map((row) => {
-        const printerName = row.deviceModel || "Unknown printer";
-        const printerJobs = jobsByPrinter.get(printerName) ?? [];
-        const recentJobs = printerJobs
-          .slice()
-          .sort((a, b) => String(b.startTime || "").localeCompare(String(a.startTime || "")))
-          .slice(0, 6);
-
-        return html`
-          <section class="printer-card" key=${printerName}>
-            <div class="printer-card-head">
-              <div class="printer-identity">
-                ${(() => {
-                  const printerPhotoUrl = getPrinterPhotoUrl(printerName);
-                  return printerPhotoUrl
-                    ? html`<img class="printer-photo" src=${printerPhotoUrl} alt=${printerName} />`
-                    : html`<div class="printer-photo">🖨️</div>`;
-                })()}
-                <div>
-                  <h3>${printerName}</h3>
-                  <p class="printer-meta">
-                    <span class="printer-meta-jobs"
-                      >${(row.total_jobs ?? 0).toLocaleString()} jobs</span
-                    >
-                    <span class="printer-meta-dot">•</span>
-                    <span class="printer-meta-hours"
-                      >${((row.total_time_s ?? 0) / 3600).toFixed(1)} h total</span
-                    >
-                  </p>
-                </div>
-              </div>
-              <div class="printer-kpis">
-                <span><strong>${(row.total_jobs ?? 0).toLocaleString()}</strong> Jobs</span>
-                <span><strong>${(row.total_plates ?? 0).toLocaleString()}</strong> Plates</span>
-                <span><strong>${((row.total_time_s ?? 0) / 3600).toFixed(1)}</strong> Hours</span>
-              </div>
-            </div>
-
-            <div class="printer-jobs-list">
-              ${recentJobs.length
-                ? recentJobs.map(
-                    (job) => html`
-                      <article
-                        class="printer-job-row"
-                        key=${job.id}
-                        onClick=${() => onJobClick(job)}
-                      >
-                        <div class="printer-job-top">
-                          <div class="td-thumb"><${RowThumb} url=${job.cover_url} /></div>
-                          <div class="td-title">
-                            <span class="row-title">${job.designTitle || "Untitled Job"}</span>
-                            <${FilamentSwatches} colors=${job.filament_colors} />
-                          </div>
-                          <${Badge} status=${job.status} />
-                        </div>
-                        <div class="printer-job-bottom">
-                          <span title=${fmtDate(job.startTime)}
-                            >${fmtDateShort(job.startTime)}</span
-                          >
-                          <span>Filament: <strong>${fmtWeight(job.total_weight_g)}</strong></span>
-                          <span>Time: <strong>${fmtTime(job.total_time_s)}</strong></span>
-                        </div>
-                      </article>
-                    `,
-                  )
-                : html`<div class="empty">No jobs for this printer yet.</div>`}
-            </div>
-          </section>
-        `;
-      })}
+      ${rows.map(
+        (row) =>
+          html`<${PrinterCard}
+            key=${row.deviceModel || "Unknown printer"}
+            row=${row}
+            jobs=${jobsByPrinter.get(row.deviceModel || "Unknown printer") ?? []}
+            onJobClick=${onJobClick}
+          />`,
+      )}
     </div>
   `;
 }
