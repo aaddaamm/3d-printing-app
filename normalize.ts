@@ -45,7 +45,11 @@ type SessionInfo = {
 };
 
 const selectAllTasks = db.prepare<[], RawTask>(
-  "SELECT id, status, startTime, endTime, instanceId, plateIndex, deviceId, raw_json FROM print_tasks",
+  `SELECT
+    id, provider, provider_task_id, provider_printer_id, printer_id,
+    status, startTime, endTime, instanceId, plateIndex, deviceId, deviceModel,
+    title, failedType, bedType, weight, costTime, raw_json
+  FROM print_tasks`,
 );
 
 const updateTaskScalars = db.prepare<{
@@ -125,23 +129,25 @@ function computeSessionOrder(
 
 function createAccumulator(
   sessionId: string,
+  task: RawTask,
   payload: TaskPayload,
   instanceId: number | null,
   printRun: number,
 ): SessionAccumulator {
+  const provider = task.provider ?? "bambu";
   return {
-    provider: "bambu",
-    provider_session_id: sessionId,
-    provider_printer_id: asString(payload["deviceId"]),
-    printer_id: null,
+    provider,
+    provider_session_id: provider === "bambu" ? sessionId : (task.provider_task_id ?? sessionId),
+    provider_printer_id: task.provider_printer_id ?? task.deviceId,
+    printer_id: task.printer_id ?? null,
     session_id: sessionId,
     instanceId,
     print_run: printRun,
     designId: payload["designId"] != null ? String(payload["designId"]) : null,
-    designTitle: asString(payload["designTitle"]),
+    designTitle: asString(payload["designTitle"]) ?? task.title ?? null,
     modelId: asString(payload["modelId"]),
-    deviceId: asString(payload["deviceId"]),
-    deviceModel: asString(payload["deviceModel"]),
+    deviceId: asString(payload["deviceId"]) ?? task.deviceId,
+    deviceModel: asString(payload["deviceModel"]) ?? task.deviceModel ?? null,
     startTimes: [],
     endTimes: [],
     total_weight_g: 0,
@@ -187,17 +193,18 @@ function insertFilaments(taskId: string, instanceId: number | null, payload: Tas
 
 function updateAccumulator(
   acc: SessionAccumulator,
+  task: RawTask,
   payload: TaskPayload,
   status: string | null,
 ): void {
-  const startTime = asString(payload["startTime"]);
-  const endTime = asString(payload["endTime"]);
+  const startTime = asString(payload["startTime"]) ?? task.startTime;
+  const endTime = asString(payload["endTime"]) ?? task.endTime;
   if (startTime) acc.startTimes.push(startTime);
   if (endTime) acc.endTimes.push(endTime);
 
   if (status === "finish") {
-    acc.total_weight_g += asNumber(payload["weight"]) ?? 0;
-    acc.total_time_s += asNumber(payload["costTime"]) ?? 0;
+    acc.total_weight_g += asNumber(payload["weight"]) ?? task.weight ?? 0;
+    acc.total_time_s += asNumber(payload["costTime"]) ?? task.costTime ?? 0;
   }
 
   acc.plate_count += 1;
@@ -212,9 +219,10 @@ function backfillTasksAndBuildSessions(
   const sessionAccumulators = new Map<string, SessionAccumulator>();
 
   db.transaction(() => {
-    for (const { id, status, raw_json } of allTasks) {
+    for (const task of allTasks) {
+      const { id, status, raw_json } = task;
       const payload = JSON.parse(raw_json) as TaskPayload;
-      const instanceId = asNumber(payload["instanceId"]);
+      const instanceId = asNumber(payload["instanceId"]) ?? task.instanceId;
       const sessionId = taskToSession.get(id);
       if (!sessionId) continue;
 
@@ -223,19 +231,19 @@ function backfillTasksAndBuildSessions(
         session_id: sessionId,
         instanceId,
         plateIndex: asNumber(payload["plateIndex"]),
-        deviceModel: asString(payload["deviceModel"]),
-        title: asString(payload["title"]),
-        failedType: asNumber(payload["failedType"]),
-        bedType: asString(payload["bedType"]),
+        deviceModel: asString(payload["deviceModel"]) ?? task.deviceModel ?? null,
+        title: asString(payload["title"]) ?? task.title ?? null,
+        failedType: asNumber(payload["failedType"]) ?? task.failedType ?? null,
+        bedType: asString(payload["bedType"]) ?? task.bedType ?? null,
       });
 
       const existing = sessionAccumulators.get(sessionId);
       const acc =
         existing ??
-        createAccumulator(sessionId, payload, instanceId, sessionOrder.get(sessionId) ?? 1);
+        createAccumulator(sessionId, task, payload, instanceId, sessionOrder.get(sessionId) ?? 1);
       if (!existing) sessionAccumulators.set(sessionId, acc);
 
-      updateAccumulator(acc, payload, status);
+      updateAccumulator(acc, task, payload, status);
       insertFilaments(id, instanceId, payload);
     }
   })();

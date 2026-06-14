@@ -10,7 +10,10 @@ const STATUS_PRIORITY = {
   failed: 4,
 } as const;
 
+const BAMBU_PROVIDER = "bambu";
+
 type CanonicalStatus = keyof typeof STATUS_PRIORITY;
+type SessionStrategy = "bambu" | "one-record-per-session";
 
 // Normalize upstream status strings into the canonical set used by the app.
 // Unknown/new statuses are treated as "running" so we never leak arbitrary
@@ -31,34 +34,56 @@ export function deriveJobStatus(statuses: string[]): string {
 
 export interface RawTask {
   id: string;
+  provider?: string | null;
+  provider_task_id?: string | null;
+  provider_printer_id?: string | null;
+  printer_id?: number | null;
   status: string | null;
   startTime: string | null;
   endTime: string | null;
   instanceId: number | null;
   plateIndex: number | null;
   deviceId: string | null;
+  deviceModel?: string | null;
+  title?: string | null;
+  failedType?: number | null;
+  bedType?: string | null;
+  weight?: number | null;
+  costTime?: number | null;
   raw_json: string;
 }
 
 // ── Session detection ─────────────────────────────────────────────────────────
 //
-// Groups tasks into sessions by (instanceId, deviceId).
-// A new session starts when the gap from the previous task's endTime exceeds
-// SESSION_GAP_S, or when the task has no usable instanceId (treated as solo).
+// Bambu keeps the legacy plate-grouping behavior: tasks are grouped by
+// (instanceId, deviceId), split on large time gaps, and split on repeated plate
+// indexes. Generic providers default to one provider history record = one app
+// session/job, because providers like Moonraker usually expose completed jobs
+// rather than Bambu-style plates.
 //
 // Returns a Map<taskId, sessionId> covering every task.
 
-function isSoloTask(task: RawTask): boolean {
+function getSessionStrategy(task: RawTask): SessionStrategy {
+  return !task.provider || task.provider === BAMBU_PROVIDER ? "bambu" : "one-record-per-session";
+}
+
+function getProviderRecordSessionId(task: RawTask): string {
+  return task.provider_task_id || task.id;
+}
+
+function isSoloBambuTask(task: RawTask): boolean {
   const missingInstanceId = task.instanceId == null;
   const zeroInstanceId = task.instanceId === 0;
   return missingInstanceId || zeroInstanceId;
 }
 
-function groupTasks(tasks: RawTask[]): Map<string, RawTask[]> {
+function groupBambuTasks(tasks: RawTask[]): Map<string, RawTask[]> {
   const groups = new Map<string, RawTask[]>();
 
   for (const task of tasks) {
-    const key = isSoloTask(task) ? `solo:${task.id}` : `${task.instanceId}:${task.deviceId ?? ""}`;
+    const key = isSoloBambuTask(task)
+      ? `solo:${task.id}`
+      : `${task.instanceId}:${task.deviceId ?? ""}`;
     const group = groups.get(key);
     if (group) {
       group.push(task);
@@ -80,7 +105,7 @@ function sortByStartTime(tasks: RawTask[]): void {
   });
 }
 
-function shouldStartNewSession(
+function shouldStartNewBambuSession(
   task: RawTask,
   prevEnd: string | null,
   sessionPlateIndexes: Set<number>,
@@ -96,7 +121,7 @@ function shouldStartNewSession(
   return gapS > SESSION_GAP_S;
 }
 
-function assignGroupSessions(group: RawTask[], taskToSession: Map<string, string>): void {
+function assignBambuGroupSessions(group: RawTask[], taskToSession: Map<string, string>): void {
   if (group.length === 0) return;
 
   sortByStartTime(group);
@@ -112,7 +137,7 @@ function assignGroupSessions(group: RawTask[], taskToSession: Map<string, string
   taskToSession.set(first.id, first.id);
 
   for (const task of group.slice(1)) {
-    if (shouldStartNewSession(task, prevEnd, sessionPlateIndexes)) {
+    if (shouldStartNewBambuSession(task, prevEnd, sessionPlateIndexes)) {
       sessionStart = task;
       sessionPlateIndexes = new Set<number>();
     }
@@ -127,6 +152,20 @@ function assignGroupSessions(group: RawTask[], taskToSession: Map<string, string
 
 export function detectSessions(tasks: RawTask[]): Map<string, string> {
   const taskToSession = new Map<string, string>();
-  for (const group of groupTasks(tasks).values()) assignGroupSessions(group, taskToSession);
+  const bambuTasks: RawTask[] = [];
+
+  for (const task of tasks) {
+    const strategy = getSessionStrategy(task);
+    if (strategy === "one-record-per-session") {
+      taskToSession.set(task.id, getProviderRecordSessionId(task));
+    } else {
+      bambuTasks.push(task);
+    }
+  }
+
+  for (const group of groupBambuTasks(bambuTasks).values()) {
+    assignBambuGroupSessions(group, taskToSession);
+  }
+
   return taskToSession;
 }

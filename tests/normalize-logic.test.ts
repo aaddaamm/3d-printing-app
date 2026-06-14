@@ -89,6 +89,56 @@ describe("detectSessions", () => {
     expect(map.get("1")).not.toBe(map.get("2"));
   });
 
+  it("generic provider records each become their own session even without Bambu instanceId", () => {
+    const t1 = makeTask({
+      id: "moonraker:1",
+      provider: "moonraker",
+      provider_task_id: "job-1",
+      instanceId: null,
+      deviceId: null,
+    });
+    const t2 = makeTask({
+      id: "moonraker:2",
+      provider: "moonraker",
+      provider_task_id: "job-2",
+      instanceId: null,
+      deviceId: null,
+    });
+
+    const map = detectSessions([t1, t2]);
+
+    expect(map.get("moonraker:1")).toBe("job-1");
+    expect(map.get("moonraker:2")).toBe("job-2");
+  });
+
+  it("generic provider records do not use Bambu plate grouping hints", () => {
+    const t1 = makeTask({
+      id: "generic:1",
+      provider: "generic",
+      provider_task_id: "history-1",
+      instanceId: 42,
+      plateIndex: 1,
+      deviceId: "same-printer",
+      startTime: ts("2024-01-01T10:00:00Z"),
+      endTime: ts("2024-01-01T11:00:00Z"),
+    });
+    const t2 = makeTask({
+      id: "generic:2",
+      provider: "generic",
+      provider_task_id: "history-2",
+      instanceId: 42,
+      plateIndex: 2,
+      deviceId: "same-printer",
+      startTime: ts("2024-01-01T11:30:00Z"),
+      endTime: ts("2024-01-01T12:30:00Z"),
+    });
+
+    const map = detectSessions([t1, t2]);
+
+    expect(map.get("generic:1")).toBe("history-1");
+    expect(map.get("generic:2")).toBe("history-2");
+  });
+
   it("two tasks with same instanceId+deviceId and small gap share a session", () => {
     const t1 = makeTask({
       id: "10",
