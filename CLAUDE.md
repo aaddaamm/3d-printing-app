@@ -9,7 +9,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev          # Hot-reload API server (tsx watch)
 npm run sync         # Fetch from Bambu API + normalize + download covers
-npm run api          # Start API server (requires API_KEY env var)
+npm run sync:moonraker # Fetch from Moonraker/Snapmaker U1 + normalize
+npm run api          # Start local API/UI server (requires API_KEY env var)
 npm test             # vitest run (all tests)
 npm run typecheck    # tsc --noEmit
 npm run lint         # ESLint
@@ -26,6 +27,7 @@ Run a single test file: `npx vitest run tests/pricing.test.ts`
 
 ```
 dump-bambu-history.ts   CLI: fetch Bambu API → upsert tasks → normalize → download covers
+sync-moonraker-history.ts CLI: fetch Moonraker history → upsert tasks → normalize
 normalize.ts            Session detection & job upsert (importable)
 api.ts                  Hono HTTP server entry point
 routes/                 Hono route handlers (jobs, projects, rates, summary, tasks, ui)
@@ -57,6 +59,7 @@ frontend/               Preact 10 + htm frontend — no build step, ESM from esm
 
 ## Important conventions
 
+- Deployment direction is local-first. Prefer docs and implementation choices that keep the app running on a LAN machine with persistent SQLite/covers instead of assuming serverless/cloud hosting.
 - `better-sqlite3` is synchronous — no `await` on DB calls.
 - Frontend uses `toast()` from `frontend/components/toast.js` — never `alert()`/`confirm()`.
 - `frontend/` is excluded from ESLint (plain JS, no TypeScript).

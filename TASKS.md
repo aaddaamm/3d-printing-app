@@ -2,9 +2,16 @@
 
 GitHub Issues are the source of truth for open deferred work. Current open backlog:
 
-- [#1 Bambu Studio Local Database Import](https://github.com/aaddaamm/3d-printing-app/issues/1)
-- [#3 MQTT Real-Time Print Capture](https://github.com/aaddaamm/3d-printing-app/issues/3)
+- [#33 Package app for local persistent deployment](https://github.com/aaddaamm/3d-printing-app/issues/33)
+- [#31 Update docs and app naming for generalized 3D printing history/pricing](https://github.com/aaddaamm/3d-printing-app/issues/31)
+- [#30 Make Jobs and Printers UI provider-aware](https://github.com/aaddaamm/3d-printing-app/issues/30)
+- [#29 Investigate Flashforge Creator 5 history/pricing integration](https://github.com/aaddaamm/3d-printing-app/issues/29)
+- [#23 Fix table header overlap/ghosting across printers and projects views](https://github.com/aaddaamm/3d-printing-app/issues/23)
+- [#22 Migrate repo to TypeScript-only architecture (backend + frontend + shared contracts)](https://github.com/aaddaamm/3d-printing-app/issues/22)
+- [#18 Define manual project adoption matching rules](https://github.com/aaddaamm/3d-printing-app/issues/18)
 - [#4 Spool Inventory Tracking](https://github.com/aaddaamm/3d-printing-app/issues/4)
+- [#3 MQTT Real-Time Print Capture](https://github.com/aaddaamm/3d-printing-app/issues/3)
+- [#1 Bambu Studio Local Database Import](https://github.com/aaddaamm/3d-printing-app/issues/1)
 
 ## Historical completed work
 
@@ -28,3 +35,5 @@ GitHub Issues are the source of truth for open deferred work. Current open backl
 - [x] Scheduled sync via `SYNC_INTERVAL_HOURS`
 - [x] Numbered schema migrations with `schema_migrations`
 - [x] README updated for current TypeScript API, UI, jobs/projects, and rates
+- [x] Moonraker/Snapmaker U1 history sync MVP
+- [x] Printer inventory lifecycle fields for active/retired printers

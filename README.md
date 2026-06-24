@@ -1,13 +1,18 @@
 # bambu-history-dump
 
-Fetches Bambu Lab cloud print history into a local SQLite database, normalizes plates into jobs/projects, caches cover images, and serves an internal HTTP API plus a small no-build Preact UI for pricing and customer tracking.
+Fetches 3D printer history into a local SQLite database, normalizes prints into jobs/projects, caches cover images, and serves an internal HTTP API plus a small Preact UI for pricing and customer tracking.
 
-Safe to re-run — Bambu task records are upserted by task ID, then jobs/projects are re-normalized.
+The app is moving in a **local-first** direction: run it on a machine inside the same LAN as your printers, keep SQLite/covers on persistent local disk, and avoid exposing local printer APIs publicly.
+
+Safe to re-run — provider records are upserted, then jobs/projects are re-normalized.
 
 ## Requirements
 
 - Node.js 18+
 - `npm install`
+- Local network access to LAN-only printer APIs such as Moonraker, when using those providers
+
+See `docs/local-first-deployment.md` for the current local deployment direction.
 
 ## Authentication
 
@@ -96,7 +101,9 @@ Moonraker/Snapmaker U1 variables:
 
 Cover image URLs from Bambu are short-lived. Sync downloads them to `covers/{task_id}.png` while they are still available.
 
-## API server and UI
+## Local API server and UI
+
+This is the preferred operating mode for now. Run the API/UI on your Mac or another always-on machine on the same LAN as your printers.
 
 ```bash
 # Set API_KEY in your shell or process manager first.
@@ -106,6 +113,8 @@ npm run dev
 ```
 
 Open `http://localhost:3000/ui` for the browser UI.
+
+Hosted/serverless deployment is not the target for the next phase because local printer URLs such as `http://snapmaker-u1.local` are not reachable from a cloud function, and SQLite/covers need persistent disk.
 
 ### Vite UI dev (HMR)
 

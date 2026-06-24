@@ -1,7 +1,7 @@
 # ADR: Provider-oriented history and pricing domain
 
 Status: Draft  
-Related issues: #24, #25, #26, #27, #28, #29, #30, #31, #32
+Related issues: #24, #25, #26, #27, #28, #29, #30, #31, #32, #33
 
 ## Context
 
@@ -9,11 +9,15 @@ The app started as a Bambu Lab print-history sync with pricing and project group
 
 The product scope for this migration is **history and pricing only**. Live monitoring, printer control, queue control, and real-time events are future capabilities, not requirements for the first provider abstraction.
 
+Because Moonraker/Snapmaker U1 is normally reachable only on the local LAN and the app stores SQLite/covers on disk, the next deployment direction is local-first rather than hosted/serverless. See `docs/local-first-deployment.md`.
+
 ## Decision
 
 Introduce a provider-oriented ingestion model that separates vendor-specific source payloads from the app's normalized history/pricing records.
 
 The transition should be additive first: preserve existing `print_tasks`, `jobs`, `projects`, `job_filaments`, and pricing behavior while adding provider-aware identity and contracts around ingestion.
+
+For deployment, package the app as a local service/application with persistent storage. Do not make serverless/cloud hosting a constraint for provider design unless remote access becomes an explicit future requirement.
 
 ## Canonical terms
 
@@ -149,7 +153,7 @@ Control capabilities such as start, pause, cancel, upload, or queue management a
 
 ## Open questions
 
-- Should provider configuration live entirely in SQLite, entirely in environment variables, or a hybrid?
+- Provider configuration should start as environment/local service configuration, then move to a hybrid model if the UI needs editable printer/provider settings.
 - Should raw payloads be stored in the existing `print_tasks.raw_json` during the transition, or should #24 introduce a dedicated `source_records` table first?
 - How should duplicate physical prints be reconciled if multiple providers describe the same print, such as Bambu cloud plus Bambu Studio local import?
 - Should material usage confidence be visible in the UI before non-Bambu providers are added?
