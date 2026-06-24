@@ -70,9 +70,9 @@ describe.sequential("provider-aware normalization", () => {
 
     normalizeModule!.runNormalize();
 
-    const task = db.prepare("SELECT session_id FROM print_tasks WHERE id = ?").get(
-      "moonraker:job-1",
-    ) as { session_id: string };
+    const task = db
+      .prepare("SELECT session_id FROM print_tasks WHERE id = ?")
+      .get("moonraker:job-1") as { session_id: string };
     const job = db.prepare("SELECT * FROM jobs WHERE session_id = ?").get("job-1") as {
       provider: string;
       provider_session_id: string;
