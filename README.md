@@ -46,6 +46,7 @@ npm run dev:api      # Hot-reload API server only (tsx watch)
 npm run dev:ui       # Vite dev server for UI (HMR)
 npm run api          # Start API server
 npm run sync         # Fetch Bambu API → SQLite → normalize → download covers
+npm run sync:moonraker # Fetch Moonraker/Snapmaker U1 history → SQLite → normalize
 npm run normalize    # Rebuild sessions/jobs from existing print_tasks
 npm test             # Vitest suite
 npm run typecheck    # TypeScript check
@@ -61,6 +62,14 @@ npm run sync
 
 Fetches up to `BAMBU_LIMIT` tasks from the Bambu cloud API, upserts them into `print_tasks`, normalizes related plates into `jobs`, auto-groups jobs into `projects`, downloads currently available cover images, and records the run in `sync_log`.
 
+For a Snapmaker U1 or other Moonraker-compatible printer:
+
+```bash
+MOONRAKER_BASE_URL=http://snapmaker-u1.local npm run sync:moonraker
+```
+
+Moonraker sync imports one history job as one app job/session. It uses slicer metadata for estimated filament weight when available; raw history payloads are retained in `print_tasks.raw_json`.
+
 ### Sync environment variables
 
 | Variable           | Default                        | Description                            |
@@ -72,6 +81,18 @@ Fetches up to `BAMBU_LIMIT` tasks from the Bambu cloud API, upserts them into `p
 | `BAMBU_LIMIT`      | `1000`                         | Max tasks to fetch per sync            |
 | `BAMBU_DB`         | `./bambu_print_history.sqlite` | SQLite database path                   |
 | `BAMBU_DEBUG`      | _(unset)_                      | Print API debug info                   |
+
+Moonraker/Snapmaker U1 variables:
+
+| Variable                  | Default                        | Description                                           |
+| ------------------------- | ------------------------------ | ----------------------------------------------------- |
+| `MOONRAKER_BASE_URL`      | _(required)_                   | Local Moonraker URL, e.g. `http://snapmaker-u1.local` |
+| `MOONRAKER_API_KEY`       | _(unset)_                      | Optional Moonraker API key                            |
+| `MOONRAKER_PRINTER_ID`    | URL host                       | Stable provider printer id                            |
+| `MOONRAKER_PRINTER_NAME`  | `Snapmaker U1`                 | Display name for the physical printer                 |
+| `MOONRAKER_PRINTER_MODEL` | `Snapmaker U1`                 | Model name used by machine rates/pricing              |
+| `MOONRAKER_LIMIT`         | `50`                           | History page size                                     |
+| `BAMBU_DB`                | `./bambu_print_history.sqlite` | SQLite database path                                  |
 
 Cover image URLs from Bambu are short-lived. Sync downloads them to `covers/{task_id}.png` while they are still available.
 
@@ -189,9 +210,10 @@ Projects group related jobs. Auto-grouping creates projects by MakerWorld `desig
 
 ## Data model
 
-- **print_tasks**: one plate from one Bambu API task record. Raw API data is stored in `raw_json`.
-- **jobs**: one row per detected session. Business fields live here: `customer`, `notes`, `price_override`, `status_override`, `extra_labor_minutes`, `project_id`.
-- **job_filaments**: AMS slot/material usage per task.
+- **providers** and **printers**: integration families and physical printer identities. Historical printers can remain in the database after you retire or replace the machine.
+- **print_tasks**: one imported provider history record. Bambu records are plates; Moonraker records are completed history jobs. Raw provider data is stored in `raw_json`.
+- **jobs**: one row per detected session. Bambu keeps plate grouping; generic providers default to one history record per job. Business fields live here: `customer`, `notes`, `price_override`, `status_override`, `extra_labor_minutes`, `project_id`.
+- **job_filaments**: material usage per task when the provider/slicer exposes usable weight data.
 - **projects**: manually-created or auto-grouped collections of jobs.
 - **machine_rates**, **material_rates**, **labor_config**: pricing inputs.
 - **sync_log**: sync run history.
