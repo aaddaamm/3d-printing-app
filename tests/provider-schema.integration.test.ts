@@ -106,6 +106,9 @@ describe.sequential("provider-aware schema migration", () => {
     expect(columnNames("sync_log")).toEqual(
       expect.arrayContaining(["provider", "provider_printer_id"]),
     );
+    expect(columnNames("printers")).toEqual(
+      expect.arrayContaining(["is_active", "retired_at", "notes"]),
+    );
 
     expect(database!.prepare("SELECT id, display_name FROM providers").all()).toContainEqual({
       id: "bambu",
@@ -115,7 +118,7 @@ describe.sequential("provider-aware schema migration", () => {
     const task = database!.prepare("SELECT * FROM print_tasks WHERE id = ?").get("task-1") as Row;
     const job = database!.prepare("SELECT * FROM jobs WHERE session_id = ?").get("task-1") as Row;
     const printer = database!
-      .prepare("SELECT id, provider, provider_printer_id, name, model FROM printers")
+      .prepare("SELECT id, provider, provider_printer_id, name, model, is_active, retired_at FROM printers")
       .get() as Row;
 
     expect(task).toMatchObject({
@@ -133,6 +136,8 @@ describe.sequential("provider-aware schema migration", () => {
       provider_printer_id: "device-1",
       name: "Shop P1S",
       model: "P1S",
+      is_active: 1,
+      retired_at: null,
     });
     expect(task["printer_id"]).toBe(printer["id"]);
     expect(job["printer_id"]).toBe(printer["id"]);

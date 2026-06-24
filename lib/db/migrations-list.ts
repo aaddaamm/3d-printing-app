@@ -216,6 +216,16 @@ const DB_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    id: 11,
+    description: "add printer inventory lifecycle fields",
+    up(database) {
+      addColumnIfMissing(database, "printers", "is_active", "INTEGER NOT NULL DEFAULT 1");
+      addColumnIfMissing(database, "printers", "retired_at", "TEXT");
+      addColumnIfMissing(database, "printers", "notes", "TEXT");
+      database.exec("CREATE INDEX IF NOT EXISTS idx_printers_active ON printers(is_active)");
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

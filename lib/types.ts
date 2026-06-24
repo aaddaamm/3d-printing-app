@@ -55,6 +55,9 @@ export interface PrinterRow {
   name: string | null;
   model: string | null;
   serial: string | null;
+  is_active: number;
+  retired_at: string | null;
+  notes: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -182,6 +182,20 @@ A job is one print session: plates from the same `(instanceId, deviceId)` printe
 
 Each field is optional and may be set to `null` where appropriate.
 
+### Printers
+
+Printers are physical machines discovered from provider syncs. Retired printers stay available for historical reporting and pricing.
+
+| Method  | Path            | Description                                  |
+| ------- | --------------- | -------------------------------------------- |
+| `GET`   | `/printers`     | List printer inventory and historical totals |
+| `GET`   | `/printers/:id` | Get one printer                              |
+| `PATCH` | `/printers/:id` | Update display/lifecycle fields              |
+
+`GET /printers?include_retired=0` returns active inventory only.
+
+`PATCH /printers/:id` accepts `name`, `model`, `serial`, `notes`, and `is_active`. Set `is_active` to `false` to retire a printer without deleting its history.
+
 ### Projects
 
 Projects group related jobs. Auto-grouping creates projects by MakerWorld `designId`, or by Bambu Studio title prefixes for locally sliced models.

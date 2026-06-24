@@ -722,6 +722,18 @@ tbody td {
   margin-bottom: 4px;
 }
 
+.printer-card.is-retired {
+  opacity: 0.72;
+}
+
+.printer-card-footer {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: flex-end;
+  padding: 12px 14px 0;
+}
+
 .printer-jobs-list {
   padding: 0 14px 14px;
   display: grid;

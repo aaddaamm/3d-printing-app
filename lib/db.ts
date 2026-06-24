@@ -31,6 +31,9 @@ for (const sql of [
     name                TEXT,
     model               TEXT,
     serial              TEXT,
+    is_active           INTEGER NOT NULL DEFAULT 1,
+    retired_at          TEXT,
+    notes               TEXT,
     created_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(provider, provider_printer_id)
