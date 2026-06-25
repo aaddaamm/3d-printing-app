@@ -226,6 +226,19 @@ const DB_MIGRATIONS: Migration[] = [
       database.exec("CREATE INDEX IF NOT EXISTS idx_printers_active ON printers(is_active)");
     },
   },
+  {
+    id: 12,
+    description: "add material usage confidence to filament rows",
+    up(database) {
+      if (!tableExists(database, "job_filaments")) return;
+      addColumnIfMissing(
+        database,
+        "job_filaments",
+        "material_usage_confidence",
+        "TEXT NOT NULL DEFAULT 'unknown'",
+      );
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

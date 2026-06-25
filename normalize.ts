@@ -166,9 +166,18 @@ function getAmsMapping(payload: TaskPayload): Record<string, unknown>[] {
   );
 }
 
+const MATERIAL_USAGE_CONFIDENCES = new Set(["actual", "slicer_estimate", "manual", "unknown"]);
+
+function materialUsageConfidence(slot: Record<string, unknown>, provider: string): string {
+  const confidence = asString(slot["usageConfidence"]);
+  if (confidence && MATERIAL_USAGE_CONFIDENCES.has(confidence)) return confidence;
+  return provider === "bambu" ? "actual" : "unknown";
+}
+
 function buildFilamentRow(
   taskId: string,
   instanceId: number | null,
+  provider: string,
   slot: Record<string, unknown>,
 ): Omit<JobFilament, "id"> {
   return {
@@ -180,14 +189,20 @@ function buildFilamentRow(
     weight_g: asNumber(slot["weight"]),
     ams_id: asNumber(slot["amsId"]),
     slot_id: asNumber(slot["slotId"]),
+    material_usage_confidence: materialUsageConfidence(slot, provider),
   };
 }
 
-function insertFilaments(taskId: string, instanceId: number | null, payload: TaskPayload): void {
+function insertFilaments(
+  taskId: string,
+  instanceId: number | null,
+  provider: string,
+  payload: TaskPayload,
+): void {
   stmts.deleteJobFilaments.run(taskId);
 
   for (const slot of getAmsMapping(payload)) {
-    stmts.insertFilament.run(buildFilamentRow(taskId, instanceId, slot));
+    stmts.insertFilament.run(buildFilamentRow(taskId, instanceId, provider, slot));
   }
 }
 
@@ -244,7 +259,7 @@ function backfillTasksAndBuildSessions(
       if (!existing) sessionAccumulators.set(sessionId, acc);
 
       updateAccumulator(acc, task, payload, status);
-      insertFilaments(id, instanceId, payload);
+      insertFilaments(id, instanceId, task.provider ?? "bambu", payload);
     }
   })();
 

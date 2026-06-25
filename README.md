@@ -87,6 +87,15 @@ Moonraker sync imports one history job as one app job/session. It uses slicer me
 | `BAMBU_DB`         | `./bambu_print_history.sqlite` | SQLite database path                   |
 | `BAMBU_DEBUG`      | _(unset)_                      | Print API debug info                   |
 
+Scheduler variables:
+
+| Variable                        | Default      | Description                                                 |
+| ------------------------------- | ------------ | ----------------------------------------------------------- |
+| `SYNC_INTERVAL_HOURS`           | `0`          | Legacy Bambu sync interval; shared fallback with providers  |
+| `SYNC_PROVIDERS`                | _(auto)_     | Comma-separated scheduled providers, e.g. `bambu,moonraker` |
+| `BAMBU_SYNC_INTERVAL_HOURS`     | legacy value | Bambu-specific API-server sync interval                     |
+| `MOONRAKER_SYNC_INTERVAL_HOURS` | `0`          | Moonraker-specific API-server sync interval                 |
+
 Moonraker/Snapmaker U1 variables:
 
 | Variable                  | Default                        | Description                                           |
@@ -128,12 +137,15 @@ Override target with `VITE_API_PROXY_TARGET` if needed.
 
 ### API environment variables
 
-| Variable              | Default                        | Description                                     |
-| --------------------- | ------------------------------ | ----------------------------------------------- |
-| `API_KEY`             | _(required)_                   | Bearer token and UI login secret                |
-| `PORT`                | `3000`                         | Server port                                     |
-| `BAMBU_DB`            | `./bambu_print_history.sqlite` | SQLite database path                            |
-| `SYNC_INTERVAL_HOURS` | `0`                            | If > 0, run sync 10s after startup and interval |
+| Variable                        | Default                        | Description                                                 |
+| ------------------------------- | ------------------------------ | ----------------------------------------------------------- |
+| `API_KEY`                       | _(required)_                   | Bearer token and UI login secret                            |
+| `PORT`                          | `3000`                         | Server port                                                 |
+| `BAMBU_DB`                      | `./bambu_print_history.sqlite` | SQLite database path                                        |
+| `SYNC_INTERVAL_HOURS`           | `0`                            | Legacy Bambu sync interval; shared fallback with providers  |
+| `SYNC_PROVIDERS`                | _(auto)_                       | Comma-separated scheduled providers, e.g. `bambu,moonraker` |
+| `BAMBU_SYNC_INTERVAL_HOURS`     | legacy value                   | Bambu-specific scheduled sync interval                      |
+| `MOONRAKER_SYNC_INTERVAL_HOURS` | `0`                            | Moonraker-specific scheduled sync interval                  |
 
 ## Routes
 

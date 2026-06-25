@@ -22,6 +22,7 @@ export interface UiJobRow {
   project_id: number | null;
   cover_url: string | null;
   filament_colors: string[];
+  material_usage_confidence: string | null;
 }
 
 export function listUiJobs(): UiJobRow[] {
@@ -47,7 +48,20 @@ export function listUiJobs(): UiJobRow[] {
           JOIN print_tasks pt ON jf.task_id = pt.id
           WHERE pt.session_id = j.session_id AND jf.color IS NOT NULL
           ORDER BY jf.ams_id, jf.slot_id
-        )) AS filament_colors_json
+        )) AS filament_colors_json,
+        (SELECT jf.material_usage_confidence
+          FROM job_filaments jf
+          JOIN print_tasks pt ON jf.task_id = pt.id
+          WHERE pt.session_id = j.session_id
+          ORDER BY CASE jf.material_usage_confidence
+            WHEN 'unknown' THEN 4
+            WHEN 'slicer_estimate' THEN 3
+            WHEN 'manual' THEN 2
+            WHEN 'actual' THEN 1
+            ELSE 4
+          END DESC
+          LIMIT 1
+        ) AS material_usage_confidence
       FROM jobs j
       LEFT JOIN (
         SELECT id, session_id,

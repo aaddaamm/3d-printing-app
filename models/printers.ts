@@ -26,18 +26,33 @@ export function listPrinters({ includeRetired = true } = {}): PrinterInventoryRo
       `SELECT
         p.*,
         providers.display_name AS provider_display_name,
-        COUNT(DISTINCT j.id) AS job_count,
-        COUNT(DISTINCT pt.id) AS task_count,
-        SUM(CASE WHEN j.status = 'finish' THEN COALESCE(j.total_time_s, 0) ELSE 0 END) AS total_time_s,
-        SUM(CASE WHEN j.status = 'finish' THEN COALESCE(j.total_weight_g, 0) ELSE 0 END) AS total_weight_g,
-        MIN(j.startTime) AS first_print_at,
-        MAX(j.startTime) AS last_print_at
+        COALESCE(job_totals.job_count, 0) AS job_count,
+        COALESCE(task_totals.task_count, 0) AS task_count,
+        job_totals.total_time_s,
+        job_totals.total_weight_g,
+        job_totals.first_print_at,
+        job_totals.last_print_at
        FROM printers p
        LEFT JOIN providers ON providers.id = p.provider
-       LEFT JOIN jobs j ON j.printer_id = p.id
-       LEFT JOIN print_tasks pt ON pt.printer_id = p.id
+       LEFT JOIN (
+         SELECT
+           printer_id,
+           COUNT(*) AS job_count,
+           SUM(CASE WHEN status = 'finish' THEN COALESCE(total_time_s, 0) ELSE 0 END) AS total_time_s,
+           SUM(CASE WHEN status = 'finish' THEN COALESCE(total_weight_g, 0) ELSE 0 END) AS total_weight_g,
+           MIN(startTime) AS first_print_at,
+           MAX(startTime) AS last_print_at
+         FROM jobs
+         WHERE printer_id IS NOT NULL
+         GROUP BY printer_id
+       ) job_totals ON job_totals.printer_id = p.id
+       LEFT JOIN (
+         SELECT printer_id, COUNT(*) AS task_count
+         FROM print_tasks
+         WHERE printer_id IS NOT NULL
+         GROUP BY printer_id
+       ) task_totals ON task_totals.printer_id = p.id
        ${where}
-       GROUP BY p.id
        ORDER BY p.is_active DESC, last_print_at DESC, p.name COLLATE NOCASE`,
     )
     .all();
@@ -49,23 +64,41 @@ export function getPrinterById(id: number): PrinterInventoryRow | undefined {
       `SELECT
         p.*,
         providers.display_name AS provider_display_name,
-        COUNT(DISTINCT j.id) AS job_count,
-        COUNT(DISTINCT pt.id) AS task_count,
-        SUM(CASE WHEN j.status = 'finish' THEN COALESCE(j.total_time_s, 0) ELSE 0 END) AS total_time_s,
-        SUM(CASE WHEN j.status = 'finish' THEN COALESCE(j.total_weight_g, 0) ELSE 0 END) AS total_weight_g,
-        MIN(j.startTime) AS first_print_at,
-        MAX(j.startTime) AS last_print_at
+        COALESCE(job_totals.job_count, 0) AS job_count,
+        COALESCE(task_totals.task_count, 0) AS task_count,
+        job_totals.total_time_s,
+        job_totals.total_weight_g,
+        job_totals.first_print_at,
+        job_totals.last_print_at
        FROM printers p
        LEFT JOIN providers ON providers.id = p.provider
-       LEFT JOIN jobs j ON j.printer_id = p.id
-       LEFT JOIN print_tasks pt ON pt.printer_id = p.id
-       WHERE p.id = ?
-       GROUP BY p.id`,
+       LEFT JOIN (
+         SELECT
+           printer_id,
+           COUNT(*) AS job_count,
+           SUM(CASE WHEN status = 'finish' THEN COALESCE(total_time_s, 0) ELSE 0 END) AS total_time_s,
+           SUM(CASE WHEN status = 'finish' THEN COALESCE(total_weight_g, 0) ELSE 0 END) AS total_weight_g,
+           MIN(startTime) AS first_print_at,
+           MAX(startTime) AS last_print_at
+         FROM jobs
+         WHERE printer_id IS NOT NULL
+         GROUP BY printer_id
+       ) job_totals ON job_totals.printer_id = p.id
+       LEFT JOIN (
+         SELECT printer_id, COUNT(*) AS task_count
+         FROM print_tasks
+         WHERE printer_id IS NOT NULL
+         GROUP BY printer_id
+       ) task_totals ON task_totals.printer_id = p.id
+       WHERE p.id = ?`,
     )
     .get(id);
 }
 
-function nextNullableString<T extends string>(next: T | null | undefined, current: T | null): T | null {
+function nextNullableString<T extends string>(
+  next: T | null | undefined,
+  current: T | null,
+): T | null {
   if (next !== undefined) return next ?? null;
   return current;
 }
@@ -75,9 +108,7 @@ export function patchPrinter(id: number, patch: PrinterPatch): PrinterInventoryR
   if (!existing) return undefined;
 
   const isActive = patch.is_active ?? existing.is_active === 1;
-  const retiredAt = isActive
-    ? null
-    : existing.retired_at ?? new Date().toISOString();
+  const retiredAt = isActive ? null : (existing.retired_at ?? new Date().toISOString());
 
   db.prepare(
     `UPDATE printers SET

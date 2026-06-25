@@ -41,6 +41,109 @@ describe.sequential("provider-aware normalization", () => {
     normalizeModule = null;
   });
 
+  it("preserves existing Bambu printer links when legacy resync rows omit printer_id", () => {
+    const db = dbModule!.db;
+    db.prepare(
+      `INSERT INTO printers (provider, provider_printer_id, name, model)
+       VALUES (?, ?, ?, ?)`,
+    ).run("bambu", "bambu-p1s-001", "Shop P1S", "P1S");
+    const printerId = Number(db.prepare("SELECT id FROM printers").pluck().get());
+
+    dbModule!.stmts.upsertTask.run({
+      id: "1000",
+      provider: "bambu",
+      provider_task_id: "1000",
+      provider_printer_id: "bambu-p1s-001",
+      printer_id: printerId,
+      session_id: null,
+      instanceId: 9001,
+      plateIndex: 1,
+      deviceId: "bambu-p1s-001",
+      deviceName: "Shop P1S",
+      deviceModel: "P1S",
+      designId: "design-1",
+      designTitle: "Widget",
+      modelId: null,
+      profileId: null,
+      title: "Widget plate 1",
+      status: "finish",
+      failedType: null,
+      bedType: null,
+      weight: 12.5,
+      length: null,
+      costTime: 1200,
+      startTime: "2026-02-01T10:00:00.000Z",
+      endTime: "2026-02-01T10:20:00.000Z",
+      cover: null,
+      thumbnail: null,
+      raw_json: JSON.stringify({
+        id: 1000,
+        instanceId: 9001,
+        deviceId: "bambu-p1s-001",
+        deviceModel: "P1S",
+        title: "Widget plate 1",
+        status: 2,
+        weight: 12.5,
+        costTime: 1200,
+        startTime: "2026-02-01T10:00:00.000Z",
+        endTime: "2026-02-01T10:20:00.000Z",
+      }),
+    });
+
+    dbModule!.stmts.upsertTask.run({
+      id: "1000",
+      provider: "bambu",
+      provider_task_id: "1000",
+      provider_printer_id: "bambu-p1s-001",
+      printer_id: null,
+      session_id: null,
+      instanceId: 9001,
+      plateIndex: 1,
+      deviceId: "bambu-p1s-001",
+      deviceName: "Shop P1S",
+      deviceModel: "P1S",
+      designId: "design-1",
+      designTitle: "Widget",
+      modelId: null,
+      profileId: null,
+      title: "Widget plate 1",
+      status: "finish",
+      failedType: null,
+      bedType: null,
+      weight: 12.5,
+      length: null,
+      costTime: 1200,
+      startTime: "2026-02-01T10:00:00.000Z",
+      endTime: "2026-02-01T10:20:00.000Z",
+      cover: null,
+      thumbnail: null,
+      raw_json: JSON.stringify({
+        id: 1000,
+        instanceId: 9001,
+        deviceId: "bambu-p1s-001",
+        deviceModel: "P1S",
+        title: "Widget plate 1",
+        status: 2,
+        weight: 12.5,
+        costTime: 1200,
+        startTime: "2026-02-01T10:00:00.000Z",
+        endTime: "2026-02-01T10:20:00.000Z",
+      }),
+    });
+
+    normalizeModule!.runNormalize();
+
+    const task = db.prepare("SELECT printer_id FROM print_tasks WHERE id = ?").get("1000") as {
+      printer_id: number;
+    };
+    const job = db.prepare("SELECT printer_id FROM jobs WHERE session_id = ?").get("1000") as {
+      printer_id: number;
+    };
+
+    expect(task.printer_id).toBe(printerId);
+    expect(job.printer_id).toBe(printerId);
+  });
+
   it("converts a generic provider history record into a priced job without Bambu instanceId", () => {
     const db = dbModule!.db;
     db.prepare("INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)").run(
@@ -65,7 +168,26 @@ describe.sequential("provider-aware normalization", () => {
       "customer-part.gcode",
       82.4,
       7200,
-      "{}",
+      JSON.stringify({
+        title: "customer-part.gcode",
+        deviceId: "snapmaker-u1.local",
+        deviceModel: "Snapmaker U1",
+        weight: 82.4,
+        costTime: 7200,
+        startTime: "2026-02-01T10:00:00.000Z",
+        endTime: "2026-02-01T12:00:00.000Z",
+        amsDetailMapping: [
+          {
+            filamentType: "PLA",
+            filamentId: "pla-black",
+            targetColor: "#000000",
+            weight: 82.4,
+            amsId: null,
+            slotId: 0,
+            usageConfidence: "slicer_estimate",
+          },
+        ],
+      }),
     );
 
     normalizeModule!.runNormalize();
@@ -85,6 +207,13 @@ describe.sequential("provider-aware normalization", () => {
       plate_count: number;
       status: string;
     };
+    const filament = db
+      .prepare("SELECT filament_type, weight_g, material_usage_confidence FROM job_filaments")
+      .get() as {
+      filament_type: string;
+      weight_g: number;
+      material_usage_confidence: string;
+    };
 
     expect(task.session_id).toBe("job-1");
     expect(job).toMatchObject({
@@ -98,6 +227,11 @@ describe.sequential("provider-aware normalization", () => {
       total_time_s: 7200,
       plate_count: 1,
       status: "finish",
+    });
+    expect(filament).toMatchObject({
+      filament_type: "PLA",
+      weight_g: 82.4,
+      material_usage_confidence: "slicer_estimate",
     });
   });
 });

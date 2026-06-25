@@ -55,6 +55,17 @@ function createLegacySchema(): void {
       updated INTEGER,
       error TEXT
     );
+    CREATE TABLE job_filaments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id TEXT NOT NULL,
+      instanceId INTEGER,
+      filament_type TEXT,
+      filament_id TEXT,
+      color TEXT,
+      weight_g REAL,
+      ams_id INTEGER,
+      slot_id INTEGER
+    );
     CREATE TABLE labor_config (
       id INTEGER PRIMARY KEY CHECK (id = 1),
       hourly_rate REAL NOT NULL DEFAULT 25.0,
@@ -109,6 +120,7 @@ describe.sequential("provider-aware schema migration", () => {
     expect(columnNames("printers")).toEqual(
       expect.arrayContaining(["is_active", "retired_at", "notes"]),
     );
+    expect(columnNames("job_filaments")).toContain("material_usage_confidence");
 
     expect(database!.prepare("SELECT id, display_name FROM providers").all()).toContainEqual({
       id: "bambu",
@@ -118,7 +130,9 @@ describe.sequential("provider-aware schema migration", () => {
     const task = database!.prepare("SELECT * FROM print_tasks WHERE id = ?").get("task-1") as Row;
     const job = database!.prepare("SELECT * FROM jobs WHERE session_id = ?").get("task-1") as Row;
     const printer = database!
-      .prepare("SELECT id, provider, provider_printer_id, name, model, is_active, retired_at FROM printers")
+      .prepare(
+        "SELECT id, provider, provider_printer_id, name, model, is_active, retired_at FROM printers",
+      )
       .get() as Row;
 
     expect(task).toMatchObject({

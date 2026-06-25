@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { getPrinterById, listPrinters, patchPrinter } from "../models/printers.js";
-import { jsonError, parseJsonBody, requireId, unknownFields, isNullableString } from "../lib/util.js";
+import {
+  jsonError,
+  parseJsonBody,
+  requireId,
+  unknownFields,
+  isNullableString,
+} from "../lib/util.js";
 
 export const printers = new Hono();
 

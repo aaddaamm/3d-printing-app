@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { normalizedRecordToPrintTask } from "../lib/providers/normalized-task.js";
 import { MoonrakerHistoryProvider } from "../lib/providers/moonraker/history.js";
+import { moonrakerHttpHistoryResponse } from "./fixtures/moonraker-history.js";
 
 describe("MoonrakerHistoryProvider", () => {
   afterEach(() => {
@@ -71,6 +72,55 @@ describe("MoonrakerHistoryProvider", () => {
         },
       ],
       media: [{ kind: "thumbnail", url: ".thumbs/customer-part.png" }],
+    });
+  });
+
+  it("normalizes documented HTTP history responses with multi-tool material estimates", async () => {
+    const fetchMock = vi.fn(async () => Response.json(moonrakerHttpHistoryResponse));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new MoonrakerHistoryProvider({
+      baseUrl: "http://voron-2.local",
+      printerName: "Voron 2.4",
+      printerModel: "Voron 2.4 350",
+    });
+
+    const result = await provider.fetchHistory({ limit: 2, since: "1767000000" });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://voron-2.local/server/history/list?start=0&limit=2&since=1767000000",
+      { headers: { Accept: "application/json" } },
+    );
+    expect(result.records[0]).toMatchObject({
+      provider_record_id: "voron-000123",
+      provider_printer_id: "voron-2.local",
+      title: "printworks/customer-bracket_0.2mm_PLA_Voron2_3h14m.gcode",
+      status: "finish",
+      duration_s: 10980,
+      materials: [
+        {
+          weight_g: 20.25,
+          filament_type: "PLA",
+          filament_id: "Polymaker PLA Black",
+          color: "#1f1f1f",
+          toolhead_id: "0",
+          confidence: "slicer_estimate",
+        },
+        {
+          weight_g: 7.5,
+          filament_type: "PETG",
+          filament_id: "Generic PETG Clear",
+          color: "#eeeeee",
+          toolhead_id: "1",
+          confidence: "slicer_estimate",
+        },
+      ],
+      media: [{ kind: "thumbnail", url: ".thumbs/customer-bracket-300x300.png" }],
+    });
+    expect(result.records[1]).toMatchObject({
+      provider_record_id: "voron-000124",
+      status: "failed",
+      materials: [{ weight_g: 4.2, filament_type: "ABS" }],
     });
   });
 

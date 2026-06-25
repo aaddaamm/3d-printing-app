@@ -87,4 +87,51 @@ describe.sequential("printer inventory model", () => {
     });
     expect(printersModule!.listPrinters({ includeRetired: false })).toEqual([]);
   });
+
+  it("does not multiply job totals when a printer has multiple task rows", () => {
+    const db = dbModule!.db;
+    db.prepare(
+      `INSERT INTO printers (provider, provider_printer_id, name, model)
+       VALUES (?, ?, ?, ?)`,
+    ).run("bambu", "p1s", "Shop P1S", "P1S");
+    const printerId = Number(db.prepare("SELECT id FROM printers").pluck().get());
+
+    db.prepare(
+      `INSERT INTO jobs (
+        provider, provider_session_id, provider_printer_id, printer_id,
+        session_id, print_run, deviceId, deviceModel, startTime,
+        total_weight_g, total_time_s, plate_count, status
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "bambu",
+      "session-1",
+      "p1s",
+      printerId,
+      "session-1",
+      1,
+      "p1s",
+      "P1S",
+      "2026-01-01T00:00:00.000Z",
+      42,
+      3600,
+      2,
+      "finish",
+    );
+
+    for (const taskId of ["task-1", "task-2"]) {
+      db.prepare(
+        `INSERT INTO print_tasks (id, provider, provider_task_id, provider_printer_id, printer_id, raw_json)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(taskId, "bambu", taskId, "p1s", printerId, "{}");
+    }
+
+    const row = printersModule!.getPrinterById(printerId);
+
+    expect(row).toMatchObject({
+      job_count: 1,
+      task_count: 2,
+      total_time_s: 3600,
+      total_weight_g: 42,
+    });
+  });
 });

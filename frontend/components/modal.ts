@@ -26,6 +26,7 @@ type Job = {
   total_time_s?: number | null;
   total_weight_g?: number | null;
   filament_colors?: string[];
+  material_usage_confidence?: string | null;
   plate_count?: number | null;
   print_run?: number;
   extra_labor_minutes?: number | null;
@@ -45,6 +46,13 @@ type Price = {
   extra_labor_cost: number;
   is_override?: boolean;
 };
+
+function materialConfidenceLabel(confidence?: string | null): string {
+  if (confidence === "actual") return "actual usage";
+  if (confidence === "slicer_estimate") return "slicer estimate";
+  if (confidence === "manual") return "manual entry";
+  return "unknown confidence";
+}
 
 function PricingSection({ jobId }: { jobId: number }) {
   const [price, setPrice] = useState<Price | false | null>(null);
@@ -190,6 +198,9 @@ export function Modal({
               <label>Filament</label>
               <div class="detail-val">
                 ${fmtWeight(job.total_weight_g)}
+                <span class="usage-confidence"
+                  >${materialConfidenceLabel(job.material_usage_confidence)}</span
+                >
                 <${FilamentSwatches} colors=${job.filament_colors} />
               </div>
             </div>

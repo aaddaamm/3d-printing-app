@@ -27,11 +27,13 @@ type MoonrakerHistoryJob = {
   [key: string]: unknown;
 };
 
-type MoonrakerHistoryResponse = {
-  result?: {
-    count?: number;
-    jobs?: MoonrakerHistoryJob[];
-  };
+type MoonrakerHistoryList = {
+  count?: number;
+  jobs?: MoonrakerHistoryJob[];
+};
+
+type MoonrakerHistoryResponse = MoonrakerHistoryList & {
+  result?: MoonrakerHistoryList;
   error?: {
     code?: number;
     message?: string;
@@ -82,6 +84,9 @@ const MOONRAKER_STATUS_MAP: Record<string, CanonicalPrintStatus> = {
   error: "failed",
   failed: "failed",
   failure: "failed",
+  klippy_shutdown: "failed",
+  klippy_disconnect: "failed",
+  interrupted: "failed",
   in_progress: "running",
   printing: "running",
   running: "running",
@@ -145,18 +150,52 @@ function firstThumbnail(metadata: Record<string, unknown>): string | null {
   return null;
 }
 
+function materialRowsFromWeights(
+  metadata: Record<string, unknown>,
+  weights: unknown[],
+): NormalizedMaterialUsage[] {
+  const filamentTypes = asStringArray(metadata["filament_type"]);
+  const filamentNames = asStringArray(metadata["filament_name"]);
+  const filamentColors = asStringArray(metadata["filament_colors"] ?? metadata["filament_colour"]);
+  const referencedTools = Array.isArray(metadata["referenced_tools"])
+    ? metadata["referenced_tools"]
+    : [];
+
+  return weights
+    .map((value, index) => ({ weight: normalizeWeightGrams(value), index }))
+    .filter((item): item is { weight: number; index: number } => item.weight != null)
+    .map(({ weight, index }) => ({
+      weight_g: weight,
+      filament_type: filamentTypes[index] ?? filamentTypes[0] ?? null,
+      filament_id: filamentNames[index] ?? null,
+      color: filamentColors[index] ?? filamentColors[0] ?? null,
+      toolhead_id: referencedTools[index] != null ? String(referencedTools[index]) : String(index),
+      slot_id: String(index),
+      confidence: "slicer_estimate",
+      raw: { metadata_key: "filament_weights", index },
+    }));
+}
+
 function materialsFromJob(job: MoonrakerHistoryJob): NormalizedMaterialUsage[] {
   const metadata = job.metadata ?? {};
+  const filamentWeights = metadata["filament_weights"];
+  if (Array.isArray(filamentWeights)) {
+    const rows = materialRowsFromWeights(metadata, filamentWeights);
+    if (rows.length > 0) return rows;
+  }
+
   const weight = firstWeightFromMetadata(metadata);
   if (weight == null) return [];
 
   const filamentTypes = asStringArray(metadata["filament_type"]);
+  const filamentNames = asStringArray(metadata["filament_name"]);
   const filamentColors = asStringArray(metadata["filament_colors"] ?? metadata["filament_colour"]);
 
   return [
     {
       weight_g: weight,
       filament_type: filamentTypes[0] ?? null,
+      filament_id: filamentNames[0] ?? null,
       color: filamentColors[0] ?? null,
       confidence: "slicer_estimate",
       raw: {
@@ -202,7 +241,7 @@ export class MoonrakerHistoryProvider implements PrintHistoryProvider {
 
     while (records.length < maxRecords) {
       const pageLimit = Math.min(this.limit, maxRecords - records.length);
-      const jobs = await this.fetchHistoryPage(start, pageLimit);
+      const jobs = await this.fetchHistoryPage(start, pageLimit, options);
       if (jobs.length === 0) break;
 
       for (const job of jobs) {
@@ -222,9 +261,16 @@ export class MoonrakerHistoryProvider implements PrintHistoryProvider {
     };
   }
 
-  async fetchHistoryPage(start = 0, limit = this.limit): Promise<MoonrakerHistoryJob[]> {
+  async fetchHistoryPage(
+    start = 0,
+    limit = this.limit,
+    options: Pick<HistorySyncOptions, "since" | "before"> = {},
+  ): Promise<MoonrakerHistoryJob[]> {
+    const params = new URLSearchParams({ start: String(start), limit: String(limit) });
+    if (options.since) params.set("since", options.since);
+    if (options.before) params.set("before", options.before);
     const response = await this.request<MoonrakerHistoryResponse>(
-      `/server/history/list?start=${encodeURIComponent(String(start))}&limit=${encodeURIComponent(String(limit))}`,
+      `/server/history/list?${params.toString()}`,
     );
 
     if (response.error) {
@@ -233,7 +279,7 @@ export class MoonrakerHistoryProvider implements PrintHistoryProvider {
       );
     }
 
-    return response.result?.jobs ?? [];
+    return (response.result ?? response).jobs ?? [];
   }
 
   toNormalizedRecord(job: MoonrakerHistoryJob): NormalizedPrintRecord {

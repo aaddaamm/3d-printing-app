@@ -511,6 +511,16 @@ tbody td {
   flex-shrink: 0;
 }
 
+.usage-confidence {
+  display: inline-block;
+  margin-left: 6px;
+  color: var(--subtext);
+  font-size: 0.72em;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .td-num {
   text-align: right;
   font-variant-numeric: tabular-nums;

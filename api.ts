@@ -11,7 +11,7 @@ import { createUiApp } from "./routes/ui.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
 import { createAuthMiddleware, createRequestLogger } from "./lib/server/middleware.js";
-import { startSyncScheduler } from "./lib/server/sync-scheduler.js";
+import { parseSyncSchedules, startSyncScheduler } from "./lib/server/sync-scheduler.js";
 import { logError, logInfo } from "./lib/logger.js";
 
 function getRequiredApiKey(): string {
@@ -25,7 +25,7 @@ const API_KEY = getRequiredApiKey();
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
-const SYNC_INTERVAL_HOURS = Number(process.env["SYNC_INTERVAL_HOURS"] ?? 0);
+const SYNC_SCHEDULES = parseSyncSchedules();
 const LOG_REQUESTS = process.env["LOG_REQUESTS"] === "1";
 
 const app = new Hono();
@@ -54,7 +54,7 @@ function startServer(): void {
     logInfo(`  Listening on ${cyan(`http://localhost:${info.port}`)}`);
     logInfo(`  UI:          ${cyan(`http://localhost:${info.port}/ui`)}`);
     logInfo(`  DB: ${dim(DB_PATH)}`);
-    startSyncScheduler({ syncIntervalHours: SYNC_INTERVAL_HOURS, appEntryUrl: import.meta.url });
+    startSyncScheduler({ schedules: SYNC_SCHEDULES, appEntryUrl: import.meta.url });
   });
 }
 

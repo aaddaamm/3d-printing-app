@@ -111,7 +111,8 @@ for (const sql of [
     color         TEXT,
     weight_g      REAL,
     ams_id        INTEGER,
-    slot_id       INTEGER
+    slot_id       INTEGER,
+    material_usage_confidence TEXT NOT NULL DEFAULT 'unknown'
   )`,
   `CREATE INDEX IF NOT EXISTS idx_job_filaments_task_id    ON job_filaments(task_id)`,
   `CREATE INDEX IF NOT EXISTS idx_job_filaments_instanceId ON job_filaments(instanceId)`,

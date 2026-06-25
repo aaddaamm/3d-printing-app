@@ -36,6 +36,7 @@ type Job = {
   print_run?: number;
   cover_url?: string | null;
   filament_colors?: string[];
+  material_usage_confidence?: string | null;
 };
 
 type DeviceSummary = {
@@ -90,6 +91,18 @@ function getFilteredTotals(filtered: Job[]) {
     },
     { weight: 0, time: 0 },
   );
+}
+
+function materialConfidenceLabel(confidence?: string | null): string | null {
+  if (!confidence || confidence === "actual") return null;
+  if (confidence === "slicer_estimate") return "estimate";
+  if (confidence === "manual") return "manual";
+  return "unknown";
+}
+
+function MaterialConfidence({ confidence }: { confidence?: string | null }) {
+  const label = materialConfidenceLabel(confidence);
+  return label ? html`<span class="usage-confidence">${label}</span>` : null;
 }
 
 function getPrinterPhotoUrl(deviceModel: string): string | null {
@@ -213,7 +226,9 @@ function InventoryPrinterCard({
           <div>
             <h3>${printerName}</h3>
             <p class="printer-meta">
-              <span class="printer-meta-jobs">${printer.provider_display_name || printer.provider}</span>
+              <span class="printer-meta-jobs"
+                >${printer.provider_display_name || printer.provider}</span
+              >
               <span class="printer-meta-dot">•</span>
               <span class="printer-meta-hours">${printer.model || "Unknown model"}</span>
               <span class="printer-meta-dot">•</span>
@@ -480,13 +495,14 @@ export function PrinterBreakdownView({
     return html`
       <div class="printer-grid">
         ${printers.map(
-          (printer) => html`<${InventoryPrinterCard}
-            key=${printer.id}
-            printer=${printer}
-            jobs=${jobsForInventoryPrinter(printer, jobs)}
-            onJobClick=${onJobClick}
-            onToggleActive=${toggleActive}
-          />`,
+          (printer) =>
+            html`<${InventoryPrinterCard}
+              key=${printer.id}
+              printer=${printer}
+              jobs=${jobsForInventoryPrinter(printer, jobs)}
+              onJobClick=${onJobClick}
+              onToggleActive=${toggleActive}
+            />`,
         )}
       </div>
     `;
@@ -583,7 +599,10 @@ function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) =>
       <div class="jobs-record-bottom">
         <span>🖨 ${job.deviceModel || "—"}</span>
         <span title=${fmtDate(job.startTime)}>📅 ${fmtDateShort(job.startTime)}</span>
-        <span>🧵 <strong>${fmtWeight(job.total_weight_g)}</strong></span>
+        <span
+          >🧵 <strong>${fmtWeight(job.total_weight_g)}</strong>
+          <${MaterialConfidence} confidence=${job.material_usage_confidence} />
+        </span>
         <span>⏱ <strong>${fmtTime(job.total_time_s)}</strong></span>
         <span
           >💰 <strong>${job.final_price != null ? fmtCurrency(job.final_price) : "—"}</strong></span
@@ -632,7 +651,10 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
           <span>🖨 ${job.deviceModel || "—"}</span>
           <span>📅 ${fmtDateShort(job.startTime)}</span>
           <span>⏱ ${fmtTime(job.total_time_s)}</span>
-          <span>🧵 ${fmtWeight(job.total_weight_g)}</span>
+          <span
+            >🧵 ${fmtWeight(job.total_weight_g)}
+            <${MaterialConfidence} confidence=${job.material_usage_confidence} />
+          </span>
           ${job.final_price != null && html`<span>💰 ${fmtCurrency(job.final_price)}</span>`}
         </div>
         <div class="card-footer">

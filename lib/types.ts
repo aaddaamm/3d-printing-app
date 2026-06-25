@@ -139,6 +139,7 @@ export interface JobFilament {
   weight_g: number | null;
   ams_id: number | null;
   slot_id: number | null;
+  material_usage_confidence: string;
 }
 
 export interface MachineRate {
