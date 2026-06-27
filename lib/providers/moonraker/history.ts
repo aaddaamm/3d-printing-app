@@ -61,10 +61,19 @@ function asNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+function splitMoonrakerList(value: string): string[] {
+  return value
+    .split(/[;,]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function asStringArray(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => (typeof item === "string" ? splitMoonrakerList(item) : []));
+  }
   const single = asString(value);
-  return single ? [single] : [];
+  return single ? splitMoonrakerList(single) : [];
 }
 
 function unixSecondsToIso(value: number | null | undefined): string | null {

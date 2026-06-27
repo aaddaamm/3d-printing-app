@@ -14,9 +14,9 @@ export const moonrakerHttpHistoryResponse = {
       metadata: {
         slicer: "OrcaSlicer",
         slicer_version: "2.3.1",
-        filament_type: ["PLA", "PETG"],
-        filament_name: ["Polymaker PLA Black", "Generic PETG Clear"],
-        filament_colors: ["#1f1f1f", "#eeeeee"],
+        filament_type: "PLA;PETG",
+        filament_name: "Polymaker PLA Black;Generic PETG Clear",
+        filament_colour: "#1f1f1f;#eeeeee",
         filament_total: 9123.45,
         filament_weight_total: 27.75,
         filament_weights: [20.25, 7.5],
