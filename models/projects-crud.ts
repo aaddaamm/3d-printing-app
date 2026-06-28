@@ -11,19 +11,85 @@ export type ProjectWithStats = Project & {
   cover_url: string | null;
 };
 
-function resolveProjectCoverUrl(
-  latestCoverTaskId: number | string | null | undefined,
+type ProjectCoverFields = {
+  latest_cover_task_id: number | string | null | undefined;
+  latest_cover_provider: string | null | undefined;
+  latest_cover_provider_printer_id: string | null | undefined;
+  latest_cover_title: string | null | undefined;
+  latest_cover: string | null | undefined;
+  latest_cover_thumbnail: string | null | undefined;
+};
+
+function dirname(filename: string): string {
+  const lastSlash = filename.lastIndexOf("/");
+  return lastSlash === -1 ? "" : filename.slice(0, lastSlash);
+}
+
+function joinPosixPath(...parts: string[]): string {
+  return parts
+    .flatMap((part) => part.split("/"))
+    .filter((part) => part.length > 0 && part !== ".")
+    .join("/");
+}
+
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function moonrakerMediaUrl(
+  providerPrinterId: string | null | undefined,
+  filename: string | null | undefined,
+  mediaPath: string,
 ): string | null {
-  if (!latestCoverTaskId) return null;
-  if (!localCoverExists(String(latestCoverTaskId))) return null;
-  return `/ui/covers/${latestCoverTaskId}`;
+  if (/^https?:\/\//i.test(mediaPath)) return mediaPath;
+  if (!providerPrinterId) return null;
+  const thumbnailPath = mediaPath.startsWith("/")
+    ? mediaPath.slice(1)
+    : joinPosixPath(dirname(filename ?? ""), mediaPath);
+  return `http://${providerPrinterId}/server/files/gcodes/${encodePath(thumbnailPath)}`;
+}
+
+function resolveProjectCoverUrl(fields: ProjectCoverFields): string | null {
+  const latestCoverTaskId = fields.latest_cover_task_id;
+  if (latestCoverTaskId && localCoverExists(String(latestCoverTaskId))) {
+    return `/ui/covers/${latestCoverTaskId}`;
+  }
+
+  const mediaUrl = fields.latest_cover_thumbnail ?? fields.latest_cover;
+  if (!mediaUrl) return null;
+  if (fields.latest_cover_provider === "moonraker") {
+    return moonrakerMediaUrl(
+      fields.latest_cover_provider_printer_id,
+      fields.latest_cover_title,
+      mediaUrl,
+    );
+  }
+  return /^https?:\/\//i.test(mediaUrl) ? mediaUrl : null;
 }
 
 export function listProjects(): ProjectWithStats[] {
-  return stmts.listProjects.all().map(({ latest_cover_task_id, ...row }) => ({
-    ...row,
-    cover_url: resolveProjectCoverUrl(latest_cover_task_id),
-  }));
+  return stmts.listProjects.all().map((project) => {
+    const {
+      latest_cover_task_id,
+      latest_cover_provider,
+      latest_cover_provider_printer_id,
+      latest_cover_title,
+      latest_cover,
+      latest_cover_thumbnail,
+      ...row
+    } = project;
+    return {
+      ...row,
+      cover_url: resolveProjectCoverUrl({
+        latest_cover_task_id,
+        latest_cover_provider,
+        latest_cover_provider_printer_id,
+        latest_cover_title,
+        latest_cover,
+        latest_cover_thumbnail,
+      }),
+    };
+  });
 }
 
 export const getProjectById = (id: number): Project | undefined => stmts.getProjectById.get(id);

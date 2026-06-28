@@ -10,6 +10,11 @@ export function createProjectStatements(db: Database.Database) {
         total_weight_g: number | null;
         total_time_s: number | null;
         latest_cover_task_id: string | null;
+        latest_cover_provider: string | null;
+        latest_cover_provider_printer_id: string | null;
+        latest_cover_title: string | null;
+        latest_cover: string | null;
+        latest_cover_thumbnail: string | null;
       }
     >(`
       SELECT p.*,
@@ -22,7 +27,42 @@ export function createProjectStatements(db: Database.Database) {
            WHERE j2.project_id = p.id
            ORDER BY j2.startTime DESC LIMIT 1
          )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_task_id
+         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_task_id,
+        (SELECT pt.provider FROM print_tasks pt
+         WHERE pt.session_id = (
+           SELECT j2.session_id FROM jobs j2
+           WHERE j2.project_id = p.id
+           ORDER BY j2.startTime DESC LIMIT 1
+         )
+         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_provider,
+        (SELECT pt.provider_printer_id FROM print_tasks pt
+         WHERE pt.session_id = (
+           SELECT j2.session_id FROM jobs j2
+           WHERE j2.project_id = p.id
+           ORDER BY j2.startTime DESC LIMIT 1
+         )
+         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_provider_printer_id,
+        (SELECT pt.title FROM print_tasks pt
+         WHERE pt.session_id = (
+           SELECT j2.session_id FROM jobs j2
+           WHERE j2.project_id = p.id
+           ORDER BY j2.startTime DESC LIMIT 1
+         )
+         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_title,
+        (SELECT pt.cover FROM print_tasks pt
+         WHERE pt.session_id = (
+           SELECT j2.session_id FROM jobs j2
+           WHERE j2.project_id = p.id
+           ORDER BY j2.startTime DESC LIMIT 1
+         )
+         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover,
+        (SELECT pt.thumbnail FROM print_tasks pt
+         WHERE pt.session_id = (
+           SELECT j2.session_id FROM jobs j2
+           WHERE j2.project_id = p.id
+           ORDER BY j2.startTime DESC LIMIT 1
+         )
+         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_thumbnail
       FROM projects p
       LEFT JOIN jobs j ON j.project_id = p.id
       GROUP BY p.id
