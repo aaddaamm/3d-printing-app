@@ -20,6 +20,7 @@ import { db } from "./db.js";
 type DesignRow = { designId: string; designTitle: string | null };
 type UserJobRow = { id: number; title: string | null };
 type ProjectRow = { id: number };
+type TitleProjectRow = { id: number; name: string; source_design_id: string };
 type Summary = { created: number; assigned: number };
 
 // ── MakerWorld designs (have a real designId) ─────────────────────────────────
@@ -63,6 +64,28 @@ const findUserJobs = db.prepare<[], UserJobRow>(`
   JOIN print_tasks pt ON pt.session_id = j.session_id
   WHERE j.project_id IS NULL
     AND (j.designId IS NULL OR j.designId = '0' OR j.designId = '')
+`);
+
+const findAutoTitleProjects = db.prepare<[], TitleProjectRow>(`
+  SELECT id, name, source_design_id
+  FROM projects
+  WHERE source_design_id LIKE 'title:%'
+`);
+
+const updateProjectSourceAndName = db.prepare<{
+  id: number;
+  name: string;
+  source_design_id: string;
+}>(`
+  UPDATE projects SET name = @name, source_design_id = @source_design_id WHERE id = @id
+`);
+
+const moveProjectJobs = db.prepare<[number, number]>(`
+  UPDATE jobs SET project_id = ? WHERE project_id = ?
+`);
+
+const deleteProjectById = db.prepare<[number]>(`
+  DELETE FROM projects WHERE id = ?
 `);
 
 const assignByIdsStmtCache = new Map<number, ReturnType<typeof db.prepare>>();
@@ -181,6 +204,52 @@ function groupTitleJobs(now: string, summary: Summary): void {
   }
 }
 
+function sourceTitle(sourceDesignId: string): string {
+  return sourceDesignId.startsWith("title:")
+    ? sourceDesignId.slice("title:".length)
+    : sourceDesignId;
+}
+
+function reconcileAutoTitleProjectFamilies(summary: Summary): void {
+  const projectsByFamily = new Map<string, TitleProjectRow[]>();
+
+  for (const project of findAutoTitleProjects.all()) {
+    const title = sourceTitle(project.source_design_id);
+    const familyTitle = deriveLocalSlicerFamilyTitle(title) ?? title;
+    if (familyTitle === title) continue;
+
+    const projects = projectsByFamily.get(familyTitle);
+    if (projects) {
+      projects.push(project);
+      continue;
+    }
+    projectsByFamily.set(familyTitle, [project]);
+  }
+
+  for (const [familyTitle, projects] of projectsByFamily) {
+    if (projects.length < 2) continue;
+
+    const canonicalSourceKey = `title:${familyTitle}`;
+    const existingCanonical = findAutoProject.get(canonicalSourceKey);
+    const canonical = existingCanonical ?? [...projects].sort((a, b) => a.id - b.id)[0]!;
+
+    if (!existingCanonical) {
+      updateProjectSourceAndName.run({
+        id: canonical.id,
+        name: familyTitle,
+        source_design_id: canonicalSourceKey,
+      });
+    }
+
+    for (const project of projects) {
+      if (project.id === canonical.id) continue;
+      const { changes } = moveProjectJobs.run(canonical.id, project.id);
+      summary.assigned += changes;
+      deleteProjectById.run(project.id);
+    }
+  }
+}
+
 // Derive the project base name from a task title.
 // Bambu Studio uses "{project}_{plate_N}" or "{project}_{custom name}".
 // First pass: strip "_plate_N" suffixes to build a set of known project names.
@@ -196,7 +265,28 @@ export function deriveBaseTitle(title: string, knownBases: ReadonlySet<string>):
     if (knownBases.has(candidate)) return candidate;
   }
 
-  return title;
+  return deriveLocalSlicerFamilyTitle(title) ?? title;
+}
+
+function stripKnownExtension(title: string): string {
+  return title.replace(/\.(?:gcode|g|3mf)$/i, "");
+}
+
+function stripSlicerSuffix(title: string): string | null {
+  const withoutExtension = stripKnownExtension(title).trim();
+  const materialAndDuration =
+    /^(?<base>.+?)[ _-]+(?:PLA|PETG|ABS|ASA|TPU|PC|PA|PVA|HIPS|NYLON)(?:[-_ A-Z0-9]*)?[ _-]+(?:\d+h)?(?:\d+m)?(?:\d+s)?$/i;
+  const match = withoutExtension.match(materialAndDuration);
+  return match?.groups?.["base"]?.trim() || null;
+}
+
+export function deriveLocalSlicerFamilyTitle(title: string): string | null {
+  const base = stripSlicerSuffix(title);
+  if (!base) return null;
+
+  const firstWord = base.split(/\s+/)[0]?.trim();
+  if (!firstWord || firstWord.length < 3) return base;
+  return firstWord;
 }
 
 export function autoGroupProjects(): { created: number; assigned: number } {
@@ -206,6 +296,7 @@ export function autoGroupProjects(): { created: number; assigned: number } {
   db.transaction(() => {
     groupDesignJobs(now, summary);
     groupTitleJobs(now, summary);
+    reconcileAutoTitleProjectFamilies(summary);
   })();
 
   return summary;

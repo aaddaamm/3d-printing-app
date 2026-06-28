@@ -11,6 +11,10 @@ const {
   mockAssignJobsRun,
   mockFindUserJobsAll,
   mockAssignByIdsRun,
+  mockFindAutoTitleProjectsAll,
+  mockUpdateProjectSourceAndNameRun,
+  mockMoveProjectJobsRun,
+  mockDeleteProjectByIdRun,
 } = vi.hoisted(() => ({
   mockFindDesignsAll: vi.fn<() => { designId: string; designTitle: string | null }[]>(),
   mockFindAutoProjectGet: vi.fn<(id: string) => { id: number } | undefined>(),
@@ -20,12 +24,19 @@ const {
   mockAssignJobsRun: vi.fn<() => { changes: number }>(),
   mockFindUserJobsAll: vi.fn<() => { id: number; title: string | null }[]>(),
   mockAssignByIdsRun: vi.fn<() => { changes: number }>(),
+  mockFindAutoTitleProjectsAll:
+    vi.fn<() => { id: number; name: string; source_design_id: string }[]>(),
+  mockUpdateProjectSourceAndNameRun: vi.fn<() => { changes: number }>(),
+  mockMoveProjectJobsRun: vi.fn<() => { changes: number }>(),
+  mockDeleteProjectByIdRun: vi.fn<() => { changes: number }>(),
 }));
 
 vi.mock("../lib/db.js", () => ({
   db: {
     prepare: vi.fn((sql: string) => {
       if (sql.includes("SELECT DISTINCT designId")) return { all: mockFindDesignsAll };
+      if (sql.includes("SELECT id, name, source_design_id"))
+        return { all: mockFindAutoTitleProjectsAll };
       if (sql.includes("SELECT id FROM projects WHERE source_design_id = ?"))
         return { get: mockFindAutoProjectGet };
       if (sql.includes("SELECT id FROM projects WHERE source_design_id IS NULL AND name = ?"))
@@ -38,6 +49,12 @@ vi.mock("../lib/db.js", () => ({
       if (sql.includes("SELECT j.id, pt.title")) return { all: mockFindUserJobsAll };
       if (sql.includes("UPDATE jobs SET project_id = ? WHERE id IN"))
         return { run: mockAssignByIdsRun };
+      if (sql.includes("UPDATE projects SET name = @name"))
+        return { run: mockUpdateProjectSourceAndNameRun };
+      if (sql.includes("UPDATE jobs SET project_id = ? WHERE project_id = ?"))
+        return { run: mockMoveProjectJobsRun };
+      if (sql.includes("DELETE FROM projects WHERE id = ?"))
+        return { run: mockDeleteProjectByIdRun };
       return { all: vi.fn(), get: vi.fn(), run: vi.fn() };
     }),
     transaction: vi.fn((fn: () => void) => fn),
@@ -59,7 +76,11 @@ describe("autoGroupProjects", () => {
     mockAssignByIdsRun.mockReturnValue({ changes: 0 });
     mockFindDesignsAll.mockReturnValue([]);
     mockFindUserJobsAll.mockReturnValue([]);
+    mockFindAutoTitleProjectsAll.mockReturnValue([]);
     mockFindManualProjectByNameGet.mockReturnValue(undefined);
+    mockUpdateProjectSourceAndNameRun.mockReturnValue({ changes: 1 });
+    mockMoveProjectJobsRun.mockReturnValue({ changes: 0 });
+    mockDeleteProjectByIdRun.mockReturnValue({ changes: 1 });
   });
 
   it("returns zeroes when there are no unassigned jobs", () => {
@@ -247,6 +268,12 @@ describe("deriveBaseTitle", () => {
   it("keeps title with underscores intact when base is not known", () => {
     const bases = new Set<string>();
     expect(deriveBaseTitle("Blue_Tetris Magnets", bases)).toBe("Blue_Tetris Magnets");
+  });
+
+  it("groups local slicer part files by family name before material and duration suffix", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("daredevil cornice_PLA_2h20m.gcode", bases)).toBe("daredevil");
+    expect(deriveBaseTitle("daredevil figure_PLA_1h12m.gcode", bases)).toBe("daredevil");
   });
 
   it("can strip multiple trailing underscore segments to match a known base", () => {
