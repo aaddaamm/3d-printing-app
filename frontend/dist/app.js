@@ -364,7 +364,9 @@
               <label>Filament</label>
               <div class="detail-val">
                 ${at(t.total_weight_g)}
-                <span class="usage-confidence">${bn(t.material_usage_confidence)}</span>
+                <span class="usage-confidence"
+                  >${bn(t.material_usage_confidence)}</span
+                >
                 <${kt} colors=${t.filament_colors} />
               </div>
             </div>

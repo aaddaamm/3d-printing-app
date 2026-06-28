@@ -157,8 +157,9 @@ function firstThumbnail(metadata: Record<string, unknown>): string | null {
   if (!Array.isArray(thumbnails)) return null;
 
   const candidates = thumbnails
-    .filter((thumbnail): thumbnail is Record<string, unknown> =>
-      !!thumbnail && typeof thumbnail === "object",
+    .filter(
+      (thumbnail): thumbnail is Record<string, unknown> =>
+        !!thumbnail && typeof thumbnail === "object",
     )
     .map((thumbnail) => ({
       path: asString(thumbnail["relative_path"]) ?? asString(thumbnail["thumbnail_path"]),
