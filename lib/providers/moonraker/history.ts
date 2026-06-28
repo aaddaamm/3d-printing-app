@@ -146,19 +146,27 @@ function firstWeightFromMetadata(metadata: Record<string, unknown>): number | nu
   return null;
 }
 
+function thumbnailArea(thumbnail: Record<string, unknown>): number {
+  const width = asNumber(thumbnail["width"]) ?? 0;
+  const height = asNumber(thumbnail["height"]) ?? 0;
+  return width * height;
+}
+
 function firstThumbnail(metadata: Record<string, unknown>): string | null {
   const thumbnails = metadata["thumbnails"];
   if (!Array.isArray(thumbnails)) return null;
 
-  for (const thumbnail of thumbnails) {
-    if (!thumbnail || typeof thumbnail !== "object") continue;
-    const thumbnailRecord = thumbnail as Record<string, unknown>;
-    const relativePath =
-      asString(thumbnailRecord["relative_path"]) ?? asString(thumbnailRecord["thumbnail_path"]);
-    if (relativePath) return relativePath;
-  }
+  const candidates = thumbnails
+    .filter((thumbnail): thumbnail is Record<string, unknown> =>
+      !!thumbnail && typeof thumbnail === "object",
+    )
+    .map((thumbnail) => ({
+      path: asString(thumbnail["relative_path"]) ?? asString(thumbnail["thumbnail_path"]),
+      area: thumbnailArea(thumbnail),
+    }))
+    .filter((thumbnail): thumbnail is { path: string; area: number } => thumbnail.path != null);
 
-  return null;
+  return candidates.sort((a, b) => b.area - a.area)[0]?.path ?? null;
 }
 
 function dirname(filename: string): string {

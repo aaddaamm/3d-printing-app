@@ -23,6 +23,12 @@ export const moonrakerHttpHistoryResponse = {
         referenced_tools: [0, 1],
         thumbnails: [
           {
+            width: 96,
+            height: 96,
+            size: 9123,
+            relative_path: ".thumbs/customer-bracket-96x96.png",
+          },
+          {
             width: 300,
             height: 300,
             size: 43128,
