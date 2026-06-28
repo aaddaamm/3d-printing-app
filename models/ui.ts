@@ -25,12 +25,70 @@ export interface UiJobRow {
   material_usage_confidence: string | null;
 }
 
+function dirname(filename: string): string {
+  const lastSlash = filename.lastIndexOf("/");
+  return lastSlash === -1 ? "" : filename.slice(0, lastSlash);
+}
+
+function joinPosixPath(...parts: string[]): string {
+  return parts
+    .flatMap((part) => part.split("/"))
+    .filter((part) => part.length > 0 && part !== ".")
+    .join("/");
+}
+
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function moonrakerMediaUrl(
+  providerPrinterId: string | null,
+  filename: string | null,
+  mediaPath: string,
+): string | null {
+  if (/^https?:\/\//i.test(mediaPath)) return mediaPath;
+  if (!providerPrinterId) return null;
+  const thumbnailPath = mediaPath.startsWith("/")
+    ? mediaPath.slice(1)
+    : joinPosixPath(dirname(filename ?? ""), mediaPath);
+  return `http://${providerPrinterId}/server/files/gcodes/${encodePath(thumbnailPath)}`;
+}
+
+function remoteCoverUrl(
+  provider: string,
+  providerPrinterId: string | null,
+  title: string | null,
+  thumbnail: string | null,
+  cover: string | null,
+): string | null {
+  if (provider === "bambu") return null;
+  const mediaUrl = thumbnail ?? cover;
+  if (!mediaUrl) return null;
+  if (provider === "moonraker") return moonrakerMediaUrl(providerPrinterId, title, mediaUrl);
+  return /^https?:\/\//i.test(mediaUrl) ? mediaUrl : null;
+}
+
+function parseFilamentColors(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function listUiJobs(): UiJobRow[] {
   const rows = db
     .prepare<
       [],
       Omit<UiJobRow, "cover_url" | "filament_colors"> & {
         first_task_id: string;
+        first_task_provider: string;
+        first_task_provider_printer_id: string | null;
+        first_task_title: string | null;
+        first_task_cover: string | null;
+        first_task_thumbnail: string | null;
         filament_colors_json: string | null;
       }
     >(
@@ -42,6 +100,11 @@ export function listUiJobs(): UiJobRow[] {
         COALESCE(j.status_override, j.status) AS status, j.status_override,
         j.customer, j.notes, j.price_override, j.extra_labor_minutes, j.project_id,
         pt_first.id AS first_task_id,
+        pt_first.provider AS first_task_provider,
+        pt_first.provider_printer_id AS first_task_provider_printer_id,
+        pt_first.title AS first_task_title,
+        pt_first.cover AS first_task_cover,
+        pt_first.thumbnail AS first_task_thumbnail,
         (SELECT json_group_array(color) FROM (
           SELECT DISTINCT jf.color
           FROM job_filaments jf
@@ -64,7 +127,7 @@ export function listUiJobs(): UiJobRow[] {
         ) AS material_usage_confidence
       FROM jobs j
       LEFT JOIN (
-        SELECT id, session_id,
+        SELECT id, provider, provider_printer_id, session_id, title, cover, thumbnail,
           ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY plateIndex) AS rn
         FROM print_tasks
       ) pt_first ON pt_first.session_id = j.session_id AND pt_first.rn = 1
@@ -72,10 +135,31 @@ export function listUiJobs(): UiJobRow[] {
     )
     .all();
 
-  return rows.map(({ first_task_id, filament_colors_json, ...row }) => ({
-    ...row,
-    cover_url:
-      first_task_id && localCoverExists(first_task_id) ? `/ui/covers/${first_task_id}` : null,
-    filament_colors: filament_colors_json ? (JSON.parse(filament_colors_json) as string[]) : [],
-  }));
+  return rows.map(
+    ({
+      first_task_id,
+      first_task_provider,
+      first_task_provider_printer_id,
+      first_task_title,
+      first_task_cover,
+      first_task_thumbnail,
+      filament_colors_json,
+      ...row
+    }) => {
+      const localCoverUrl =
+        first_task_id && localCoverExists(first_task_id) ? `/ui/covers/${first_task_id}` : null;
+      const fallbackCoverUrl = remoteCoverUrl(
+        first_task_provider,
+        first_task_provider_printer_id,
+        first_task_title,
+        first_task_thumbnail,
+        first_task_cover,
+      );
+      return {
+        ...row,
+        cover_url: localCoverUrl ?? fallbackCoverUrl,
+        filament_colors: parseFilamentColors(filament_colors_json),
+      };
+    },
+  );
 }

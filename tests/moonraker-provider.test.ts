@@ -3,6 +3,14 @@ import { normalizedRecordToPrintTask } from "../lib/providers/normalized-task.js
 import { MoonrakerHistoryProvider } from "../lib/providers/moonraker/history.js";
 import { moonrakerHttpHistoryResponse } from "./fixtures/moonraker-history.js";
 
+function parseRawJson(rawJson: string): Record<string, unknown> {
+  try {
+    return JSON.parse(rawJson) as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
 describe("MoonrakerHistoryProvider", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -71,7 +79,12 @@ describe("MoonrakerHistoryProvider", () => {
           confidence: "slicer_estimate",
         },
       ],
-      media: [{ kind: "thumbnail", url: ".thumbs/customer-part.png" }],
+      media: [
+        {
+          kind: "thumbnail",
+          url: "http://snapmaker-u1.local/server/files/gcodes/.thumbs/customer-part.png",
+        },
+      ],
     });
   });
 
@@ -115,7 +128,12 @@ describe("MoonrakerHistoryProvider", () => {
           confidence: "slicer_estimate",
         },
       ],
-      media: [{ kind: "thumbnail", url: ".thumbs/customer-bracket-300x300.png" }],
+      media: [
+        {
+          kind: "thumbnail",
+          url: "http://voron-2.local/server/files/gcodes/printworks/.thumbs/customer-bracket-300x300.png",
+        },
+      ],
     });
     expect(result.records[1]).toMatchObject({
       provider_record_id: "voron-000124",
@@ -135,7 +153,7 @@ describe("MoonrakerHistoryProvider", () => {
     });
 
     const task = normalizedRecordToPrintTask(record, 123);
-    const raw = JSON.parse(task.raw_json) as Record<string, unknown>;
+    const raw = parseRawJson(task.raw_json);
 
     expect(task).toMatchObject({
       id: "moonraker:000002",

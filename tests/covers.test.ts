@@ -52,6 +52,11 @@ describe("localCoverExists", () => {
     expect(fs.existsSync).toHaveBeenCalledWith(localCoverPath("task1"));
   });
 
+  it("returns false for provider-scoped task ids without throwing", () => {
+    expect(localCoverExists("moonraker:00002B")).toBe(false);
+    expect(fs.existsSync).not.toHaveBeenCalled();
+  });
+
   it("returns false when existsSync returns false", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     expect(localCoverExists("task2")).toBe(false);

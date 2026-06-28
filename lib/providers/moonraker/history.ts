@@ -152,11 +152,40 @@ function firstThumbnail(metadata: Record<string, unknown>): string | null {
 
   for (const thumbnail of thumbnails) {
     if (!thumbnail || typeof thumbnail !== "object") continue;
-    const relativePath = asString((thumbnail as Record<string, unknown>)["relative_path"]);
+    const thumbnailRecord = thumbnail as Record<string, unknown>;
+    const relativePath =
+      asString(thumbnailRecord["relative_path"]) ?? asString(thumbnailRecord["thumbnail_path"]);
     if (relativePath) return relativePath;
   }
 
   return null;
+}
+
+function dirname(filename: string): string {
+  const lastSlash = filename.lastIndexOf("/");
+  return lastSlash === -1 ? "" : filename.slice(0, lastSlash);
+}
+
+function joinPosixPath(...parts: string[]): string {
+  return parts
+    .flatMap((part) => part.split("/"))
+    .filter((part) => part.length > 0 && part !== ".")
+    .join("/");
+}
+
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function moonrakerFileUrl(
+  baseUrl: string,
+  filename: string | null | undefined,
+  path: string,
+): string {
+  const thumbnailPath = path.startsWith("/")
+    ? path.slice(1)
+    : joinPosixPath(dirname(filename ?? ""), path);
+  return `${baseUrl}/server/files/gcodes/${encodePath(thumbnailPath)}`;
 }
 
 function materialRowsFromWeights(
@@ -215,10 +244,12 @@ function materialsFromJob(job: MoonrakerHistoryJob): NormalizedMaterialUsage[] {
   ];
 }
 
-function mediaFromJob(job: MoonrakerHistoryJob): NormalizedMediaAsset[] {
+function mediaFromJob(job: MoonrakerHistoryJob, baseUrl: string): NormalizedMediaAsset[] {
   const metadata = job.metadata ?? {};
   const thumbnail = firstThumbnail(metadata);
-  return thumbnail ? [{ kind: "thumbnail", url: thumbnail }] : [];
+  return thumbnail
+    ? [{ kind: "thumbnail", url: moonrakerFileUrl(baseUrl, job.filename, thumbnail) }]
+    : [];
 }
 
 export class MoonrakerHistoryProvider implements PrintHistoryProvider {
@@ -310,7 +341,7 @@ export class MoonrakerHistoryProvider implements PrintHistoryProvider {
       duration_s: duration != null ? Math.round(duration) : null,
       printer,
       materials: materialsFromJob(job),
-      media: mediaFromJob(job),
+      media: mediaFromJob(job, this.baseUrl),
       raw: job,
       provider_metadata: {
         filename: job.filename ?? null,
@@ -321,11 +352,20 @@ export class MoonrakerHistoryProvider implements PrintHistoryProvider {
   }
 
   private printerIdentity(): PrinterIdentity {
-    const url = new URL(this.baseUrl);
+    let host = this.baseUrl;
+    let hostname = this.baseUrl;
+    try {
+      const url = new URL(this.baseUrl);
+      host = url.host;
+      hostname = url.hostname;
+    } catch {
+      // Fall back to the raw configured value for validation errors surfaced elsewhere.
+    }
+
     return {
       provider_id: this.id,
-      provider_printer_id: this.config.printerId ?? url.host,
-      name: this.config.printerName ?? url.hostname,
+      provider_printer_id: this.config.printerId ?? host,
+      name: this.config.printerName ?? hostname,
       model: this.config.printerModel ?? "Snapmaker U1",
     };
   }

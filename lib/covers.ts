@@ -11,8 +11,12 @@ function ensureCoversDir(): string {
   return COVERS_DIR;
 }
 
+function isSafeTaskId(taskId: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(taskId);
+}
+
 function sanitizeTaskId(taskId: string): string {
-  if (!/^[A-Za-z0-9_-]+$/.test(taskId)) {
+  if (!isSafeTaskId(taskId)) {
     throw new Error(`Invalid task id for cover path: ${taskId}`);
   }
   return taskId;
@@ -29,6 +33,7 @@ export function localCoverPath(taskId: string): string {
 }
 
 export function localCoverExists(taskId: string): boolean {
+  if (!isSafeTaskId(taskId)) return false;
   const coverPath = localCoverPath(taskId);
   const root = ensureCoversDir();
   if (!coverPath.startsWith(root + path.sep)) {
