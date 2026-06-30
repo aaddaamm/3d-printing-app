@@ -1,7 +1,7 @@
 // ── Jobs view — Header, Toolbar, TotalsBar, Table, Grid ──────────────────────
 
 import { h } from "preact";
-import { useEffect, useMemo, useState } from "preact/hooks";
+import { useMemo } from "preact/hooks";
 import htm from "htm";
 
 import {
@@ -13,62 +13,15 @@ import {
   fmtWeightTotal,
 } from "./helpers.js";
 import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.js";
+export { PrinterBreakdownView } from "./jobs-printer-breakdown.js";
+import type { DataRange, Job, Summary } from "./jobs-view-types.js";
 import { useLocation } from "./router.js";
-import { fetchJsonOrToast, patchJsonOrToast } from "../lib/api.js";
 
 const html = (
   htm as unknown as {
     bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
-
-type Job = {
-  id: number;
-  designTitle?: string;
-  customer?: string | null;
-  status?: string;
-  deviceModel?: string;
-  startTime?: string;
-  total_weight_g?: number | null;
-  total_time_s?: number | null;
-  final_price?: number | null;
-  plate_count?: number | null;
-  print_run?: number;
-  cover_url?: string | null;
-  filament_colors?: string[];
-  material_usage_confidence?: string | null;
-};
-
-type DeviceSummary = {
-  deviceModel?: string | null;
-  total_jobs?: number;
-  total_plates?: number | null;
-  total_time_s?: number | null;
-};
-
-type Summary = {
-  totals?: Record<string, number> | null;
-  by_device?: DeviceSummary[];
-} | null;
-
-type PrinterInventory = {
-  id: number;
-  provider: string;
-  provider_display_name?: string | null;
-  provider_printer_id: string;
-  name?: string | null;
-  model?: string | null;
-  is_active: number;
-  retired_at?: string | null;
-  job_count: number;
-  task_count: number;
-  total_time_s?: number | null;
-  total_weight_g?: number | null;
-  first_print_at?: string | null;
-  last_print_at?: string | null;
-};
-
-type DataRange = { min_start?: string; max_start?: string; task_count?: number } | null;
 
 function isJobsRoute(loc: string): boolean {
   return !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers");
@@ -103,166 +56,6 @@ function materialConfidenceLabel(confidence?: string | null): string | null {
 function MaterialConfidence({ confidence }: { confidence?: string | null }) {
   const label = materialConfidenceLabel(confidence);
   return label ? html`<span class="usage-confidence">${label}</span>` : null;
-}
-
-function getPrinterPhotoUrl(deviceModel: string): string | null {
-  const normalized = deviceModel.toLowerCase();
-  if (normalized.includes("a1 mini")) return "/ui/printers/a1-mini";
-  if (normalized.includes("p1s")) return "/ui/printers/p1s";
-  return null;
-}
-
-function groupJobsByPrinter(jobs: Job[]): Map<string, Job[]> {
-  const jobsByPrinter = new Map<string, Job[]>();
-  for (const job of jobs) {
-    const key = job.deviceModel || "Unknown printer";
-    const list = jobsByPrinter.get(key) ?? [];
-    list.push(job);
-    jobsByPrinter.set(key, list);
-  }
-  return jobsByPrinter;
-}
-
-function getRecentPrinterJobs(jobs: Job[], limit = 6): Job[] {
-  return jobs
-    .slice()
-    .sort((a, b) => String(b.startTime || "").localeCompare(String(a.startTime || "")))
-    .slice(0, limit);
-}
-
-function PrinterIdentity({ printerName }: { printerName: string }) {
-  const printerPhotoUrl = getPrinterPhotoUrl(printerName);
-  return printerPhotoUrl
-    ? html`<img class="printer-photo" src=${printerPhotoUrl} alt=${printerName} />`
-    : html`<div class="printer-photo">🖨️</div>`;
-}
-
-function PrinterJobRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
-  return html`
-    <article class="printer-job-row" key=${job.id} onClick=${() => onJobClick(job)}>
-      <div class="printer-job-top">
-        <div class="td-thumb"><${RowThumb} url=${job.cover_url} /></div>
-        <div class="td-title">
-          <span class="row-title">${job.designTitle || "Untitled Job"}</span>
-          <${FilamentSwatches} colors=${job.filament_colors} />
-        </div>
-        <${Badge} status=${job.status} />
-      </div>
-      <div class="printer-job-bottom">
-        <span title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</span>
-        <span>Filament: <strong>${fmtWeight(job.total_weight_g)}</strong></span>
-        <span>Time: <strong>${fmtTime(job.total_time_s)}</strong></span>
-      </div>
-    </article>
-  `;
-}
-
-function PrinterCard({
-  row,
-  jobs,
-  onJobClick,
-}: {
-  row: DeviceSummary;
-  jobs: Job[];
-  onJobClick: (job: Job) => void;
-}) {
-  const printerName = row.deviceModel || "Unknown printer";
-  const recentJobs = getRecentPrinterJobs(jobs);
-
-  return html`
-    <section class="printer-card" key=${printerName}>
-      <div class="printer-card-head">
-        <div class="printer-identity">
-          <${PrinterIdentity} printerName=${printerName} />
-          <div>
-            <h3>${printerName}</h3>
-            <p class="printer-meta">
-              <span class="printer-meta-jobs">${(row.total_jobs ?? 0).toLocaleString()} jobs</span>
-              <span class="printer-meta-dot">•</span>
-              <span class="printer-meta-hours"
-                >${((row.total_time_s ?? 0) / 3600).toFixed(1)} h total</span
-              >
-            </p>
-          </div>
-        </div>
-        <div class="printer-kpis">
-          <span><strong>${(row.total_jobs ?? 0).toLocaleString()}</strong> Jobs</span>
-          <span><strong>${(row.total_plates ?? 0).toLocaleString()}</strong> Plates</span>
-          <span><strong>${((row.total_time_s ?? 0) / 3600).toFixed(1)}</strong> Hours</span>
-        </div>
-      </div>
-
-      <div class="printer-jobs-list">
-        ${recentJobs.length
-          ? recentJobs.map(
-              (job) => html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
-            )
-          : html`<div class="empty">No jobs for this printer yet.</div>`}
-      </div>
-    </section>
-  `;
-}
-
-function InventoryPrinterCard({
-  printer,
-  jobs,
-  onJobClick,
-  onToggleActive,
-}: {
-  printer: PrinterInventory;
-  jobs: Job[];
-  onJobClick: (job: Job) => void;
-  onToggleActive: (printer: PrinterInventory) => void;
-}) {
-  const printerName = printer.name || printer.model || printer.provider_printer_id;
-  const recentJobs = getRecentPrinterJobs(jobs);
-  const isActive = printer.is_active === 1;
-
-  return html`
-    <section class=${"printer-card" + (isActive ? "" : " is-retired")} key=${printer.id}>
-      <div class="printer-card-head">
-        <div class="printer-identity">
-          <${PrinterIdentity} printerName=${printer.model || printerName} />
-          <div>
-            <h3>${printerName}</h3>
-            <p class="printer-meta">
-              <span class="printer-meta-jobs"
-                >${printer.provider_display_name || printer.provider}</span
-              >
-              <span class="printer-meta-dot">•</span>
-              <span class="printer-meta-hours">${printer.model || "Unknown model"}</span>
-              <span class="printer-meta-dot">•</span>
-              <span class=${isActive ? "status-pill paid" : "status-pill cancel"}
-                >${isActive ? "Active" : "Retired"}</span
-              >
-            </p>
-            ${printer.retired_at
-              ? html`<p class="printer-meta">Retired ${fmtDateShort(printer.retired_at)}</p>`
-              : null}
-          </div>
-        </div>
-        <div class="printer-kpis">
-          <span><strong>${printer.job_count.toLocaleString()}</strong> Jobs</span>
-          <span><strong>${printer.task_count.toLocaleString()}</strong> Records</span>
-          <span><strong>${((printer.total_time_s ?? 0) / 3600).toFixed(1)}</strong> Hours</span>
-        </div>
-      </div>
-
-      <div class="printer-card-footer">
-        <button class="view-btn" onClick=${() => onToggleActive(printer)}>
-          ${isActive ? "Mark retired" : "Reactivate"}
-        </button>
-      </div>
-
-      <div class="printer-jobs-list">
-        ${recentJobs.length
-          ? recentJobs.map(
-              (job) => html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
-            )
-          : html`<div class="empty">No jobs for this printer yet.</div>`}
-      </div>
-    </section>
-  `;
 }
 
 const NAV_ITEMS = [
@@ -452,78 +245,6 @@ export function Toolbar({
         <a class="btn-csv" href=${csvUrl} download>↓ CSV</a>
         <span class="job-count">${filteredCount} / ${totalCount} jobs</span>
       </div>
-    </div>
-  `;
-}
-
-function jobsForInventoryPrinter(printer: PrinterInventory, jobs: Job[]): Job[] {
-  const names = new Set([printer.model, printer.name, printer.provider_printer_id].filter(Boolean));
-  return jobs.filter((job) => names.has(job.deviceModel));
-}
-
-export function PrinterBreakdownView({
-  summary,
-  jobs,
-  onJobClick,
-}: {
-  summary: Summary;
-  jobs: Job[];
-  onJobClick: (job: Job) => void;
-}) {
-  const [printers, setPrinters] = useState<PrinterInventory[]>([]);
-
-  useEffect(() => {
-    fetchJsonOrToast<{ printers: PrinterInventory[] }>(
-      "/printers",
-      "Failed to load printer inventory.",
-    ).then((data) => {
-      if (data) setPrinters(data.printers);
-    });
-  }, []);
-
-  const toggleActive = async (printer: PrinterInventory) => {
-    const data = await patchJsonOrToast<{ printer?: PrinterInventory }>(
-      `/printers/${printer.id}`,
-      { is_active: printer.is_active !== 1 },
-      "Failed to update printer inventory.",
-    );
-    if (!data?.printer) return;
-    setPrinters((items) => items.map((item) => (item.id === printer.id ? data.printer! : item)));
-  };
-
-  if (printers.length) {
-    return html`
-      <div class="printer-grid">
-        ${printers.map(
-          (printer) =>
-            html`<${InventoryPrinterCard}
-              key=${printer.id}
-              printer=${printer}
-              jobs=${jobsForInventoryPrinter(printer, jobs)}
-              onJobClick=${onJobClick}
-              onToggleActive=${toggleActive}
-            />`,
-        )}
-      </div>
-    `;
-  }
-
-  const rows = summary?.by_device ?? [];
-  if (!rows.length) return html`<div class="empty">No printer totals available yet.</div>`;
-
-  const jobsByPrinter = groupJobsByPrinter(jobs);
-
-  return html`
-    <div class="printer-grid">
-      ${rows.map(
-        (row) =>
-          html`<${PrinterCard}
-            key=${row.deviceModel || "Unknown printer"}
-            row=${row}
-            jobs=${jobsByPrinter.get(row.deviceModel || "Unknown printer") ?? []}
-            onJobClick=${onJobClick}
-          />`,
-      )}
     </div>
   `;
 }
