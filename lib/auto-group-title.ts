@@ -82,9 +82,14 @@ function stripKnownExtension(title: string): string {
 function stripSlicerSuffix(title: string): string | null {
   const withoutExtension = stripKnownExtension(title).trim();
   const materialAndDuration =
-    /^(?<base>.+?)[ _-]+(?:PLA|PETG|ABS|ASA|TPU|PC|PA|PVA|HIPS|NYLON)(?:[-_ A-Z0-9]*)?[ _-]+(?:\d+h)?(?:\d+m)?(?:\d+s)?$/i;
+    /^(?<base>.+?)[ _-]+(?:PLA|PETG|ABS|ASA|TPU|PC|PA|PVA|HIPS|NYLON)(?:[-_ A-Z0-9]*)?(?:[ _-]+(?:\d+h)?(?:\d+m)?(?:\d+s)?)?$/i;
   const match = withoutExtension.match(materialAndDuration);
   return match?.groups?.["base"]?.trim() || null;
+}
+
+function shouldCollapseToFirstWord(base: string, firstWord: string): boolean {
+  const words = base.split(/\s+/).filter(Boolean);
+  return words.length === 2 && firstWord === firstWord.toLowerCase();
 }
 
 export function deriveLocalSlicerFamilyTitle(title: string): string | null {
@@ -93,5 +98,5 @@ export function deriveLocalSlicerFamilyTitle(title: string): string | null {
 
   const firstWord = base.split(/\s+/)[0]?.trim();
   if (!firstWord || firstWord.length < 3) return base;
-  return firstWord;
+  return shouldCollapseToFirstWord(base, firstWord) ? firstWord : base;
 }

@@ -173,8 +173,6 @@ function reconcileAutoTitleProjectFamilies(summary: Summary): void {
   }
 
   for (const [familyTitle, projects] of projectsByFamily) {
-    if (projects.length < 2) continue;
-
     const canonicalSourceKey = `title:${familyTitle}`;
     const existingCanonical = findAutoProject.get(canonicalSourceKey);
     const canonical = existingCanonical ?? [...projects].sort((a, b) => a.id - b.id)[0]!;

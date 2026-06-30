@@ -247,6 +247,26 @@ describe("autoGroupProjects", () => {
     expect(mockAssignJobsRun).not.toHaveBeenCalled();
     expect(mockAssignByIdsRun).not.toHaveBeenCalled();
   });
+
+  it("canonicalizes existing slicer-suffixed title projects even when they have no siblings", () => {
+    mockFindAutoTitleProjectsAll.mockReturnValue([
+      {
+        id: 123,
+        name: "Assembly_PLA_4h58m.gcode",
+        source_design_id: "title:Assembly_PLA_4h58m.gcode",
+      },
+    ]);
+    mockFindAutoProjectGet.mockReturnValue(undefined);
+
+    const result = autoGroupProjects();
+
+    expect(result).toEqual({ created: 0, assigned: 0 });
+    expect(mockUpdateProjectSourceAndNameRun).toHaveBeenCalledWith({
+      id: 123,
+      name: "Assembly",
+      source_design_id: "title:Assembly",
+    });
+  });
 });
 
 describe("deriveBaseTitle", () => {
@@ -270,10 +290,23 @@ describe("deriveBaseTitle", () => {
     expect(deriveBaseTitle("Blue_Tetris Magnets", bases)).toBe("Blue_Tetris Magnets");
   });
 
-  it("groups local slicer part files by family name before material and duration suffix", () => {
+  it("groups simple lowercase local slicer part files by family name", () => {
     const bases = new Set<string>();
     expect(deriveBaseTitle("daredevil cornice_PLA_2h20m.gcode", bases)).toBe("daredevil");
     expect(deriveBaseTitle("daredevil figure_PLA_1h12m.gcode", bases)).toBe("daredevil");
+  });
+
+  it("preserves descriptive multi-word local slicer names while stripping material suffixes", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("Light switch cover V2_PLA_1h18m.gcode", bases)).toBe(
+      "Light switch cover V2",
+    );
+    expect(deriveBaseTitle("case bottom drawer_PLA_4h20m.gcode", bases)).toBe("case bottom drawer");
+  });
+
+  it("strips material-only slicer suffixes", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("Dragon_Textured_PLA.gcode", bases)).toBe("Dragon_Textured");
   });
 
   it("can strip multiple trailing underscore segments to match a known base", () => {
