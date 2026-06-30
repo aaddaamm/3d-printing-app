@@ -62,6 +62,19 @@ MOONRAKER_API_KEY=... \
 npm run sync:moonraker
 ```
 
+For multiple providers, copy the example registry and edit the local values:
+
+```bash
+cp printworks.config.example.json printworks.config.json
+npm run sync:providers
+npm run sync:providers -- --provider moonraker-shop-u1
+```
+
+`printworks.config.json` is gitignored. Use `PRINTWORKS_CONFIG=/path/to/config.json`
+to store the registry elsewhere. Keep secrets in environment variables such as
+`BAMBU_TOKEN` or a provider-specific `apiKeyEnv`; the JSON file should contain
+local provider settings, not secret tokens.
+
 ## Persistent data
 
 Today the default data lives in the repository working directory:
@@ -94,12 +107,11 @@ Keep the SQLite `-wal` and `-shm` files with the main database if they exist.
 
 ## Near-term packaging plan
 
-1. Add a checked-in example local environment file.
-2. Add a start script that loads local configuration and uses a stable app data
+1. Add a start script that loads local configuration and uses a stable app data
    directory.
-3. Add macOS LaunchAgent documentation so the app can run in the background.
-4. Add backup/restore docs for SQLite and covers.
-5. Consider Docker Compose after the plain local Node workflow is reliable.
+2. Add macOS LaunchAgent documentation so the app can run in the background.
+3. Add backup/restore docs for SQLite and covers.
+4. Consider Docker Compose after the plain local Node workflow is reliable.
 
 ## Not the plan right now
 

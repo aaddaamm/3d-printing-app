@@ -1,0 +1,20 @@
+{
+  "providers": [
+    {
+      "id": "moonraker-shop-u1",
+      "type": "moonraker",
+      "baseUrl": "http://snapmaker-u1.local",
+      "printerId": "snapmaker-u1",
+      "name": "Snapmaker U1",
+      "model": "Snapmaker U1",
+      "syncIntervalHours": 1
+    },
+    {
+      "id": "bambu-cloud",
+      "type": "bambu",
+      "deviceId": "your-bambu-device-id",
+      "tokenEnv": "BAMBU_TOKEN",
+      "syncIntervalHours": 6
+    }
+  ]
+}

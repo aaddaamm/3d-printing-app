@@ -7,3 +7,4 @@ covers/
 *.numbers
 .env
 .env.*
+printworks.config.json
