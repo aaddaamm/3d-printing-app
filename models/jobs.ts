@@ -201,7 +201,6 @@ function getUsageForJob(job: Job, activeSessionUsage?: Map<string, SessionUsage>
   return activeSessionUsage.get(job.session_id) ?? directUsage(job);
 }
 
-
 export function getJobPrice(
   id: number,
 ): ({ id: number; filament_type: string } & PriceBreakdown) | null {

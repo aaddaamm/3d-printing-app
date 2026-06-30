@@ -35,7 +35,8 @@ export function buildPriceBreakdown(
   isOverride = false,
   overrideFinalPrice?: number,
 ): PriceBreakdown {
-  const base_price = costs.material_cost + costs.machine_cost + costs.labor_cost + costs.extra_labor_cost;
+  const base_price =
+    costs.material_cost + costs.machine_cost + costs.labor_cost + costs.extra_labor_cost;
   const computedFinal = Math.ceil(base_price * totalPricingMultiplier(laborConfig));
   const final_price = isOverride ? (overrideFinalPrice ?? computedFinal) : computedFinal;
 

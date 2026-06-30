@@ -32,9 +32,7 @@ export type BambuProviderRegistryEntry = BaseProviderConfig & {
   limit?: number | undefined;
 };
 
-export type ProviderRegistryEntry =
-  | MoonrakerProviderRegistryEntry
-  | BambuProviderRegistryEntry;
+export type ProviderRegistryEntry = MoonrakerProviderRegistryEntry | BambuProviderRegistryEntry;
 
 export type PrintworksConfig = {
   providers: ProviderRegistryEntry[];
@@ -69,7 +67,10 @@ export function loadPrintworksConfig(
   return parsePrintworksConfig(parsed, resolvedPath);
 }
 
-export function parsePrintworksConfig(value: unknown, source = "printworks config"): PrintworksConfig {
+export function parsePrintworksConfig(
+  value: unknown,
+  source = "printworks config",
+): PrintworksConfig {
   if (!isRecord(value)) throw new PrintworksConfigError(`${source} must be a JSON object`);
 
   const providers = value["providers"];

@@ -1,5 +1,7 @@
 node_modules/
 coverage/
+.pi-lens/
+.DS_Store
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

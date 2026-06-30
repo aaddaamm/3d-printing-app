@@ -2,7 +2,11 @@ import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
 import { autoGroupProjects } from "./lib/auto-group.js";
 import { bold, cyan, dim, green, red } from "./lib/colors.js";
-import { defaultConfigPath, loadPrintworksConfig, type ProviderRegistryEntry } from "./lib/providers/config.js";
+import {
+  defaultConfigPath,
+  loadPrintworksConfig,
+  type ProviderRegistryEntry,
+} from "./lib/providers/config.js";
 import { createConfiguredProvider } from "./lib/providers/factory.js";
 import { storeProviderHistory } from "./lib/providers/sync.js";
 import { invalidateAllPriceCaches } from "./lib/price-cache.js";
@@ -54,7 +58,11 @@ function insertSyncLog(provider: ProviderRegistryEntry): number {
       `INSERT INTO sync_log (provider, provider_printer_id, started_at)
        VALUES (?, ?, ?)`,
     )
-    .run(provider.type, provider.type === "moonraker" ? (provider.printerId ?? null) : (provider.deviceId ?? null), new Date().toISOString());
+    .run(
+      provider.type,
+      provider.type === "moonraker" ? (provider.printerId ?? null) : (provider.deviceId ?? null),
+      new Date().toISOString(),
+    );
   return Number(lastInsertRowid);
 }
 
@@ -80,7 +88,8 @@ async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
   try {
     logInfo(`  ${dim("Provider:")} ${config.id} ${dim(`(${config.type})`)}`);
     const result = await provider.fetchHistory(config.limit ? { limit: config.limit } : undefined);
-    if (result.errors.length > 0) throw new Error(result.errors.map((error) => error.message).join("; "));
+    if (result.errors.length > 0)
+      throw new Error(result.errors.map((error) => error.message).join("; "));
 
     const stored = storeProviderHistory(db, stmts.upsertTask, provider, result);
     inserted = stored.inserted;

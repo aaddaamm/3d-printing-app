@@ -83,8 +83,8 @@ describe("printworks provider config", () => {
     const [entry] = config.providers;
     if (!entry || entry.type !== "bambu") throw new Error("expected bambu entry");
 
-    expect(resolveBambuToken(entry, { SHOP_BAMBU_TOKEN: JSON.stringify({ token: "secret" }) })).toBe(
-      "secret",
-    );
+    expect(
+      resolveBambuToken(entry, { SHOP_BAMBU_TOKEN: JSON.stringify({ token: "secret" }) }),
+    ).toBe("secret");
   });
 });
