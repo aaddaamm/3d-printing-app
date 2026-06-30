@@ -114,6 +114,7 @@ function ProjectRouteView({
   navigate,
   setSelectedJob,
   handleJobProjectChange,
+  setProjects,
 }: {
   projectId: number;
   projects: Project[];
@@ -122,6 +123,7 @@ function ProjectRouteView({
   navigate: (path: string) => void;
   setSelectedJob: (job: Job | null) => void;
   handleJobProjectChange: (jobId: number, projectId: number | null) => void;
+  setProjects: (updater: Project[] | ((ps: Project[]) => Project[])) => void;
 }) {
   const project = projects.find((p) => Number(p.id) === projectId);
   const projectJobs = jobs.filter((j) => Number(j.project_id) === projectId);
@@ -142,6 +144,15 @@ function ProjectRouteView({
     onJobClick=${setSelectedJob}
     onAddJob=${(jobId: number) => handleJobProjectChange(jobId, projectId)}
     onRemoveJob=${(jobId: number) => handleJobProjectChange(jobId, null)}
+    onProjectUpdated=${(updated: Project) =>
+      setProjects((items) =>
+        items.some((item) => item.id === updated.id)
+          ? items.map((item) => (item.id === updated.id ? updated : item))
+          : [updated, ...items],
+      )}
+    onMoveJobToProject=${(jobId: number, newProjectId: number) =>
+      handleJobProjectChange(jobId, newProjectId)}
+    onNavigateToProject=${(newProjectId: number) => navigate(`/projects/${newProjectId}`)}
   />`;
 }
 
@@ -338,6 +349,7 @@ export function renderMainContent({
       navigate=${navigate}
       setSelectedJob=${setSelectedJob}
       handleJobProjectChange=${handleJobProjectChange}
+      setProjects=${setProjects}
     />`;
   }
 

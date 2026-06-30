@@ -74,10 +74,12 @@ export function ProjectJobsTable({
   jobs,
   onJobClick,
   onRemoveJob,
+  onMoveToNewProject,
 }: {
   jobs: Job[];
   onJobClick: (job: Job) => void;
   onRemoveJob: (jobId: number) => void;
+  onMoveToNewProject?: (job: Job) => void;
 }) {
   if (jobs.length === 0) {
     return html`<div class="empty">No jobs assigned yet. Use "+ Add Jobs" to assign them.</div>`;
@@ -120,6 +122,17 @@ export function ProjectJobsTable({
                     : "—"}
                 </td>
                 <td>
+                  ${onMoveToNewProject &&
+                  html`<button
+                    class="btn-secondary"
+                    title="Move to a new project"
+                    onClick=${(e: MouseEvent) => {
+                      e.stopPropagation();
+                      onMoveToNewProject(job);
+                    }}
+                  >
+                    New project
+                  </button>`}
                   <button
                     class="btn-remove-job"
                     title="Remove from project"

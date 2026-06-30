@@ -18,7 +18,7 @@ import {
   type Job,
   type Project,
 } from "./projects-view-helpers.js";
-import { postJsonOrToast } from "../lib/api.js";
+import { patchJsonOrToast, postJsonOrToast } from "../lib/api.js";
 import { useProjectPrice } from "../hooks/use-project-price.js";
 
 const html = (
@@ -35,6 +35,9 @@ function ProjectDetail({
   onJobClick,
   onAddJob,
   onRemoveJob,
+  onProjectUpdated,
+  onMoveJobToProject,
+  onNavigateToProject,
 }: {
   project: Project;
   jobs: Job[];
@@ -43,8 +46,17 @@ function ProjectDetail({
   onJobClick: (job: Job) => void;
   onAddJob: (jobId: number) => void;
   onRemoveJob: (jobId: number) => void;
+  onProjectUpdated: (project: Project) => void;
+  onMoveJobToProject: (jobId: number, projectId: number) => void;
+  onNavigateToProject: (projectId: number) => void;
 }) {
   const [showAddJobs, setShowAddJobs] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [moveJob, setMoveJob] = useState<Job | null>(null);
+  const [editName, setEditName] = useState(project.name ?? "");
+  const [editCustomer, setEditCustomer] = useState(project.customer ?? "");
+  const [editNotes, setEditNotes] = useState(project.notes ?? "");
+  const [newProjectName, setNewProjectName] = useState("");
   const effectiveJobCount = project.job_count ?? jobs.length;
   const price = useProjectPrice(project.id, effectiveJobCount);
   const totW = sumJobWeight(jobs);
@@ -67,6 +79,40 @@ function ProjectDetail({
 
   const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
 
+  const saveProject = useCallback(async () => {
+    const data = await patchJsonOrToast<{ project?: Project }>(
+      `/projects/${project.id}`,
+      {
+        name: editName.trim(),
+        customer: editCustomer.trim() || null,
+        notes: editNotes.trim() || null,
+      },
+      "Failed to update project.",
+    );
+    if (!data?.project) return;
+    onProjectUpdated(data.project);
+    setEditing(false);
+  }, [editCustomer, editName, editNotes, onProjectUpdated, project.id]);
+
+  const moveToNewProject = useCallback(async () => {
+    if (!moveJob) return;
+    const name = newProjectName.trim();
+    if (!name) return;
+
+    const data = await postJsonOrToast<{ project?: Project }>(
+      "/projects",
+      { name, customer: moveJob.customer ?? null, notes: null },
+      "Failed to create project.",
+    );
+    if (!data?.project) return;
+
+    onProjectUpdated(data.project);
+    onMoveJobToProject(moveJob.id, data.project.id);
+    onNavigateToProject(data.project.id);
+    setMoveJob(null);
+    setNewProjectName("");
+  }, [moveJob, newProjectName, onMoveJobToProject, onNavigateToProject, onProjectUpdated]);
+
   return html`
     <div class="proj-detail">
       <div class="proj-detail-header">
@@ -75,8 +121,38 @@ function ProjectDetail({
           <h2>${project.name}</h2>
           ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
         </div>
+        <button class="btn-secondary" onClick=${() => setEditing((value) => !value)}>
+          ${editing ? "Cancel edit" : "Edit project"}
+        </button>
         <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
       </div>
+      ${editing &&
+      html`<div class="modal-form proj-detail-notes">
+        <label>
+          Project name
+          <input
+            value=${editName}
+            onInput=${(e: Event) => setEditName((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label>
+          Customer
+          <input
+            value=${editCustomer}
+            onInput=${(e: Event) => setEditCustomer((e.target as HTMLInputElement).value)}
+          />
+        </label>
+        <label>
+          Notes
+          <textarea
+            value=${editNotes}
+            onInput=${(e: Event) => setEditNotes((e.target as HTMLTextAreaElement).value)}
+          />
+        </label>
+        <button class="btn-primary" disabled=${!editName.trim()} onClick=${saveProject}>
+          Save project
+        </button>
+      </div>`}
       ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
       <div class="totals-bar">
         <span class="totals-label">Project</span>
@@ -90,6 +166,10 @@ function ProjectDetail({
         jobs=${jobsWithStablePrices}
         onJobClick=${onJobClick}
         onRemoveJob=${onRemoveJob}
+        onMoveToNewProject=${(job: Job) => {
+          setMoveJob(job);
+          setNewProjectName(job.designTitle || "");
+        }}
       />
       ${showAddJobs &&
       html`<${AddJobsModal}
@@ -97,6 +177,34 @@ function ProjectDetail({
         onClose=${() => setShowAddJobs(false)}
         onAdd=${handleAdd}
       />`}
+      ${moveJob &&
+      html`<div class="modal-backdrop" onClick=${() => setMoveJob(null)}>
+        <div class="modal-card" onClick=${(e: MouseEvent) => e.stopPropagation()}>
+          <h3>Move print run to new project</h3>
+          <p class="modal-subtle">${moveJob.designTitle || "Untitled Job"}</p>
+          <label>
+            New project name
+            <input
+              value=${newProjectName}
+              onInput=${(e: Event) => setNewProjectName((e.target as HTMLInputElement).value)}
+              autofocus
+            />
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn-secondary" onClick=${() => setMoveJob(null)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              class="btn-primary"
+              disabled=${!newProjectName.trim()}
+              onClick=${moveToNewProject}
+            >
+              Create and move
+            </button>
+          </div>
+        </div>
+      </div>`}
     </div>
   `;
 }
