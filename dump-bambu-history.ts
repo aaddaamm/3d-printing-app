@@ -1,14 +1,16 @@
 import "dotenv/config";
 import fs from "node:fs";
 import os from "node:os";
-import { db, stmts, insertBatch } from "./lib/db.js";
+import { db, insertBatch } from "./lib/db.js";
 import { BambuCloudProvider } from "./lib/providers/bambu/cloud.js";
-import { runNormalize } from "./normalize.js";
 import { downloadCovers, COVERS_DIR } from "./lib/covers.js";
-import { autoGroupProjects } from "./lib/auto-group.js";
 import { API_PAGE_LIMIT } from "./lib/constants.js";
-import { getAllJobPrices } from "./models/jobs.js";
-import { getAllProjectPrices } from "./models/projects.js";
+import {
+  defaultDbPath,
+  insertSyncLog,
+  runPostSyncMaintenance,
+  updateSyncLog,
+} from "./lib/sync-workflow.js";
 import { bold, dim, red, green, yellow, cyan } from "./lib/colors.js";
 import { logError, logInfo, logWarn } from "./lib/logger.js";
 
@@ -29,7 +31,7 @@ function resolveTokenPath(): string {
 const TOKEN_PATH = resolveTokenPath();
 const DEVICE_ID = process.env["BAMBU_DEVICE_ID"];
 const LIMIT = Number(process.env["BAMBU_LIMIT"] ?? API_PAGE_LIMIT);
-const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
+const DB_PATH = defaultDbPath();
 
 type FetchSummary = {
   total: number;
@@ -140,51 +142,15 @@ async function fetchAndStoreTasks(
       `  ${green("Done.")} ${bold(String(total))} tasks from API ${dim(`(${apiTotal} lifetime total)`)}.`,
     );
 
-    stmts.updateSyncLog.run({
-      id: syncId,
-      ended_at: new Date().toISOString(),
-      inserted,
-      updated,
-      error: null,
-    });
+    updateSyncLog(db, syncId, { inserted, updated });
   } catch (e) {
     process.stdout.write("\n");
     const msg = e instanceof Error ? e.message : String(e);
-    stmts.updateSyncLog.run({
-      id: syncId,
-      ended_at: new Date().toISOString(),
-      inserted,
-      updated,
-      error: msg,
-    });
+    updateSyncLog(db, syncId, { inserted, updated }, msg);
     throw e;
   }
 
   return { total, inserted, updated, apiTotal };
-}
-
-function postSyncSteps(startedAt: number): void {
-  const elapsed = ((Date.now() - startedAt) / 1000).toFixed(1);
-  logInfo(`  ${dim("Elapsed:")} ${elapsed}s`);
-  logInfo("");
-  logInfo(`Saved to: ${dim(DB_PATH)}`);
-
-  logInfo("");
-  runNormalize();
-
-  const { created, assigned } = autoGroupProjects();
-  if (created > 0 || assigned > 0) {
-    logInfo(
-      `  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`,
-    );
-  }
-
-  const jobPrices = getAllJobPrices();
-  const projectPrices = getAllProjectPrices();
-  logInfo(
-    `  Warmed price cache: ${green(String(Object.keys(jobPrices).length))} jobs, ${green(String(Object.keys(projectPrices).length))} projects.`,
-  );
-  logInfo("");
 }
 
 function colorStatusLabel(status: string): string {
@@ -224,10 +190,7 @@ async function main(): Promise<void> {
   printHeader();
 
   const startedAt = Date.now();
-  const { lastInsertRowid } = stmts.insertSyncLog.run({
-    started_at: new Date().toISOString(),
-  });
-  const syncId = Number(lastInsertRowid);
+  const syncId = insertSyncLog(db, { provider: "bambu", providerPrinterId: DEVICE_ID ?? null });
 
   process.on("SIGINT", () => {
     logInfo(`\n\n${yellow("Interrupted.")} Exiting safely.`);
@@ -243,7 +206,7 @@ async function main(): Promise<void> {
   });
 
   await fetchAndStoreTasks(provider, syncId);
-  postSyncSteps(startedAt);
+  runPostSyncMaintenance({ elapsedFrom: startedAt, dbPath: DB_PATH });
   await runCoverSyncAndSummary();
 
   db.close();

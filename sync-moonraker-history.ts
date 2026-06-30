@@ -1,16 +1,17 @@
 import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
-import { autoGroupProjects } from "./lib/auto-group.js";
 import { green, red, cyan, bold, dim } from "./lib/colors.js";
 import { logError, logInfo } from "./lib/logger.js";
 import { MoonrakerHistoryProvider } from "./lib/providers/moonraker/history.js";
 import { storeProviderHistory } from "./lib/providers/sync.js";
-import { invalidateAllPriceCaches } from "./lib/price-cache.js";
-import { getAllJobPrices } from "./models/jobs.js";
-import { getAllProjectPrices } from "./models/projects.js";
-import { runNormalize } from "./normalize.js";
+import {
+  defaultDbPath,
+  insertSyncLog,
+  runPostSyncMaintenance,
+  updateSyncLog,
+} from "./lib/sync-workflow.js";
 
-const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
+const DB_PATH = defaultDbPath();
 const BASE_URL = process.env["MOONRAKER_BASE_URL"];
 const API_KEY = process.env["MOONRAKER_API_KEY"];
 const PRINTER_ID = process.env["MOONRAKER_PRINTER_ID"];
@@ -43,29 +44,6 @@ function printHeader(): void {
   logInfo("");
 }
 
-function insertSyncLog(): number {
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO sync_log (provider, provider_printer_id, started_at)
-       VALUES (?, ?, ?)`,
-    )
-    .run("moonraker", PRINTER_ID ?? null, new Date().toISOString());
-  return Number(lastInsertRowid);
-}
-
-function updateSyncLog(
-  id: number,
-  inserted: number,
-  updated: number,
-  error: string | null = null,
-): void {
-  db.prepare(
-    `UPDATE sync_log
-     SET ended_at = ?, inserted = ?, updated = ?, error = ?
-     WHERE id = ?`,
-  ).run(new Date().toISOString(), inserted, updated, error, id);
-}
-
 async function main(): Promise<void> {
   validateConfig();
   printHeader();
@@ -79,7 +57,10 @@ async function main(): Promise<void> {
     limit: LIMIT,
   });
 
-  const syncId = insertSyncLog();
+  const syncId = insertSyncLog(db, {
+    provider: "moonraker",
+    providerPrinterId: PRINTER_ID ?? null,
+  });
   let inserted = 0;
   let updated = 0;
 
@@ -93,30 +74,16 @@ async function main(): Promise<void> {
     inserted = stored.inserted;
     updated = stored.updated;
 
-    updateSyncLog(syncId, inserted, updated);
+    updateSyncLog(db, syncId, { inserted, updated });
     logInfo(
       `  ${green("Stored history.")} ${bold(String(inserted))} new, ${bold(String(updated))} updated.`,
     );
     logInfo("");
 
-    runNormalize();
-
-    const { created, assigned } = autoGroupProjects();
-    if (created > 0 || assigned > 0) {
-      logInfo(
-        `  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`,
-      );
-    }
-
-    invalidateAllPriceCaches();
-    const jobPrices = getAllJobPrices();
-    const projectPrices = getAllProjectPrices();
-    logInfo(
-      `  Warmed price cache: ${green(String(Object.keys(jobPrices).length))} jobs, ${green(String(Object.keys(projectPrices).length))} projects.`,
-    );
+    runPostSyncMaintenance();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    updateSyncLog(syncId, inserted, updated, message);
+    updateSyncLog(db, syncId, { inserted, updated }, message);
     throw error;
   }
 }

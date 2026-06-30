@@ -1,6 +1,5 @@
 import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
-import { autoGroupProjects } from "./lib/auto-group.js";
 import { bold, cyan, dim, green, red } from "./lib/colors.js";
 import {
   defaultConfigPath,
@@ -9,13 +8,15 @@ import {
 } from "./lib/providers/config.js";
 import { createConfiguredProvider } from "./lib/providers/factory.js";
 import { storeProviderHistory } from "./lib/providers/sync.js";
-import { invalidateAllPriceCaches } from "./lib/price-cache.js";
 import { logError, logInfo } from "./lib/logger.js";
-import { getAllJobPrices } from "./models/jobs.js";
-import { getAllProjectPrices } from "./models/projects.js";
-import { runNormalize } from "./normalize.js";
+import {
+  defaultDbPath,
+  insertSyncLog,
+  runPostSyncMaintenance,
+  updateSyncLog,
+} from "./lib/sync-workflow.js";
 
-const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
+const DB_PATH = defaultDbPath();
 
 type CliOptions = {
   providerId?: string;
@@ -52,36 +53,16 @@ function parseCliArgs(argv: string[]): CliOptions {
   return options;
 }
 
-function insertSyncLog(provider: ProviderRegistryEntry): number {
-  const { lastInsertRowid } = db
-    .prepare(
-      `INSERT INTO sync_log (provider, provider_printer_id, started_at)
-       VALUES (?, ?, ?)`,
-    )
-    .run(
-      provider.type,
-      provider.type === "moonraker" ? (provider.printerId ?? null) : (provider.deviceId ?? null),
-      new Date().toISOString(),
-    );
-  return Number(lastInsertRowid);
-}
-
-function updateSyncLog(
-  id: number,
-  inserted: number,
-  updated: number,
-  error: string | null = null,
-): void {
-  db.prepare(
-    `UPDATE sync_log
-     SET ended_at = ?, inserted = ?, updated = ?, error = ?
-     WHERE id = ?`,
-  ).run(new Date().toISOString(), inserted, updated, error, id);
+function providerPrinterId(provider: ProviderRegistryEntry): string | null {
+  return provider.type === "moonraker" ? (provider.printerId ?? null) : (provider.deviceId ?? null);
 }
 
 async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
   const { provider } = createConfiguredProvider(config);
-  const syncId = insertSyncLog(config);
+  const syncId = insertSyncLog(db, {
+    provider: config.type,
+    providerPrinterId: providerPrinterId(config),
+  });
   let inserted = 0;
   let updated = 0;
 
@@ -94,14 +75,14 @@ async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
     const stored = storeProviderHistory(db, stmts.upsertTask, provider, result);
     inserted = stored.inserted;
     updated = stored.updated;
-    updateSyncLog(syncId, inserted, updated);
+    updateSyncLog(db, syncId, { inserted, updated });
 
     logInfo(
       `  ${green("Stored history.")} ${bold(String(inserted))} new, ${bold(String(updated))} updated.`,
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    updateSyncLog(syncId, inserted, updated, message);
+    updateSyncLog(db, syncId, { inserted, updated }, message);
     throw error;
   }
 }
@@ -125,22 +106,7 @@ async function main(): Promise<void> {
 
   for (const provider of providers) await syncProvider(provider);
 
-  logInfo("");
-  runNormalize();
-
-  const { created, assigned } = autoGroupProjects();
-  if (created > 0 || assigned > 0) {
-    logInfo(
-      `  Auto-grouped: ${green(String(assigned))} job(s) into projects ${dim(`(${created} new project(s) created)`)}.`,
-    );
-  }
-
-  invalidateAllPriceCaches();
-  const jobPrices = getAllJobPrices();
-  const projectPrices = getAllProjectPrices();
-  logInfo(
-    `  Warmed price cache: ${green(String(Object.keys(jobPrices).length))} jobs, ${green(String(Object.keys(projectPrices).length))} projects.`,
-  );
+  runPostSyncMaintenance();
 }
 
 main()
