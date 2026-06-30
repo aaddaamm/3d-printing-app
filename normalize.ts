@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
 import type { JobFilament } from "./lib/types.js";
+import { computeSessionOrder } from "./lib/normalize-session-order.js";
 import { deriveJobStatus, detectSessions, type RawTask } from "./lib/session-detection.js";
 import { invalidateAllPriceCaches } from "./lib/price-cache.js";
 import { logInfo } from "./lib/logger.js";
@@ -39,11 +40,6 @@ interface SessionAccumulator {
 
 type TaskPayload = Record<string, unknown>;
 
-type SessionInfo = {
-  sessionId: string;
-  startTime: string | null;
-};
-
 const selectAllTasks = db.prepare<[], RawTask>(
   `SELECT
     id, provider, provider_task_id, provider_printer_id, printer_id,
@@ -79,52 +75,6 @@ function asNumber(v: unknown): number | null {
 
 function asString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
-}
-
-function getSessionGroupKey(task: RawTask): string {
-  return task.instanceId && task.instanceId !== 0
-    ? `${task.instanceId}:${task.deviceId ?? ""}`
-    : `solo:${task.id}`;
-}
-
-function compareSessionStart(a: SessionInfo, b: SessionInfo): number {
-  if (!a.startTime) return 1;
-  if (!b.startTime) return -1;
-  return a.startTime < b.startTime ? -1 : 1;
-}
-
-function dedupeSessionsById(sessions: SessionInfo[]): SessionInfo[] {
-  return [...new Map(sessions.map((s) => [s.sessionId, s])).values()];
-}
-
-function computeSessionOrder(
-  allTasks: RawTask[],
-  taskToSession: Map<string, string>,
-): Map<string, number> {
-  const grouped = new Map<string, SessionInfo[]>();
-
-  for (const task of allTasks) {
-    const sessionId = taskToSession.get(task.id);
-    if (!sessionId) continue;
-
-    const groupKey = getSessionGroupKey(task);
-    const sessions = grouped.get(groupKey);
-    const info: SessionInfo = { sessionId, startTime: task.startTime };
-
-    if (sessions) {
-      sessions.push(info);
-    } else {
-      grouped.set(groupKey, [info]);
-    }
-  }
-
-  const sessionOrder = new Map<string, number>();
-  for (const sessions of grouped.values()) {
-    const orderedSessions = dedupeSessionsById(sessions.sort(compareSessionStart));
-    orderedSessions.forEach((session, i) => sessionOrder.set(session.sessionId, i + 1));
-  }
-
-  return sessionOrder;
 }
 
 function createAccumulator(
@@ -206,6 +156,17 @@ function insertFilaments(
   }
 }
 
+function parseTaskPayload(rawJson: string): TaskPayload {
+  try {
+    const parsed = JSON.parse(rawJson) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as TaskPayload)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
 function updateAccumulator(
   acc: SessionAccumulator,
   task: RawTask,
@@ -236,7 +197,7 @@ function backfillTasksAndBuildSessions(
   db.transaction(() => {
     for (const task of allTasks) {
       const { id, status, raw_json } = task;
-      const payload = JSON.parse(raw_json) as TaskPayload;
+      const payload = parseTaskPayload(raw_json);
       const instanceId = asNumber(payload["instanceId"]) ?? task.instanceId;
       const sessionId = taskToSession.get(id);
       if (!sessionId) continue;
