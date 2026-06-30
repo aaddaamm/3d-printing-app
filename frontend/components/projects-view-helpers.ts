@@ -6,6 +6,7 @@ export type Project = {
   customer?: string | null;
   notes?: string | null;
   job_count?: number;
+  total_plates?: number | null;
   total_weight_g?: number | null;
   total_time_s?: number | null;
   cover_url?: string | null;
@@ -21,6 +22,7 @@ export type Job = {
   status?: string;
   total_weight_g?: number | null;
   total_time_s?: number | null;
+  plate_count?: number | null;
   final_price?: number | null;
 };
 
@@ -63,4 +65,8 @@ export function sumJobWeight(jobs: Job[]): number {
 
 export function sumJobTime(jobs: Job[]): number {
   return jobs.reduce((sum, job) => sum + (job.total_time_s || 0), 0);
+}
+
+export function sumJobPlates(jobs: Job[]): number {
+  return jobs.reduce((sum, job) => sum + (job.plate_count || 0), 0);
 }

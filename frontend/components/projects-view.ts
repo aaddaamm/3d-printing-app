@@ -12,6 +12,7 @@ import {
   filterProjects,
   projectCountLabel,
   showAutoGroupToast,
+  sumJobPlates,
   sumJobTime,
   sumJobWeight,
   type Job,
@@ -48,6 +49,7 @@ function ProjectDetail({
   const price = useProjectPrice(project.id, effectiveJobCount);
   const totW = sumJobWeight(jobs);
   const totT = sumJobTime(jobs);
+  const totalPlates = sumJobPlates(jobs);
   const stableJobPricesRef = useRef(new Map<number, number>());
 
   const jobsWithStablePrices = useMemo(() => {
@@ -78,7 +80,8 @@ function ProjectDetail({
       ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
       <div class="totals-bar">
         <span class="totals-label">Project</span>
-        <span>Jobs: <strong>${effectiveJobCount}</strong></span>
+        <span>Print runs: <strong>${effectiveJobCount}</strong></span>
+        <span>Plates: <strong>${totalPlates}</strong></span>
         <span>Filament: <strong>${fmtWeightTotal(totW)}</strong></span>
         <span>Print time: <strong>${fmtTime(totT)}</strong></span>
         <${ProjectPriceSummary} price=${price} />

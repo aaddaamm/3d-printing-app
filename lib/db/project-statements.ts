@@ -7,6 +7,7 @@ export function createProjectStatements(db: Database.Database) {
       [],
       Project & {
         job_count: number;
+        total_plates: number | null;
         total_weight_g: number | null;
         total_time_s: number | null;
         latest_cover_task_id: string | null;
@@ -18,7 +19,8 @@ export function createProjectStatements(db: Database.Database) {
       }
     >(`
       SELECT p.*,
-        COUNT(j.id)          AS job_count,
+        COUNT(j.id)           AS job_count,
+        SUM(j.plate_count)    AS total_plates,
         SUM(j.total_weight_g) AS total_weight_g,
         SUM(j.total_time_s)   AS total_time_s,
         (SELECT pt.id FROM print_tasks pt

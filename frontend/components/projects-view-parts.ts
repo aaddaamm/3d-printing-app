@@ -40,7 +40,13 @@ function ProjectCard({
         ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
       </div>
       <div class="proj-card-stats">
-        <span><strong>${project.job_count}</strong> job${project.job_count !== 1 ? "s" : ""}</span>
+        <span>
+          <strong>${project.job_count}</strong> run${project.job_count !== 1 ? "s" : ""}
+        </span>
+        ${project.total_plates != null &&
+        html`<span>
+          <strong>${project.total_plates}</strong> plate${project.total_plates !== 1 ? "s" : ""}
+        </span>`}
         ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
         ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
         ${totalPrice != null &&
@@ -87,6 +93,7 @@ export function ProjectJobsTable({
             <th>Printer</th>
             <th>Date</th>
             <th>Status</th>
+            <th class="td-num">Plates</th>
             <th class="td-num">Filament</th>
             <th class="td-num">Time</th>
             <th class="td-num">Price</th>
@@ -104,6 +111,7 @@ export function ProjectJobsTable({
                 <td>${job.deviceModel || "—"}</td>
                 <td title=${fmtDate(job.startTime)}>${fmtDateShort(job.startTime)}</td>
                 <td><${Badge} status=${job.status} /></td>
+                <td class="td-num"><strong>${job.plate_count ?? 1}</strong></td>
                 <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
                 <td class="td-num">${fmtTime(job.total_time_s)}</td>
                 <td class="td-num">

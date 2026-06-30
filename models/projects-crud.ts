@@ -6,6 +6,7 @@ import type { Project, Job } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
   job_count: number;
+  total_plates: number | null;
   total_weight_g: number | null;
   total_time_s: number | null;
   cover_url: string | null;
