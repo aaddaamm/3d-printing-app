@@ -102,7 +102,7 @@ function serveDistJavaScriptBundle(): Response {
 
 function serveAssetFile(c: Context): Response {
   const file = c.req.param("file");
-  if (!isSafeAssetFile(file)) return notFound(c);
+  if (!file || !isSafeAssetFile(file)) return notFound(c);
 
   const filePath = path.join(DIST_ASSETS_PATH, file);
   if (file.endsWith(".css")) return serveOptionalTextFile(c, filePath, "text/css");
@@ -113,14 +113,14 @@ function serveAssetFile(c: Context): Response {
 
 function serveChunkFile(c: Context): Response {
   const file = c.req.param("file");
-  if (!isSafeAssetFile(file)) return notFound(c);
+  if (!file || !isSafeAssetFile(file)) return notFound(c);
   const filePath = path.join(DIST_CHUNKS_PATH, file);
   return serveOptionalTextFile(c, filePath, "application/javascript");
 }
 
 function serveFontFile(c: Context): Response {
   const file = c.req.param("file");
-  if (!isSafeFontFile(file)) return notFound(c);
+  if (!file || !isSafeFontFile(file)) return notFound(c);
   const content = FONT_CONTENTS.get(file);
   if (!content) return notFound(c);
   const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
@@ -129,7 +129,7 @@ function serveFontFile(c: Context): Response {
 
 function serveCoverFile(c: Context): Response {
   const taskId = c.req.param("taskId");
-  if (!/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
+  if (!taskId || !/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
   if (!localCoverExists(taskId)) return notFound(c);
   return binaryResponse(
     readFileSync(localCoverPath(taskId)),
@@ -140,6 +140,7 @@ function serveCoverFile(c: Context): Response {
 
 function servePrinterPhotoFile(c: Context): Response {
   const slug = c.req.param("slug");
+  if (!slug) return notFound(c);
   const filePath = resolvePrinterPhotoPath(slug);
   if (!filePath) return notFound(c);
   return binaryResponse(readFileSync(filePath), "image/webp", "public, max-age=86400");
