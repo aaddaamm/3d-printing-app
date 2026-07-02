@@ -2,10 +2,13 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
-import { setCookie, deleteCookie } from "hono/cookie";
+import { setCookie, deleteCookie } from "hono/cookie"; // pi-lens-ignore: ast-grep:find-import-file-without-extension, find-import-file-without-extension
 import { localCoverPath, localCoverExists } from "../lib/covers.js";
 import { listUiJobs } from "../models/ui.js";
 import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
+import { createSessionCookieValue } from "../lib/server/session.js";
+
+export { createSessionCookieValue };
 
 const SOURCE_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
 const DIST_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/dist/index.html", import.meta.url));
@@ -41,13 +44,18 @@ const PRINTER_PHOTO_CANDIDATES = new Map<string, string[]>([
 
 const isProd = process.env["NODE_ENV"] === "production";
 const fileCache = new Map<string, string>();
+const SAFE_ASSET_FILE_RE = /^[\w.-]+$/;
+const SAFE_FONT_FILE_RE = /^[\w,.-]+\.(woff2|ttf)$/;
 
 function readTextFile(filePath: string): string {
-  if (isProd) {
-    if (!fileCache.has(filePath)) fileCache.set(filePath, readFileSync(filePath, "utf8"));
-    return fileCache.get(filePath)!;
-  }
-  return readFileSync(filePath, "utf8");
+  if (!isProd) return readFileSync(filePath, "utf8");
+
+  const cached = fileCache.get(filePath);
+  if (cached !== undefined) return cached;
+
+  const content = readFileSync(filePath, "utf8");
+  fileCache.set(filePath, content);
+  return content;
 }
 
 function textResponse(content: string, contentType: string): Response {
@@ -66,14 +74,6 @@ function binaryResponse(
 
 function notFound(c: Context): Response {
   return c.json({ error: "Not found" }, 404);
-}
-
-function isSafeAssetFile(file: string): boolean {
-  return /^[\w.-]+$/.test(file);
-}
-
-function isSafeFontFile(file: string): boolean {
-  return /^[\w,.-]+\.(woff2|ttf)$/.test(file);
 }
 
 function resolvePrinterPhotoPath(slug: string): string | null {
@@ -102,7 +102,7 @@ function serveDistJavaScriptBundle(): Response {
 
 function serveAssetFile(c: Context): Response {
   const file = c.req.param("file");
-  if (!file || !isSafeAssetFile(file)) return notFound(c);
+  if (!file || !SAFE_ASSET_FILE_RE.test(file)) return notFound(c);
 
   const filePath = path.join(DIST_ASSETS_PATH, file);
   if (file.endsWith(".css")) return serveOptionalTextFile(c, filePath, "text/css");
@@ -113,14 +113,14 @@ function serveAssetFile(c: Context): Response {
 
 function serveChunkFile(c: Context): Response {
   const file = c.req.param("file");
-  if (!file || !isSafeAssetFile(file)) return notFound(c);
+  if (!file || !SAFE_ASSET_FILE_RE.test(file)) return notFound(c);
   const filePath = path.join(DIST_CHUNKS_PATH, file);
   return serveOptionalTextFile(c, filePath, "application/javascript");
 }
 
 function serveFontFile(c: Context): Response {
   const file = c.req.param("file");
-  if (!file || !isSafeFontFile(file)) return notFound(c);
+  if (!file || !SAFE_FONT_FILE_RE.test(file)) return notFound(c);
   const content = FONT_CONTENTS.get(file);
   if (!content) return notFound(c);
   const contentType = file.endsWith(".woff2") ? "font/woff2" : "font/ttf";
@@ -205,7 +205,7 @@ function registerAuthRoutes(ui: Hono, apiKey: string): void {
   ui.post("/login", async (c) => {
     const body = await c.req.parseBody();
     if (body["key"] !== apiKey) return c.redirect("/ui/login?error=1");
-    setCookie(c, "session", apiKey, {
+    setCookie(c, "session", createSessionCookieValue(apiKey), {
       httpOnly: true,
       path: "/",
       sameSite: "Lax",

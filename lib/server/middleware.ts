@@ -1,8 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import type { MiddlewareHandler } from "hono";
-import { getCookie } from "hono/cookie";
+import { getCookie } from "hono/cookie"; // pi-lens-ignore: ast-grep:find-import-file-without-extension, find-import-file-without-extension
 import { cyan, dim, green, red, yellow } from "../colors.js";
 import { logInfo } from "../logger.js";
+import { createSessionCookieValue } from "./session.js";
 
 const PUBLIC_PATHS = new Set(["/health", "/ui/login", "/ui/app.js", "/ui/app.css"]);
 const PUBLIC_FONT_RE = /^\/ui\/fonts\/[\w,.-]+\.(?:woff2|ttf)$/;
@@ -52,7 +53,7 @@ function isAuthorizedRequest(
   return (
     isPublicPath(path) ||
     safeEqual(authorizationHeader, `Bearer ${apiKey}`) ||
-    safeEqual(session, apiKey)
+    safeEqual(session, createSessionCookieValue(apiKey))
   );
 }
 

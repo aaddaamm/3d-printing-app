@@ -6,6 +6,7 @@ import type {
   PrintHistoryProvider,
   ProviderCapability,
 } from "../types.js";
+import { FETCH_TIMEOUT_MS } from "../../constants.js";
 import { normalizeMoonrakerJob } from "./normalize.js";
 import type {
   MoonrakerHistoryJob,
@@ -115,9 +116,26 @@ export class MoonrakerHistoryProvider implements PrintHistoryProvider {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (this.config.apiKey) headers["X-Api-Key"] = this.config.apiKey;
 
-    const response = await fetch(`${this.baseUrl}${path}`, { headers });
+    const url = `${this.baseUrl}${path}`;
+    let response: Response;
+    try {
+      response = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    } catch (error) {
+      throw new Error(`Moonraker request failed for ${url}: ${formatFetchError(error)}`, {
+        cause: error,
+      });
+    }
+
     if (!response.ok)
       throw new Error(`Moonraker request failed: ${response.status} ${response.statusText}`);
     return (await response.json()) as T;
   }
+}
+
+function formatFetchError(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+
+  const cause = error.cause;
+  const causeMessage = cause instanceof Error ? cause.message : null;
+  return causeMessage ? `${error.message} (${causeMessage})` : error.message;
 }

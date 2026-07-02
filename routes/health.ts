@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { db, stmts } from "../lib/db.js";
+import { db } from "../lib/db.js";
 
-export function createHealthRoutes(dbPath: string): Hono {
+export function createHealthRoutes(_dbPath: string): Hono {
   const health = new Hono();
 
   health.get("/", (c) => {
@@ -11,7 +11,7 @@ export function createHealthRoutes(dbPath: string): Hono {
     } catch {
       ok = false;
     }
-    return c.json({ ok, db: dbPath, last_sync: stmts.getLastSync.get() ?? null });
+    return c.json({ ok });
   });
 
   health.get("/data-range", (c) => {

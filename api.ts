@@ -1,6 +1,6 @@
-import "dotenv/config";
+import "dotenv/config"; // pi-lens-ignore: ast-grep:find-import-file-without-extension, find-import-file-without-extension, high-import-coupling
 import { Hono } from "hono";
-import { serve } from "@hono/node-server";
+import { serve } from "@hono/node-server"; // pi-lens-ignore: ast-grep:find-import-file-without-extension, find-import-file-without-extension
 import { tasks } from "./routes/tasks.js";
 import { jobs } from "./routes/jobs.js";
 import { summary } from "./routes/summary.js";
@@ -12,6 +12,7 @@ import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
 import { createAuthMiddleware, createRequestLogger } from "./lib/server/middleware.js";
 import { parseSyncSchedules, startSyncScheduler } from "./lib/server/sync-scheduler.js";
+import { resolveServerHost } from "./lib/server/host.js";
 import { logError, logInfo } from "./lib/logger.js";
 
 function getRequiredApiKey(): string {
@@ -24,6 +25,7 @@ function getRequiredApiKey(): string {
 const API_KEY = getRequiredApiKey();
 
 const PORT = Number(process.env["PORT"] ?? 3000);
+const HOST = resolveServerHost();
 const DB_PATH = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
 const SYNC_SCHEDULES = parseSyncSchedules();
 const LOG_REQUESTS = process.env["LOG_REQUESTS"] === "1";
@@ -49,10 +51,11 @@ function mountRoutes(): void {
 }
 
 function startServer(): void {
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
+  serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
+    const origin = `http://${HOST}:${info.port}`;
     logInfo(bold(cyan("=== bambu-api ===")));
-    logInfo(`  Listening on ${cyan(`http://localhost:${info.port}`)}`);
-    logInfo(`  UI:          ${cyan(`http://localhost:${info.port}/ui`)}`);
+    logInfo(`  Listening on ${cyan(origin)}`);
+    logInfo(`  UI:          ${cyan(`${origin}/ui`)}`);
     logInfo(`  DB: ${dim(DB_PATH)}`);
     startSyncScheduler({ schedules: SYNC_SCHEDULES, appEntryUrl: import.meta.url });
   });
