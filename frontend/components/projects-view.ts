@@ -13,6 +13,7 @@ import {
   projectCountLabel,
   showAutoGroupToast,
   sumJobPlates,
+  updateProjectInList,
   sumJobTime,
   sumJobWeight,
   type Job,
@@ -224,6 +225,9 @@ export function ProjectsView({
 }) {
   const [showNew, setShowNew] = useState(false);
   const [grouping, setGrouping] = useState(false);
+  const [renamingProject, setRenamingProject] = useState<Project | null>(null);
+  const [renameName, setRenameName] = useState("");
+  const [savingRename, setSavingRename] = useState(false);
   const [q, setQ] = useState("");
   const [, navigate] = useLocation();
 
@@ -252,6 +256,33 @@ export function ProjectsView({
     [setProjects, navigate],
   );
 
+  const startRename = useCallback((project: Project) => {
+    setRenamingProject(project);
+    setRenameName(project.name ?? "");
+  }, []);
+
+  const saveRename = useCallback(async () => {
+    if (!renamingProject) return;
+    const name = renameName.trim();
+    if (!name) return;
+
+    setSavingRename(true);
+    try {
+      const data = await patchJsonOrToast<{ project?: Project }>(
+        `/projects/${renamingProject.id}`,
+        { name },
+        "Failed to rename project.",
+      );
+      const updatedProject = data?.project;
+      if (!updatedProject) return;
+      setProjects((items) => updateProjectInList(items, updatedProject));
+      setRenamingProject(null);
+      setRenameName("");
+    } finally {
+      setSavingRename(false);
+    }
+  }, [renameName, renamingProject, setProjects]);
+
   const filtered = useMemo(() => filterProjects(projects, q), [projects, q]);
 
   return html`
@@ -275,9 +306,38 @@ export function ProjectsView({
       q=${q}
       projectPrices=${projectPrices}
       navigate=${navigate}
+      onRename=${startRename}
     />
     ${showNew &&
     html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
+    ${renamingProject &&
+    html`<div class="modal-backdrop" onClick=${() => setRenamingProject(null)}>
+      <div class="modal-card" onClick=${(e: MouseEvent) => e.stopPropagation()}>
+        <h3>Rename project</h3>
+        <p class="modal-subtle">${renamingProject.name}</p>
+        <label>
+          Project name
+          <input
+            value=${renameName}
+            onInput=${(e: Event) => setRenameName((e.target as HTMLInputElement).value)}
+            autofocus
+          />
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" onClick=${() => setRenamingProject(null)}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            class="btn-primary"
+            disabled=${!renameName.trim() || savingRename}
+            onClick=${saveRename}
+          >
+            ${savingRename ? "Saving…" : "Save name"}
+          </button>
+        </div>
+      </div>
+    </div>`}
   `;
 }
 

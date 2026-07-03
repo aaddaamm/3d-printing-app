@@ -47,6 +47,13 @@ export function projectCountLabel(projects: Project[], filtered: Project[], q: s
   return `${prefix} project${projects.length !== 1 ? "s" : ""}`;
 }
 
+export function updateProjectInList(projects: Project[], updated: Project): Project[] {
+  if (!projects.some((project) => project.id === updated.id)) return [updated, ...projects];
+  return projects.map((project) =>
+    project.id === updated.id ? { ...project, ...updated } : project,
+  );
+}
+
 export function showAutoGroupToast(projectsCreated: number, jobsAssigned: number): void {
   if (projectsCreated === 0) {
     toast("No ungrouped jobs found — everything is already assigned to a project.", "info");

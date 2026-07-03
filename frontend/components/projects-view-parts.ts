@@ -23,10 +23,12 @@ function ProjectCard({
   project,
   totalPrice,
   onClick,
+  onRename,
 }: {
   project: Project;
   totalPrice: number | null;
   onClick: () => void;
+  onRename: (project: Project) => void;
 }) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
@@ -35,7 +37,19 @@ function ProjectCard({
       ${project.cover_url
         ? html`<img class="proj-card-cover" src=${project.cover_url} alt="" />`
         : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`}
-      <div class="proj-card-name">${project.name}</div>
+      <div class="proj-card-title-row">
+        <div class="proj-card-name">${project.name}</div>
+        <button
+          type="button"
+          class="btn-secondary proj-card-action"
+          onClick=${(e: MouseEvent) => {
+            e.stopPropagation();
+            onRename(project);
+          }}
+        >
+          Rename
+        </button>
+      </div>
       <div class="proj-card-meta">
         ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
       </div>
@@ -159,12 +173,14 @@ export function ProjectsBody({
   q,
   projectPrices,
   navigate,
+  onRename,
 }: {
   loading: boolean;
   filtered: Project[];
   q: string;
   projectPrices: Record<number, number>;
   navigate: (path: string) => void;
+  onRename: (project: Project) => void;
 }) {
   if (loading) return html`<div class="empty">Loading projects…</div>`;
 
@@ -184,6 +200,7 @@ export function ProjectsBody({
             project=${project}
             totalPrice=${projectPrices[project.id] ?? null}
             onClick=${() => navigate(`/projects/${project.id}`)}
+            onRename=${onRename}
           />`,
       )}
     </div>

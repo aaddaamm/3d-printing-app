@@ -1347,9 +1347,21 @@ tbody td {
   background: var(--surface2, #151515);
   font-size: 2rem;
 }
+.proj-card-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
 .proj-card-name {
   font-size: 1rem;
   font-weight: 700;
+}
+.proj-card-action {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font-size: 0.72rem;
+  opacity: 0.82;
 }
 .proj-card-meta {
   display: flex;
