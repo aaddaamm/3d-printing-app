@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 npm run dev          # Hot-reload API server (tsx watch)
-npm run sync         # Fetch from Bambu API + normalize + download covers
-npm run sync:moonraker # Fetch from Moonraker/Snapmaker U1 + normalize
+npm run sync         # Fetch all configured providers + normalize + covers
+npm run sync:bambu   # Fetch from Bambu API only + normalize + covers
+npm run sync:moonraker # Fetch from Moonraker/Snapmaker U1 only + normalize
 npm run api          # Start local API/UI server
 npm test             # vitest run (all tests)
 npm run typecheck    # tsc --noEmit

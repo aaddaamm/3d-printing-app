@@ -46,8 +46,9 @@ npm run dev          # API watch + Vite UI together
 npm run dev:api      # Hot-reload API server only (tsx watch)
 npm run dev:ui       # Vite dev server for UI (HMR)
 npm run api          # Start API server
-npm run sync         # Fetch Bambu API → SQLite → normalize → download covers
-npm run sync:moonraker # Fetch Moonraker/Snapmaker U1 history → SQLite → normalize
+npm run sync         # Fetch all configured providers → SQLite → normalize → covers
+npm run sync:bambu   # Fetch Bambu API only → SQLite → normalize → download covers
+npm run sync:moonraker # Fetch Moonraker/Snapmaker U1 history only → SQLite → normalize
 npm run normalize    # Rebuild sessions/jobs from existing print_tasks
 npm test             # Vitest suite
 npm run typecheck    # TypeScript check
@@ -61,9 +62,17 @@ npm run build        # Compile with tsconfig.build.json
 npm run sync
 ```
 
-Fetches up to `BAMBU_LIMIT` tasks from the Bambu cloud API, upserts them into `print_tasks`, normalizes related plates into `jobs`, auto-groups jobs into `projects`, downloads currently available cover images, and records the run in `sync_log`.
+Runs every provider in `printworks.config.json`, such as Bambu Cloud and Moonraker/Snapmaker U1, then normalizes jobs, auto-groups projects, downloads available covers, and records runs in `sync_log`.
 
-For a Snapmaker U1 or other Moonraker-compatible printer:
+To run only the legacy Bambu cloud sync:
+
+```bash
+npm run sync:bambu
+```
+
+This fetches up to `BAMBU_LIMIT` tasks from the Bambu cloud API, upserts them into `print_tasks`, normalizes related plates into `jobs`, auto-groups jobs into `projects`, downloads currently available cover images, and records the run in `sync_log`.
+
+For only a Snapmaker U1 or other Moonraker-compatible printer:
 
 ```bash
 MOONRAKER_BASE_URL=http://snapmaker-u1.local npm run sync:moonraker
@@ -148,12 +157,12 @@ gate in the local-first mode.
 
 ### Health/UI
 
-| Method | Path                 | Description                         |
-| ------ | -------------------- | ----------------------------------- |
-| `GET`  | `/health`            | DB health and latest sync run       |
-| `GET`  | `/ui`                | Browser UI                          |
-| `GET`  | `/ui/data`           | UI bootstrap payload                |
-| `GET`  | `/ui/covers/:taskId` | Cached cover image                  |
+| Method | Path                 | Description                   |
+| ------ | -------------------- | ----------------------------- |
+| `GET`  | `/health`            | DB health and latest sync run |
+| `GET`  | `/ui`                | Browser UI                    |
+| `GET`  | `/ui/data`           | UI bootstrap payload          |
+| `GET`  | `/ui/covers/:taskId` | Cached cover image            |
 
 ### Tasks
 

@@ -4,9 +4,10 @@
   "description": "Sync Bambu Lab print history to SQLite with pricing, projects, and a lightweight dashboard.",
   "main": "dump-bambu-history.ts",
   "scripts": {
-    "sync": "npx tsx dump-bambu-history.ts",
+    "sync": "npx tsx sync-configured-providers.ts",
+    "sync:bambu": "npx tsx dump-bambu-history.ts",
     "sync:moonraker": "npx tsx sync-moonraker-history.ts",
-    "sync:providers": "npx tsx sync-configured-providers.ts",
+    "sync:providers": "npm run sync --",
     "normalize": "npx tsx normalize.ts",
     "baseline": "npx tsx scripts/baseline-report.ts",
     "api": "npx tsx api.ts",

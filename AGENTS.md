@@ -105,7 +105,8 @@ Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas
 ```bash
 npm run dev       # Hot-reload API server (tsx watch)
 npm run api       # Start API server once
-npm run sync      # Fetch from Bambu API + normalize + download covers
+npm run sync      # Fetch all configured providers + normalize + covers
+npm run sync:bambu # Fetch from Bambu API only + normalize + covers
 npm run normalize # Rebuild sessions/jobs from existing print_tasks
 npm run typecheck
 npm run lint

@@ -42,13 +42,19 @@ Open:
 http://localhost:3000/ui
 ```
 
-Sync Bambu history when needed:
+Sync all configured providers when needed:
 
 ```bash
 npm run sync
 ```
 
-Sync Snapmaker U1 / Moonraker history when needed:
+Sync only Bambu history when needed:
+
+```bash
+npm run sync:bambu
+```
+
+Sync only Snapmaker U1 / Moonraker history when needed:
 
 ```bash
 MOONRAKER_BASE_URL=http://snapmaker-u1.local npm run sync:moonraker
@@ -66,8 +72,8 @@ For multiple providers, copy the example registry and edit the local values:
 
 ```bash
 cp printworks.config.example.json printworks.config.json
-npm run sync:providers
-npm run sync:providers -- --provider moonraker-shop-u1
+npm run sync
+npm run sync -- --provider moonraker-shop-u1
 ```
 
 `printworks.config.json` is gitignored. Use `PRINTWORKS_CONFIG=/path/to/config.json`
