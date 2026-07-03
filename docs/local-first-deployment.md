@@ -30,7 +30,7 @@ Install dependencies:
 npm install
 ```
 
-Start the API/UI locally after setting an `API_KEY` value in your shell:
+Start the API/UI locally:
 
 ```bash
 npm run api

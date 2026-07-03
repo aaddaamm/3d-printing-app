@@ -33,15 +33,11 @@ The token file may also contain JSON such as:
 
 You can also pass the token with `BAMBU_TOKEN`.
 
-### API/UI key
+### Local API/UI access
 
-The API server requires a static `API_KEY` env var. API clients use:
-
-```http
-Authorization: Bearer <API_KEY>
-```
-
-The browser UI is available at `/ui` and stores a same-key session cookie after login.
+The API server and browser UI are intended to run on a trusted local machine or LAN.
+The local app does not require an application-level login; keep the service behind your
+local network or another trusted access layer.
 
 ## Scripts
 
@@ -115,7 +111,6 @@ Cover image URLs from Bambu are short-lived. Sync downloads them to `covers/{tas
 This is the preferred operating mode for now. Run the API/UI on your Mac or another always-on machine on the same LAN as your printers.
 
 ```bash
-# Set API_KEY in your shell or process manager first.
 npm run api
 # or during development
 npm run dev
@@ -139,7 +134,6 @@ Override target with `VITE_API_PROXY_TARGET` if needed.
 
 | Variable                        | Default                        | Description                                                 |
 | ------------------------------- | ------------------------------ | ----------------------------------------------------------- |
-| `API_KEY`                       | _(required)_                   | Bearer token and UI login secret                            |
 | `PORT`                          | `3000`                         | Server port                                                 |
 | `BAMBU_DB`                      | `./bambu_print_history.sqlite` | SQLite database path                                        |
 | `SYNC_INTERVAL_HOURS`           | `0`                            | Legacy Bambu sync interval; shared fallback with providers  |
@@ -149,7 +143,8 @@ Override target with `VITE_API_PROXY_TARGET` if needed.
 
 ## Routes
 
-All non-public routes require bearer auth or the UI session cookie.
+Routes are intended for trusted local/LAN access. There is no application-level auth
+gate in the local-first mode.
 
 ### Health/UI
 
@@ -159,8 +154,6 @@ All non-public routes require bearer auth or the UI session cookie.
 | `GET`  | `/ui`                | Browser UI                          |
 | `GET`  | `/ui/data`           | UI bootstrap payload                |
 | `GET`  | `/ui/covers/:taskId` | Cached cover image                  |
-| `POST` | `/ui/login`          | UI login with `{ "apiKey": "..." }` |
-| `GET`  | `/ui/logout`         | Clear UI session                    |
 
 ### Tasks
 

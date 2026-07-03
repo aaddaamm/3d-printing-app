@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dev          # Hot-reload API server (tsx watch)
 npm run sync         # Fetch from Bambu API + normalize + download covers
 npm run sync:moonraker # Fetch from Moonraker/Snapmaker U1 + normalize
-npm run api          # Start local API/UI server (requires API_KEY env var)
+npm run api          # Start local API/UI server
 npm test             # vitest run (all tests)
 npm run typecheck    # tsc --noEmit
 npm run lint         # ESLint

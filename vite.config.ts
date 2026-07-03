@@ -19,8 +19,6 @@ export default defineConfig({
       "/ui/data": API_PROXY_TARGET,
       "/ui/covers": API_PROXY_TARGET,
       "/ui/printers": API_PROXY_TARGET,
-      "/ui/login": API_PROXY_TARGET,
-      "/ui/logout": API_PROXY_TARGET,
     },
   },
   build: {

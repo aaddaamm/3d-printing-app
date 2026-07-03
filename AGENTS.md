@@ -34,7 +34,7 @@ lib/
   types.ts              — Shared TypeScript interfaces
   util.ts               — Route/model utility helpers
 frontend/               — Frontend (Preact + htm, no build step)
-  index.html            — Shell HTML (API_KEY injected server-side)
+  index.html            — Shell HTML served by the UI route
   app.js                — Root component, routing, data fetching
   app.css               — All styles
   components/           — Preact components (atoms, modal, views, toast, router)
@@ -112,7 +112,8 @@ npm run lint
 npm test
 ```
 
-The API requires `API_KEY` env var. Sync requires `BAMBU_TOKEN` (or `~/.bambu_token`).
+The local API/UI has no application-level auth gate. Sync requires `BAMBU_TOKEN`
+(or `~/.bambu_token`).
 Set `SYNC_INTERVAL_HOURS` on the API server to run sync on startup and then periodically.
 
 ## Frontend architecture
@@ -120,8 +121,8 @@ Set `SYNC_INTERVAL_HOURS` on the API server to run sync on startup and then peri
 The UI uses **Preact 10 + htm** via ESM imports from `https://esm.sh` — no build step,
 no bundler. Browser caches modules after first load; requires internet on first load.
 
-- `routes/ui.ts` is a thin server: injects `window.API_KEY` into the HTML shell,
-  serves static files from `frontend/`, provides `/data` and `/covers/:taskId` endpoints.
+- `routes/ui.ts` is a thin server: serves the HTML shell and static files from
+  `frontend/`, provides `/data` and `/covers/:taskId` endpoints.
 - Components live in `frontend/components/` as plain `.js` modules.
 - Use `toast()` from `frontend/components/toast.js` for user feedback — **never use
   `alert()` or `confirm()`** in the frontend.

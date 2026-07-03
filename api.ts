@@ -10,19 +10,10 @@ import { printers } from "./routes/printers.js";
 import { createUiApp } from "./routes/ui.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
-import { createAuthMiddleware, createRequestLogger } from "./lib/server/middleware.js";
+import { createRequestLogger } from "./lib/server/middleware.js";
 import { parseSyncSchedules, startSyncScheduler } from "./lib/server/sync-scheduler.js";
 import { resolveServerHost } from "./lib/server/host.js";
-import { logError, logInfo } from "./lib/logger.js";
-
-function getRequiredApiKey(): string {
-  const key = process.env["API_KEY"];
-  if (key) return key;
-  logError("API_KEY env var is required");
-  throw new Error("API_KEY env var is required");
-}
-
-const API_KEY = getRequiredApiKey();
+import { logInfo } from "./lib/logger.js";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const HOST = resolveServerHost();
@@ -34,11 +25,10 @@ const app = new Hono();
 
 function mountMiddleware(): void {
   app.use("/*", createRequestLogger(LOG_REQUESTS));
-  app.use("/*", createAuthMiddleware(API_KEY));
 }
 
 function mountRoutes(): void {
-  app.route("/ui", createUiApp(API_KEY));
+  app.route("/ui", createUiApp());
 
   app.route("/health", createHealthRoutes(DB_PATH));
 

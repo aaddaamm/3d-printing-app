@@ -2,13 +2,8 @@ import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
-import { setCookie, deleteCookie } from "hono/cookie"; // pi-lens-ignore: ast-grep:find-import-file-without-extension, find-import-file-without-extension
 import { localCoverPath, localCoverExists } from "../lib/covers.js";
 import { listUiJobs } from "../models/ui.js";
-import { SESSION_COOKIE_MAX_AGE } from "../lib/constants.js";
-import { createSessionCookieValue } from "../lib/server/session.js";
-
-export { createSessionCookieValue };
 
 const SOURCE_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
 const DIST_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/dist/index.html", import.meta.url));
@@ -151,74 +146,9 @@ const FONT_CONTENTS = new Map<string, Buffer>([
   ["JetBrainsMono-VariableFont_wght.ttf", readFileSync(JETBRAINS_FONT_PATH)],
 ]);
 
-const LOGIN_HTML = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Sign in — Bambu Print History</title>
-  <style>
-    @font-face { font-family: "Inter"; src: url("/ui/fonts/Inter-VariableFont_slnt,wght.woff2") format("woff2"); font-display: swap; }
-    @font-face { font-family: "JetBrains Mono"; src: url("/ui/fonts/JetBrainsMono-VariableFont_wght.ttf") format("truetype"); font-display: swap; }
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body { display: flex; align-items: center; justify-content: center;
-           min-height: 100svh; background: #0a0a0a; color: #fff; font-family: "Inter", system-ui, sans-serif; }
-    form { display: flex; flex-direction: column; gap: 12px; width: min(320px, calc(100vw - 48px)); }
-    h1 { display: flex; align-items: center; justify-content: center; gap: 10px;
-         color: #fff; font-family: "JetBrains Mono", monospace; font-size: 17px; font-weight: 500;
-         text-transform: lowercase; margin-bottom: 8px; }
-    h1::before { content: ""; width: 8px; height: 28px; border-radius: 1.5px; background: #3aafa9; }
-    input { padding: 10px 12px; border-radius: 8px; border: 1px solid #1a1a1a;
-            background: #111; color: #fff; font-size: 1rem; outline: none; }
-    input:focus { border-color: #3aafa9; }
-    button { padding: 10px; border-radius: 8px; border: none; background: #3aafa9;
-             color: #0a0a0a; font-size: 1rem; font-weight: 600; cursor: pointer; }
-    button:hover { filter: brightness(1.08); }
-    .error { color: #ff6b6b; font-size: 0.85rem; text-align: center; }
-  </style>
-</head>
-<body>
-  <form method="POST" action="/ui/login">
-    <h1>bambu history</h1>
-    __ERROR__
-    <input type="password" name="key" placeholder="API key" autofocus autocomplete="current-password">
-    <button type="submit">Sign in</button>
-  </form>
-</body>
-</html>`;
-
 function serveShell(c: Context): Response {
   const htmlPath = existsSync(DIST_INDEX_HTML_PATH) ? DIST_INDEX_HTML_PATH : SOURCE_INDEX_HTML_PATH;
   return c.html(readTextFile(htmlPath));
-}
-
-function registerAuthRoutes(ui: Hono, apiKey: string): void {
-  ui.get("/login", (c) => {
-    const error = c.req.query("error");
-    const page = LOGIN_HTML.replace(
-      "__ERROR__",
-      error ? '<p class="error">Incorrect key.</p>' : "",
-    );
-    return c.html(page);
-  });
-
-  ui.post("/login", async (c) => {
-    const body = await c.req.parseBody();
-    if (body["key"] !== apiKey) return c.redirect("/ui/login?error=1");
-    setCookie(c, "session", createSessionCookieValue(apiKey), {
-      httpOnly: true,
-      path: "/",
-      sameSite: "Lax",
-      secure: process.env["NODE_ENV"] === "production",
-      maxAge: SESSION_COOKIE_MAX_AGE,
-    });
-    return c.redirect("/ui");
-  });
-
-  ui.get("/logout", (c) => {
-    deleteCookie(c, "session", { path: "/" });
-    return c.redirect("/ui/login");
-  });
 }
 
 function registerStaticRoutes(ui: Hono): void {
@@ -244,10 +174,9 @@ function registerDataRoutes(ui: Hono): void {
   ui.get("/data", (c) => c.json({ jobs: listUiJobs() }));
 }
 
-export function createUiApp(apiKey: string): Hono {
+export function createUiApp(): Hono {
   const ui = new Hono();
 
-  registerAuthRoutes(ui, apiKey);
   registerStaticRoutes(ui);
   registerDataRoutes(ui);
 
