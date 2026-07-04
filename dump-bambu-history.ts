@@ -133,8 +133,9 @@ async function fetchAndStoreTasks(
         `\r  Fetching tasks: ${bold(String(total))}/${apiTotal} (${green(`${inserted} new`)}, ${yellow(`${updated} updated`)})   `,
       );
 
-      if (tasks.length < LIMIT) break;
-      offset += LIMIT;
+      const numericApiTotal = typeof apiTotal === "number" ? apiTotal : Number.POSITIVE_INFINITY;
+      offset += tasks.length;
+      if (offset >= numericApiTotal) break;
     }
 
     process.stdout.write("\n");

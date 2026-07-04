@@ -14,6 +14,7 @@ import type {
 } from "../types.js";
 
 const BAMBU_PROVIDER_ID = "bambu";
+const BAMBU_DEFAULT_PAGE_SIZE = 20;
 const CANONICAL_BAMBU_STATUSES = new Set<string>([
   "created",
   "running",
@@ -92,7 +93,7 @@ export class BambuCloudProvider implements PrintHistoryProvider {
     const page = await fetchTasks({
       baseUrl: this.config.baseUrl,
       token: this.config.token,
-      limit: this.config.limit,
+      limit: Math.min(this.config.limit, BAMBU_DEFAULT_PAGE_SIZE),
       offset,
       deviceId: this.config.deviceId,
     });

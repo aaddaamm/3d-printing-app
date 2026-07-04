@@ -81,6 +81,7 @@ describe("BambuCloudProvider", () => {
 
     expect(result.records).toHaveLength(45);
     const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls[0]).toContain("limit=20");
     expect(urls[0]).not.toContain("offset=");
     expect(urls[1]).toContain("offset=20");
     expect(urls[2]).toContain("offset=40");
@@ -114,6 +115,12 @@ describe("BambuCloudProvider", () => {
       provider_printer_id: "bambu-p1s-001",
       deviceModel: "P1S",
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        href: expect.stringContaining("limit=20") as unknown,
+      }),
+      expect.objectContaining({ headers: { Authorization: "Bearer token" } }),
+    );
     expect(fetchMock).toHaveBeenCalledWith(
       expect.objectContaining({
         href: expect.stringContaining("deviceId=bambu-p1s-001") as unknown,
