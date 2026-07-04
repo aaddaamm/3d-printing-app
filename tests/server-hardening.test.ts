@@ -19,10 +19,10 @@ it("keeps public health output minimal", async () => {
   expect(await res.json()).toEqual({ ok: true });
 });
 
-it("serves the UI without a login gate for local-only access", async () => {
+it("serves the UI shell directly for local-only access", async () => {
   const app = new Hono().route("/ui", createUiApp());
 
-  const res = await app.request("/ui/login");
+  const res = await app.request("/ui/any-client-route");
 
   expect(res.status).toBe(200);
   expect(await res.text()).not.toContain("Sign in");
