@@ -7,6 +7,7 @@ import htm from "htm";
 import { fmtTime, fmtWeightTotal } from "./helpers.js";
 import { useLocation } from "./router.js";
 import { ProjectJobsTable, ProjectPriceSummary, ProjectsBody } from "./projects-view-parts.js";
+import { MoveJobToNewProjectModal } from "./project-move-job-modal.js";
 import { RenameProjectModal } from "./project-rename-modal.js";
 import { AddJobsModal, NewProjectModal } from "./projects-view-modals.js";
 import {
@@ -58,7 +59,6 @@ function ProjectDetail({
   const [editName, setEditName] = useState(project.name ?? "");
   const [editCustomer, setEditCustomer] = useState(project.customer ?? "");
   const [editNotes, setEditNotes] = useState(project.notes ?? "");
-  const [newProjectName, setNewProjectName] = useState("");
   const effectiveJobCount = project.job_count ?? jobs.length;
   const price = useProjectPrice(project.id, effectiveJobCount);
   const totW = sumJobWeight(jobs);
@@ -95,25 +95,6 @@ function ProjectDetail({
     onProjectUpdated(data.project);
     setEditing(false);
   }, [editCustomer, editName, editNotes, onProjectUpdated, project.id]);
-
-  const moveToNewProject = useCallback(async () => {
-    if (!moveJob) return;
-    const name = newProjectName.trim();
-    if (!name) return;
-
-    const data = await postJsonOrToast<{ project?: Project }>(
-      "/projects",
-      { name, customer: moveJob.customer ?? null, notes: null },
-      "Failed to create project.",
-    );
-    if (!data?.project) return;
-
-    onProjectUpdated(data.project);
-    onMoveJobToProject(moveJob.id, data.project.id);
-    onNavigateToProject(data.project.id);
-    setMoveJob(null);
-    setNewProjectName("");
-  }, [moveJob, newProjectName, onMoveJobToProject, onNavigateToProject, onProjectUpdated]);
 
   return html`
     <div class="proj-detail">
@@ -168,10 +149,7 @@ function ProjectDetail({
         jobs=${jobsWithStablePrices}
         onJobClick=${onJobClick}
         onRemoveJob=${onRemoveJob}
-        onMoveToNewProject=${(job: Job) => {
-          setMoveJob(job);
-          setNewProjectName(job.designTitle || "");
-        }}
+        onMoveToNewProject=${setMoveJob}
       />
       ${showAddJobs &&
       html`<${AddJobsModal}
@@ -180,33 +158,14 @@ function ProjectDetail({
         onAdd=${handleAdd}
       />`}
       ${moveJob &&
-      html`<div class="modal-backdrop" onClick=${() => setMoveJob(null)}>
-        <div class="modal-card" onClick=${(e: MouseEvent) => e.stopPropagation()}>
-          <h3>Move print run to new project</h3>
-          <p class="modal-subtle">${moveJob.designTitle || "Untitled Job"}</p>
-          <label>
-            New project name
-            <input
-              value=${newProjectName}
-              onInput=${(e: Event) => setNewProjectName((e.target as HTMLInputElement).value)}
-              autofocus
-            />
-          </label>
-          <div class="modal-actions">
-            <button type="button" class="btn-secondary" onClick=${() => setMoveJob(null)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              class="btn-primary"
-              disabled=${!newProjectName.trim()}
-              onClick=${moveToNewProject}
-            >
-              Create and move
-            </button>
-          </div>
-        </div>
-      </div>`}
+      html`<${MoveJobToNewProjectModal}
+        job=${moveJob}
+        initialName=${moveJob.designTitle || ""}
+        onClose=${() => setMoveJob(null)}
+        onProjectCreated=${onProjectUpdated}
+        onMoveJobToProject=${onMoveJobToProject}
+        onNavigateToProject=${onNavigateToProject}
+      />`}
     </div>
   `;
 }
