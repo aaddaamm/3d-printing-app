@@ -1,20 +1,10 @@
 import "dotenv/config";
 import { db, stmts } from "./lib/db.js";
-import { bold, cyan, dim, green, red } from "./lib/colors.js";
-import {
-  defaultConfigPath,
-  loadPrintworksConfig,
-  type ProviderRegistryEntry,
-} from "./lib/providers/config.js";
-import { createConfiguredProvider } from "./lib/providers/factory.js";
-import { storeProviderHistory } from "./lib/providers/sync.js";
+import { bold, cyan, dim, red } from "./lib/colors.js";
+import { defaultConfigPath, loadPrintworksConfig } from "./lib/providers/config.js";
+import { syncConfiguredProvider } from "./lib/providers/configured-sync.js";
 import { logError, logInfo } from "./lib/logger.js";
-import {
-  defaultDbPath,
-  insertSyncLog,
-  runPostSyncMaintenance,
-  updateSyncLog,
-} from "./lib/sync-workflow.js";
+import { defaultDbPath, runPostSyncMaintenance } from "./lib/sync-workflow.js";
 
 const DB_PATH = defaultDbPath();
 
@@ -53,43 +43,6 @@ function parseCliArgs(argv: string[]): CliOptions {
   return options;
 }
 
-function providerPrinterId(provider: ProviderRegistryEntry): string | null {
-  return provider.type === "moonraker" ? (provider.printerId ?? null) : (provider.deviceId ?? null);
-}
-
-async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
-  const { credentialSource, provider } = createConfiguredProvider(config);
-  const syncId = insertSyncLog(db, {
-    provider: config.type,
-    providerPrinterId: providerPrinterId(config),
-  });
-  let inserted = 0;
-  let updated = 0;
-
-  try {
-    logInfo(`  ${dim("Provider:")} ${config.id} ${dim(`(${config.type})`)}`);
-    if (credentialSource) logInfo(`  ${dim("Token   :")} ${credentialSource}`);
-    const result = await provider.fetchHistory(config.limit ? { limit: config.limit } : undefined);
-    if (result.errors.length > 0)
-      throw new Error(result.errors.map((error) => error.message).join("; "));
-
-    const stored = storeProviderHistory(db, stmts.upsertTask, provider, result);
-    inserted = stored.inserted;
-    updated = stored.updated;
-    updateSyncLog(db, syncId, { inserted, updated });
-
-    logInfo(
-      `  ${green("Stored history.")} ${bold(String(inserted))} new, ${bold(String(updated))} updated.`,
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const sourceHint = credentialSource ? ` (token source: ${credentialSource})` : "";
-    const syncError = new Error(`${message}${sourceHint}`, { cause: error });
-    updateSyncLog(db, syncId, { inserted, updated }, syncError.message);
-    throw syncError;
-  }
-}
-
 async function main(): Promise<void> {
   const options = parseCliArgs(process.argv.slice(2));
   const configPath = options.configPath ?? defaultConfigPath();
@@ -107,7 +60,7 @@ async function main(): Promise<void> {
   logInfo(`  ${dim("DB    :")} ${dim(DB_PATH)}`);
   logInfo("");
 
-  for (const provider of providers) await syncProvider(provider);
+  for (const provider of providers) await syncConfiguredProvider(db, stmts.upsertTask, provider);
 
   runPostSyncMaintenance();
 }
