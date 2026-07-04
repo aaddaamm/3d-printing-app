@@ -32,3 +32,30 @@ it("scopes non-Bambu task ids by provider", () => {
   expect(task.id).toBe("moonraker:1000");
   expect(task.provider_task_id).toBe("1000");
 });
+
+it("maps Bambu provider metadata onto legacy task columns", () => {
+  const task = normalizedRecordToPrintTask({
+    ...record("bambu"),
+    provider_metadata: {
+      instanceId: 123,
+      plateIndex: 2,
+      designId: "456",
+      designTitle: "Design Name",
+      modelId: "model-1",
+      profileId: "profile-1",
+      failedType: 0,
+      bedType: "supertack_plate",
+    },
+  });
+
+  expect(task).toMatchObject({
+    instanceId: 123,
+    plateIndex: 2,
+    designId: "456",
+    designTitle: "Design Name",
+    modelId: "model-1",
+    profileId: "profile-1",
+    failedType: 0,
+    bedType: "supertack_plate",
+  });
+});

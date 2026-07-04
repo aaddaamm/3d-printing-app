@@ -4,7 +4,7 @@ import { bold, cyan, dim, red } from "./lib/colors.js";
 import { defaultConfigPath, loadPrintworksConfig } from "./lib/providers/config.js";
 import { syncConfiguredProvider } from "./lib/providers/configured-sync.js";
 import { logError, logInfo } from "./lib/logger.js";
-import { defaultDbPath, runPostSyncMaintenance } from "./lib/sync-workflow.js";
+import { defaultDbPath, hasSyncChanges, runPostSyncMaintenance } from "./lib/sync-workflow.js";
 
 const DB_PATH = defaultDbPath();
 
@@ -60,9 +60,16 @@ async function main(): Promise<void> {
   logInfo(`  ${dim("DB    :")} ${dim(DB_PATH)}`);
   logInfo("");
 
-  for (const provider of providers) await syncConfiguredProvider(db, stmts.upsertTask, provider);
+  const counts = [];
+  for (const provider of providers) {
+    counts.push(await syncConfiguredProvider(db, stmts.upsertTask, provider));
+  }
 
-  runPostSyncMaintenance();
+  if (hasSyncChanges(counts)) {
+    runPostSyncMaintenance();
+  } else {
+    logInfo(`  ${dim("Post-sync:")} skipped — no provider records changed.`);
+  }
 }
 
 main()

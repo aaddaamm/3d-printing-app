@@ -32,6 +32,22 @@ function toAmsDetailMapping(materials: NormalizedMaterialUsage[]): Record<string
     }));
 }
 
+function metadataString(record: NormalizedPrintRecord, key: string): string | null {
+  const value = record.provider_metadata?.[key];
+  if (value == null) return null;
+  return String(value);
+}
+
+function metadataNumber(record: NormalizedPrintRecord, key: string): number | null {
+  const value = record.provider_metadata?.[key];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 function buildRawJson(record: NormalizedPrintRecord): string {
   return JSON.stringify({
     ...((record.raw && typeof record.raw === "object" && !Array.isArray(record.raw)
@@ -66,19 +82,19 @@ export function normalizedRecordToPrintTask(
     provider_printer_id: record.provider_printer_id,
     printer_id: printerId,
     session_id: null,
-    instanceId: null,
-    plateIndex: null,
+    instanceId: metadataNumber(record, "instanceId"),
+    plateIndex: metadataNumber(record, "plateIndex"),
     deviceId: record.provider_printer_id,
     deviceName: record.printer?.name ?? null,
     deviceModel: record.printer?.model ?? null,
-    designId: null,
-    designTitle: record.title,
-    modelId: null,
-    profileId: null,
+    designId: metadataString(record, "designId"),
+    designTitle: metadataString(record, "designTitle") ?? record.title,
+    modelId: metadataString(record, "modelId"),
+    profileId: metadataString(record, "profileId"),
     title: record.title,
     status: record.status,
-    failedType: null,
-    bedType: null,
+    failedType: metadataNumber(record, "failedType"),
+    bedType: metadataString(record, "bedType"),
     weight: totalMaterialWeight(record.materials),
     length: null,
     costTime: record.duration_s,

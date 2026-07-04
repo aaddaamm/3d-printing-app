@@ -17,6 +17,10 @@ export type SyncCounts = {
   updated: number;
 };
 
+export function hasSyncChanges(counts: SyncCounts[]): boolean {
+  return counts.some((count) => count.inserted > 0 || count.updated > 0);
+}
+
 export function defaultDbPath(env: NodeJS.ProcessEnv = process.env): string {
   return env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
 }

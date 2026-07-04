@@ -4,6 +4,9 @@ import type { HistorySyncResult, PrinterIdentity, ProviderDefinition } from "./t
 import type { PrintTask } from "../types.js";
 
 type UpsertTask = { run: (row: PrintTask) => unknown };
+type ExistingTask = Record<string, unknown>;
+
+const PROVIDER_REFRESH_IGNORED_FIELDS = new Set(["cover", "thumbnail", "raw_json", "session_id"]);
 
 export type ProviderHistoryStoreResult = {
   inserted: number;
@@ -49,18 +52,41 @@ function upsertPrinter(database: Database.Database, printer: PrinterIdentity): n
   return row.id;
 }
 
+function normalizedValue(value: unknown): unknown {
+  return value === undefined ? null : value;
+}
+
+function hasMaintenanceRelevantChange(existing: ExistingTask | undefined, row: PrintTask): boolean {
+  if (!existing) return true;
+  for (const [field, value] of Object.entries(row)) {
+    if (PROVIDER_REFRESH_IGNORED_FIELDS.has(field)) continue;
+    if (!(field in existing)) continue;
+    if (normalizedValue(existing[field]) !== normalizedValue(value)) return true;
+  }
+  return false;
+}
+
 function insertBatch(
   database: Database.Database,
   upsertTask: UpsertTask,
   rows: PrintTask[],
 ): ProviderHistoryStoreResult {
   const countTasks = database.prepare<[], { n: number }>("SELECT COUNT(*) AS n FROM print_tasks");
+  const getExistingTask = database.prepare<[string], ExistingTask>(
+    "SELECT * FROM print_tasks WHERE id = ?",
+  );
 
   return database.transaction((batch: PrintTask[]) => {
     const before = countTasks.get()!.n;
-    for (const row of batch) upsertTask.run(row);
+    let changed = 0;
+    for (const row of batch) {
+      const existing = getExistingTask.get(row.id);
+      const maintenanceRelevantChange = hasMaintenanceRelevantChange(existing, row);
+      upsertTask.run(row);
+      if (maintenanceRelevantChange) changed += 1;
+    }
     const inserted = countTasks.get()!.n - before;
-    return { inserted, updated: batch.length - inserted };
+    return { inserted, updated: changed - inserted };
   })(rows);
 }
 

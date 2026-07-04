@@ -156,6 +156,8 @@ export class BambuCloudProvider implements PrintHistoryProvider {
         designTitle: normalized.designTitle,
         modelId: normalized.modelId,
         profileId: normalized.profileId,
+        failedType: normalized.failedType,
+        bedType: normalized.bedType,
       },
     };
   }
