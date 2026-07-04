@@ -4,19 +4,25 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildSyncCommand, parseSyncSchedules } from "../lib/server/sync-scheduler.js";
 
+function legacyEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return { PRINTWORKS_CONFIG: path.join(os.tmpdir(), "missing-printworks.config.json"), ...env };
+}
+
 describe("parseSyncSchedules", () => {
   it("keeps legacy SYNC_INTERVAL_HOURS mapped to Bambu only", () => {
-    expect(parseSyncSchedules({ SYNC_INTERVAL_HOURS: "6" })).toEqual([
+    expect(parseSyncSchedules(legacyEnv({ SYNC_INTERVAL_HOURS: "6" }))).toEqual([
       { provider: "bambu", intervalHours: 6 },
     ]);
   });
 
   it("supports provider-specific intervals without enabling every provider", () => {
     expect(
-      parseSyncSchedules({
-        BAMBU_SYNC_INTERVAL_HOURS: "12",
-        MOONRAKER_SYNC_INTERVAL_HOURS: "2",
-      }),
+      parseSyncSchedules(
+        legacyEnv({
+          BAMBU_SYNC_INTERVAL_HOURS: "12",
+          MOONRAKER_SYNC_INTERVAL_HOURS: "2",
+        }),
+      ),
     ).toEqual([
       { provider: "bambu", intervalHours: 12 },
       { provider: "moonraker", intervalHours: 2 },
@@ -25,7 +31,9 @@ describe("parseSyncSchedules", () => {
 
   it("uses SYNC_PROVIDERS with legacy interval as a shared fallback", () => {
     expect(
-      parseSyncSchedules({ SYNC_PROVIDERS: "bambu, moonraker", SYNC_INTERVAL_HOURS: "4" }),
+      parseSyncSchedules(
+        legacyEnv({ SYNC_PROVIDERS: "bambu, moonraker", SYNC_INTERVAL_HOURS: "4" }),
+      ),
     ).toEqual([
       { provider: "bambu", intervalHours: 4 },
       { provider: "moonraker", intervalHours: 4 },
@@ -34,11 +42,13 @@ describe("parseSyncSchedules", () => {
 
   it("lets provider-specific intervals override the shared fallback", () => {
     expect(
-      parseSyncSchedules({
-        SYNC_PROVIDERS: "bambu,moonraker",
-        SYNC_INTERVAL_HOURS: "4",
-        MOONRAKER_SYNC_INTERVAL_HOURS: "1",
-      }),
+      parseSyncSchedules(
+        legacyEnv({
+          SYNC_PROVIDERS: "bambu,moonraker",
+          SYNC_INTERVAL_HOURS: "4",
+          MOONRAKER_SYNC_INTERVAL_HOURS: "1",
+        }),
+      ),
     ).toEqual([
       { provider: "bambu", intervalHours: 4 },
       { provider: "moonraker", intervalHours: 1 },

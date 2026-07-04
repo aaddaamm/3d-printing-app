@@ -110,10 +110,12 @@ export class BambuCloudProvider implements PrintHistoryProvider {
     const records: NormalizedPrintRecord[] = [];
     const printersById = new Map<string, PrinterIdentity>();
     let offset = 0;
+    let apiTotal = Number.POSITIVE_INFINITY;
 
-    while (records.length < maxRecords) {
+    while (records.length < maxRecords && offset < apiTotal) {
       const page = await this.fetchTaskPage(offset);
       if (page.tasks.length === 0) break;
+      apiTotal = typeof page.apiTotal === "number" ? page.apiTotal : apiTotal;
 
       for (const record of page.records) {
         records.push(record);
@@ -121,8 +123,7 @@ export class BambuCloudProvider implements PrintHistoryProvider {
         if (records.length >= maxRecords) break;
       }
 
-      if (page.tasks.length < this.config.limit) break;
-      offset += this.config.limit;
+      offset += page.tasks.length;
     }
 
     return {

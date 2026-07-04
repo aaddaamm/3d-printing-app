@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { BambuApiTask } from "../lib/types.js";
 import { BambuCloudProvider } from "../lib/providers/bambu/cloud.js";
 import { bambuMultiMaterialPrint, bambuSingleSuccessfulPrint } from "./fixtures/bambu-history.js";
+
+function bambuTask(id: number): BambuApiTask {
+  return { ...bambuSingleSuccessfulPrint, id, title: `Task ${id}` };
+}
 
 describe("BambuCloudProvider", () => {
   afterEach(() => {
@@ -38,6 +43,47 @@ describe("BambuCloudProvider", () => {
       plateIndex: 1,
       designId: "123456",
     });
+  });
+
+  it("continues pagination when Bambu returns fewer hits than requested before total", async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => bambuTask(1000 + index));
+    const secondPage = Array.from({ length: 20 }, (_, index) => bambuTask(1020 + index));
+    const thirdPage = Array.from({ length: 5 }, (_, index) => bambuTask(1040 + index));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ total: 45, hits: firstPage }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ total: 45, hits: secondPage }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ total: 45, hits: thirdPage }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const provider = new BambuCloudProvider({
+      baseUrl: "https://api.example.test",
+      token: "token",
+      limit: 1000,
+    });
+
+    const result = await provider.fetchHistory();
+
+    expect(result.records).toHaveLength(45);
+    const urls = fetchMock.mock.calls.map(([url]) => String(url));
+    expect(urls[0]).not.toContain("offset=");
+    expect(urls[1]).toContain("offset=20");
+    expect(urls[2]).toContain("offset=40");
   });
 
   it("fetches one Bambu page and returns legacy PrintTask rows for existing sync", async () => {

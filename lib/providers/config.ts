@@ -88,23 +88,36 @@ export function parsePrintworksConfig(
   return { providers: entries };
 }
 
-export function resolveBambuToken(
+export type BambuTokenResolution = {
+  token: string;
+  source: string;
+};
+
+export function resolveBambuTokenWithSource(
   entry: BambuProviderRegistryEntry,
   env: NodeJS.ProcessEnv = process.env,
-): string {
+): BambuTokenResolution {
   const tokenEnv = entry.tokenEnv ?? "BAMBU_TOKEN";
   const envToken = env[tokenEnv];
-  if (envToken) return readToken(envToken);
+  if (envToken) return { token: readToken(envToken), source: `${tokenEnv} env` };
 
-  const tokenPath = resolveHomePath(entry.tokenPath ?? "~/.bambu_token");
-  if (!fs.existsSync(tokenPath)) return "";
+  const configuredTokenPath = entry.tokenPath ?? "~/.bambu_token";
+  const tokenPath = resolveHomePath(configuredTokenPath);
+  if (!fs.existsSync(tokenPath)) return { token: "", source: configuredTokenPath };
 
   const stat = fs.lstatSync(tokenPath);
   if (!stat.isFile() || stat.isSymbolicLink()) {
     throw new PrintworksConfigError(`Bambu token path must point to a regular file: ${tokenPath}`);
   }
 
-  return readToken(fs.readFileSync(tokenPath, "utf8"));
+  return { token: readToken(fs.readFileSync(tokenPath, "utf8")), source: configuredTokenPath };
+}
+
+export function resolveBambuToken(
+  entry: BambuProviderRegistryEntry,
+  env: NodeJS.ProcessEnv = process.env,
+): string {
+  return resolveBambuTokenWithSource(entry, env).token;
 }
 
 function parseProvider(value: unknown, index: number, source: string): ProviderRegistryEntry {

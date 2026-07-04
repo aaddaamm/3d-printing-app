@@ -58,7 +58,7 @@ function providerPrinterId(provider: ProviderRegistryEntry): string | null {
 }
 
 async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
-  const { provider } = createConfiguredProvider(config);
+  const { credentialSource, provider } = createConfiguredProvider(config);
   const syncId = insertSyncLog(db, {
     provider: config.type,
     providerPrinterId: providerPrinterId(config),
@@ -68,6 +68,7 @@ async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
 
   try {
     logInfo(`  ${dim("Provider:")} ${config.id} ${dim(`(${config.type})`)}`);
+    if (credentialSource) logInfo(`  ${dim("Token   :")} ${credentialSource}`);
     const result = await provider.fetchHistory(config.limit ? { limit: config.limit } : undefined);
     if (result.errors.length > 0)
       throw new Error(result.errors.map((error) => error.message).join("; "));
@@ -82,8 +83,10 @@ async function syncProvider(config: ProviderRegistryEntry): Promise<void> {
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    updateSyncLog(db, syncId, { inserted, updated }, message);
-    throw error;
+    const sourceHint = credentialSource ? ` (token source: ${credentialSource})` : "";
+    const syncError = new Error(`${message}${sourceHint}`, { cause: error });
+    updateSyncLog(db, syncId, { inserted, updated }, syncError.message);
+    throw syncError;
   }
 }
 

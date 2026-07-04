@@ -33,7 +33,7 @@ describe("provider factory", () => {
   });
 
   it("creates configured Bambu provider instances from env token", () => {
-    const { provider } = createConfiguredProvider(
+    const { credentialSource, provider } = createConfiguredProvider(
       {
         id: "bambu-cloud",
         type: "bambu",
@@ -49,5 +49,6 @@ describe("provider factory", () => {
       id: "bambu",
       display_name: "Bambu Lab",
     });
+    expect(credentialSource).toBe("SHOP_BAMBU_TOKEN env");
   });
 });

@@ -2,6 +2,7 @@ import type { NormalizedMaterialUsage, NormalizedPrintRecord } from "./types.js"
 import type { PrintTask } from "../types.js";
 
 function providerScopedId(providerId: string, recordId: string): string {
+  if (providerId === "bambu") return recordId;
   return `${providerId}:${recordId}`;
 }
 

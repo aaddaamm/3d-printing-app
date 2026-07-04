@@ -6,6 +6,7 @@ import {
   loadPrintworksConfig,
   parsePrintworksConfig,
   resolveBambuToken,
+  resolveBambuTokenWithSource,
 } from "../lib/providers/config.js";
 
 describe("printworks provider config", () => {
@@ -86,5 +87,18 @@ describe("printworks provider config", () => {
     expect(
       resolveBambuToken(entry, { SHOP_BAMBU_TOKEN: JSON.stringify({ token: "secret" }) }),
     ).toBe("secret");
+  });
+
+  it("reports the Bambu token source without exposing the token", () => {
+    const config = parsePrintworksConfig({
+      providers: [{ id: "bambu", type: "bambu", tokenEnv: "SHOP_BAMBU_TOKEN" }],
+    });
+    const [entry] = config.providers;
+    if (!entry || entry.type !== "bambu") throw new Error("expected bambu entry");
+
+    expect(resolveBambuTokenWithSource(entry, { SHOP_BAMBU_TOKEN: "secret" })).toEqual({
+      token: "secret",
+      source: "SHOP_BAMBU_TOKEN env",
+    });
   });
 });
