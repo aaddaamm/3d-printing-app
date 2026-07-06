@@ -27,16 +27,20 @@ This design introduces a schema-only catalog foundation while preserving all exi
 - Introduce a clean path toward `products → assets → files`.
 - Allow current print-history projects to link to future catalog products through a bridge.
 - Support idempotent future filesystem scanning by tracking stable file identity and scan state.
+- Track file moves and missing/restored events from day one.
+- Support an initial file migration that makes SQLite authoritative without blindly duplicating all source files.
+- Allow optional managed storage adoption later, deduped by content hash.
 - Avoid hard-coding the assumption that every product owns only printable model files.
 
 ## Non-goals
 
-- No filesystem scanner implementation in this phase.
+- No full filesystem scanner implementation in this phase.
 - No thumbnail extraction implementation in this phase.
 - No Product Catalog UI in this phase.
 - No automatic product creation from existing projects in this phase.
 - No pricing behavior changes in this phase.
 - No migration or rename of existing `projects` into `products`.
+- No automatic bulk copying of source files into managed storage.
 
 ## Domain boundary
 
@@ -58,7 +62,9 @@ products → assets → catalog_files
 
 - `products`: curated sellable/printable designs in the Robinson PrintWorks catalog.
 - `assets`: semantic product-owned items such as model files, photos, licenses, receipts, packaging, documentation, print profiles, or videos.
-- `catalog_files`: scanned filesystem records with paths, hashes, timestamps, metadata, and missing/present scan state.
+- `catalog_files`: scanned filesystem records with paths, hashes, timestamps, metadata, missing/present scan state, and optional managed-storage adoption state.
+
+SQLite becomes authoritative for identity, metadata, product/asset relationships, and history. Source folders do not have to become authoritative, and the app should not duplicate all source files by default.
 
 The bridge between current and future domains is explicit:
 
@@ -70,7 +76,7 @@ A current project can optionally link to one or more catalog products. This avoi
 
 ## Recommended approach
 
-Use a bridge-first catalog foundation.
+Use a bridge-first, index-first catalog foundation.
 
 Benefits:
 
@@ -79,6 +85,8 @@ Benefits:
 - Existing projects can be reviewed and linked to products gradually.
 - Bundles, variants, and messy historical groupings remain possible.
 - The catalog model remains distinct from print-history grouping.
+- Initial import can index existing files without doubling disk usage.
+- Optional managed storage can adopt important files later using dedupe by content hash.
 
 Rejected alternatives:
 
@@ -86,6 +94,28 @@ Rejected alternatives:
    - Safer in the short term, but delays an important connection between existing print history and future products.
 2. **Promote `projects` into `products`**
    - Too risky. Existing projects are auto-grouped operational records, not curated catalog products.
+
+## Initial file migration model
+
+The initial file migration should be space-conscious.
+
+Default behavior should be **index-first**:
+
+1. Scan configured source roots.
+2. Store file identity, path, timestamps, hashes, and metadata in SQLite.
+3. Link catalog files to products/assets only when the user or future automation decides they belong together.
+4. Do not copy source files into managed storage automatically.
+
+Managed storage should be optional and explicit:
+
+1. A user or future workflow chooses to adopt a file into app-managed storage.
+2. The app dedupes by `content_hash` before storing anything.
+3. If a managed copy already exists for the same hash, reuse it.
+4. If possible, use hardlinks or APFS clone/copy-on-write behavior to avoid duplicating bytes.
+5. Fall back to a normal copy only when necessary.
+6. Preserve original source path and source root provenance.
+
+This gives the app an authoritative SQLite catalog without forcing a full duplicate library on day one.
 
 ## Schema design
 
@@ -133,6 +163,10 @@ CREATE TABLE IF NOT EXISTS catalog_files (
   quick_hash TEXT,
   content_hash TEXT,
   hash_algorithm TEXT,
+  storage_role TEXT NOT NULL DEFAULT 'source',
+  managed_blob_id INTEGER REFERENCES managed_blobs(id),
+  original_source_path TEXT,
+  original_source_root_id INTEGER REFERENCES scan_roots(id),
   scan_status TEXT NOT NULL DEFAULT 'present',
   missing_since TEXT,
   metadata_json TEXT,
@@ -150,10 +184,80 @@ CREATE INDEX IF NOT EXISTS idx_catalog_files_root ON catalog_files(root_id);
 CREATE INDEX IF NOT EXISTS idx_catalog_files_content_hash ON catalog_files(content_hash);
 CREATE INDEX IF NOT EXISTS idx_catalog_files_extension ON catalog_files(extension);
 CREATE INDEX IF NOT EXISTS idx_catalog_files_scan_status ON catalog_files(scan_status);
+CREATE INDEX IF NOT EXISTS idx_catalog_files_storage_role ON catalog_files(storage_role);
+CREATE INDEX IF NOT EXISTS idx_catalog_files_managed_blob ON catalog_files(managed_blob_id);
 CREATE INDEX IF NOT EXISTS idx_catalog_files_filename ON catalog_files(filename COLLATE NOCASE);
 ```
 
 Future scanner behavior should use `content_hash` to detect moved files and `scan_status` / `missing_since` to mark missing files instead of deleting them.
+
+`storage_role` should initially support:
+
+- `source`: indexed file in an existing source folder.
+- `managed`: app-managed adopted file.
+
+### `managed_blobs`
+
+Optional app-managed storage entries, deduped by content hash.
+
+This table does not require the app to copy files automatically. It provides a safe target for future explicit adoption/import workflows.
+
+```sql
+CREATE TABLE IF NOT EXISTS managed_blobs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  content_hash TEXT NOT NULL,
+  hash_algorithm TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  normalized_storage_path TEXT NOT NULL,
+  size_bytes INTEGER,
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  last_verified_at TEXT,
+  UNIQUE(content_hash, hash_algorithm),
+  UNIQUE(normalized_storage_path)
+);
+```
+
+Indexes:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_managed_blobs_hash ON managed_blobs(content_hash, hash_algorithm);
+```
+
+### `file_history`
+
+Append-only history for movement, import, missing, restore, and managed adoption events.
+
+```sql
+CREATE TABLE IF NOT EXISTS file_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  file_id INTEGER NOT NULL REFERENCES catalog_files(id) ON DELETE CASCADE,
+  event_type TEXT NOT NULL,
+  old_path TEXT,
+  new_path TEXT,
+  old_root_id INTEGER REFERENCES scan_roots(id),
+  new_root_id INTEGER REFERENCES scan_roots(id),
+  content_hash TEXT,
+  details_json TEXT,
+  detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+Indexes:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_file_history_file ON file_history(file_id);
+CREATE INDEX IF NOT EXISTS idx_file_history_event_type ON file_history(event_type);
+CREATE INDEX IF NOT EXISTS idx_file_history_detected_at ON file_history(detected_at);
+```
+
+Initial event types should include:
+
+- `indexed`
+- `moved`
+- `missing`
+- `restored`
+- `adopted_managed`
+- `verified`
 
 ### `products`
 
@@ -299,6 +403,7 @@ Rules:
 - Do not backfill products from projects.
 - Do not change runtime behavior.
 - Add matching base schema statements in `lib/db.ts` so fresh databases and migrated databases agree.
+- Create `managed_blobs` before `catalog_files` in implementation order because `catalog_files.managed_blob_id` references it.
 
 ## TypeScript changes
 
@@ -310,6 +415,8 @@ Add row interfaces to `lib/types.ts`:
 - `Asset`
 - `AssetFile`
 - `ProjectProduct`
+- `ManagedBlob`
+- `FileHistory`
 
 No route/model API is required in this phase unless tests need a small helper.
 
@@ -327,13 +434,19 @@ Assertions:
   - `assets`
   - `asset_files`
   - `project_products`
+  - `managed_blobs`
+  - `file_history`
 - Important indexes exist:
   - active scan roots
   - catalog file root
   - catalog file content hash
   - catalog file extension
   - catalog file scan status
+  - catalog file storage role
+  - catalog file managed blob
   - catalog file filename
+  - managed blob hash
+  - file history file/event/detected-at
   - product status/designer/marketplace/name
   - assets product/type
   - asset files by file
@@ -341,9 +454,12 @@ Assertions:
 - Key constraints work:
   - duplicate `normalized_root_path` is rejected.
   - duplicate `normalized_path` is rejected.
+  - duplicate managed blob `(content_hash, hash_algorithm)` is rejected.
+  - duplicate managed blob `normalized_storage_path` is rejected.
   - deleting a product cascades assets and project bridge rows.
   - deleting an asset cascades asset file rows.
   - deleting a project cascades project bridge rows.
+  - deleting a catalog file cascades its file history rows.
 
 Verification commands:
 
@@ -357,6 +473,8 @@ npm test
 
 This schema enables later phases without another major redesign:
 
+- Initial source-root indexing/import.
+- Optional managed file adoption with hardlink/reflink/copy fallback.
 - Filesystem scanner.
 - 3MF preview extraction.
 - STL thumbnail generation.
@@ -376,7 +494,8 @@ This schema enables later phases without another major redesign:
 These decisions are intentionally deferred until later phases:
 
 - Exact scanner hashing algorithm and quick-hash strategy.
-- Whether file history should be a separate table from day one.
+- Exact managed library path layout.
+- Whether managed adoption should prefer hardlink, APFS clone, or normal copy on each platform.
 - Whether product status should become a constrained lookup table.
 - Whether asset types should remain free-text or become a table.
 - How existing projects should be suggested for product creation/linking.
