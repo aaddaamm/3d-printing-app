@@ -239,6 +239,160 @@ const DB_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    id: 13,
+    description: "add catalog foundation tables",
+    up(database) {
+      database.exec(`CREATE TABLE IF NOT EXISTS scan_roots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        root_path TEXT NOT NULL,
+        normalized_root_path TEXT NOT NULL,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        last_scanned_at TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(normalized_root_path)
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_scan_roots_active ON scan_roots(is_active)");
+
+      database.exec(`CREATE TABLE IF NOT EXISTS managed_blobs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        content_hash TEXT NOT NULL,
+        hash_algorithm TEXT NOT NULL,
+        storage_path TEXT NOT NULL,
+        normalized_storage_path TEXT NOT NULL,
+        size_bytes INTEGER,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_verified_at TEXT,
+        UNIQUE(content_hash, hash_algorithm),
+        UNIQUE(normalized_storage_path)
+      )`);
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_managed_blobs_hash ON managed_blobs(content_hash, hash_algorithm)",
+      );
+
+      database.exec(`CREATE TABLE IF NOT EXISTS catalog_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        root_id INTEGER REFERENCES scan_roots(id),
+        path TEXT NOT NULL,
+        normalized_path TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        extension TEXT,
+        size_bytes INTEGER,
+        modified_at TEXT,
+        created_at_fs TEXT,
+        quick_hash TEXT,
+        content_hash TEXT,
+        hash_algorithm TEXT,
+        storage_role TEXT NOT NULL DEFAULT 'source',
+        managed_blob_id INTEGER REFERENCES managed_blobs(id),
+        original_source_path TEXT,
+        original_source_root_id INTEGER REFERENCES scan_roots(id),
+        scan_status TEXT NOT NULL DEFAULT 'present',
+        missing_since TEXT,
+        metadata_json TEXT,
+        first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(normalized_path)
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_catalog_files_root ON catalog_files(root_id)");
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_content_hash ON catalog_files(content_hash)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_extension ON catalog_files(extension)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_scan_status ON catalog_files(scan_status)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_storage_role ON catalog_files(storage_role)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_managed_blob ON catalog_files(managed_blob_id)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_filename ON catalog_files(filename COLLATE NOCASE)",
+      );
+
+      database.exec(`CREATE TABLE IF NOT EXISTS products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        slug TEXT NOT NULL UNIQUE,
+        description TEXT,
+        status TEXT NOT NULL DEFAULT 'needs_review',
+        designer TEXT,
+        marketplace TEXT,
+        source_url TEXT,
+        license_summary TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_products_status ON products(status)");
+      database.exec("CREATE INDEX IF NOT EXISTS idx_products_designer ON products(designer)");
+      database.exec("CREATE INDEX IF NOT EXISTS idx_products_marketplace ON products(marketplace)");
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_products_name ON products(name COLLATE NOCASE)",
+      );
+
+      database.exec(`CREATE TABLE IF NOT EXISTS assets (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        asset_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT,
+        role TEXT,
+        metadata_json TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_assets_product ON assets(product_id)");
+      database.exec("CREATE INDEX IF NOT EXISTS idx_assets_type ON assets(asset_type)");
+
+      database.exec(`CREATE TABLE IF NOT EXISTS asset_files (
+        asset_id INTEGER NOT NULL REFERENCES assets(id) ON DELETE CASCADE,
+        file_id INTEGER NOT NULL REFERENCES catalog_files(id) ON DELETE CASCADE,
+        role TEXT NOT NULL DEFAULT 'primary',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (asset_id, file_id, role)
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_asset_files_file ON asset_files(file_id)");
+
+      database.exec(`CREATE TABLE IF NOT EXISTS project_products (
+        project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        relationship TEXT NOT NULL DEFAULT 'primary',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (project_id, product_id)
+      )`);
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_project_products_product ON project_products(product_id)",
+      );
+
+      database.exec(`CREATE TABLE IF NOT EXISTS file_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL REFERENCES catalog_files(id) ON DELETE CASCADE,
+        event_type TEXT NOT NULL,
+        old_path TEXT,
+        new_path TEXT,
+        old_root_id INTEGER REFERENCES scan_roots(id),
+        new_root_id INTEGER REFERENCES scan_roots(id),
+        content_hash TEXT,
+        details_json TEXT,
+        detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_file_history_file ON file_history(file_id)");
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_file_history_event_type ON file_history(event_type)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_file_history_detected_at ON file_history(detected_at)",
+      );
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

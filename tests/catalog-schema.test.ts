@@ -34,6 +34,36 @@ function createRequiredExistingTables(): void {
   database!.exec(`
     PRAGMA foreign_keys = ON;
 
+    CREATE TABLE print_tasks (
+      id TEXT PRIMARY KEY,
+      deviceId TEXT,
+      deviceName TEXT,
+      deviceModel TEXT,
+      raw_json TEXT NOT NULL
+    );
+
+    CREATE TABLE jobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id TEXT UNIQUE NOT NULL,
+      deviceId TEXT
+    );
+
+    CREATE TABLE sync_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      inserted INTEGER,
+      updated INTEGER,
+      error TEXT
+    );
+
+    CREATE TABLE labor_config (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      hourly_rate REAL NOT NULL DEFAULT 25.0,
+      minimum_minutes REAL NOT NULL DEFAULT 15.0,
+      profit_markup_pct REAL NOT NULL DEFAULT 0.20
+    );
+
     CREATE TABLE projects (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
