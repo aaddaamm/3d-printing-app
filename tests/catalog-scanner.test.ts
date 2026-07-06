@@ -12,6 +12,7 @@ import {
   hashFileContent,
   isSupportedCatalogFilePath,
   listScanRoots,
+  normalizeCatalogPath,
   scanCatalogRoot,
   shouldSkipCatalogDirectory,
 } from "../lib/catalog-scanner.js";
@@ -112,7 +113,7 @@ describe("catalog scan roots", () => {
     expect(root.id).toBeGreaterThan(0);
     expect(root.name).toBe("Models");
     expect(root.root_path).toBe(path.resolve(rootPath));
-    expect(root.normalized_root_path).toBe(path.resolve(rootPath).toLowerCase());
+    expect(root.normalized_root_path).toBe(path.resolve(rootPath));
     expect(root.is_active).toBe(1);
     expect(root.last_scanned_at).toBeNull();
     expect(root.created_at).toEqual(expect.any(String));
@@ -130,6 +131,20 @@ describe("catalog scan roots", () => {
       /scan root already exists/i,
     );
     expect(listScanRoots(statements)).toHaveLength(1);
+  });
+
+  it("rejects scan roots that do not exist or are not directories", () => {
+    const statements = createCatalogStatements(database);
+    const missingPath = path.join(tempDir, "missing");
+    const filePath = path.join(tempDir, "file.stl");
+    fs.writeFileSync(filePath, "not a directory");
+
+    expect(() => addScanRoot(statements, { name: "Missing", rootPath: missingPath })).toThrow(
+      /not a directory/i,
+    );
+    expect(() => addScanRoot(statements, { name: "File", rootPath: filePath })).toThrow(
+      /not a directory/i,
+    );
   });
 
   it("lists scan roots in stable id order including inactive roots", () => {
@@ -215,7 +230,7 @@ describe("catalog file discovery", () => {
     expect(files.map((file) => file.filename).sort()).toEqual(["Dragon.STL", "plate.gcode"]);
     expect(files.find((file) => file.filename === "Dragon.STL")).toMatchObject({
       path: modelPath,
-      normalizedPath: modelPath.toLowerCase(),
+      normalizedPath: modelPath,
       filename: "Dragon.STL",
       extension: "stl",
       sizeBytes: Buffer.byteLength("solid dragon"),
@@ -340,6 +355,49 @@ describe("catalog scan execution", () => {
       scan_status: "present",
     });
     expect(historyEvents()).toEqual(["discovered", "changed"]);
+  });
+
+  it("counts unsupported files and skipped directories", async () => {
+    const statements = createCatalogStatements(database);
+    fs.writeFileSync(path.join(tempDir, "dragon.stl"), "dragon");
+    fs.writeFileSync(path.join(tempDir, "notes.txt"), "ignore me");
+    fs.writeFileSync(path.join(tempDir, "archive.zip"), "ignored archive");
+    const ignoredDir = path.join(tempDir, "node_modules");
+    fs.mkdirSync(ignoredDir);
+    fs.writeFileSync(path.join(ignoredDir, "ignored.stl"), "ignored");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+
+    const summary = await scanCatalogRoot(statements, root);
+
+    expect(summary).toMatchObject({ scanned: 1, added: 1, skipped: 3, failed: 0 });
+  });
+
+  it("continues scanning when hashing one file fails", async () => {
+    const statements = createCatalogStatements(database);
+    const badPath = path.join(tempDir, "bad.stl");
+    const goodPath = path.join(tempDir, "good.stl");
+    fs.writeFileSync(badPath, "bad");
+    fs.writeFileSync(goodPath, "good");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+
+    const summary = await scanCatalogRoot(statements, root, {
+      hashFile: async (filePath) => {
+        if (filePath === badPath) throw new Error("simulated hash failure");
+        return hashFileContent(filePath);
+      },
+    });
+
+    expect(summary).toMatchObject({ scanned: 2, added: 1, failed: 1 });
+    expect(database.prepare("SELECT filename FROM catalog_files").all()).toEqual([
+      { filename: "good.stl" },
+    ]);
+    expect(historyEvents()).toEqual(["discovered"]);
+  });
+
+  it("preserves path case when normalizing paths", () => {
+    const mixedCasePath = path.join(tempDir, "Nested", "Part.STL");
+
+    expect(normalizeCatalogPath(mixedCasePath)).toBe(path.resolve(mixedCasePath));
   });
 
   it("marks missing files without deleting rows and restores them when seen again", async () => {
