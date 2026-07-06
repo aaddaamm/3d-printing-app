@@ -12,6 +12,7 @@ import {
   hashFileContent,
   isSupportedCatalogFilePath,
   listScanRoots,
+  scanCatalogRoot,
   shouldSkipCatalogDirectory,
 } from "../lib/catalog-scanner.js";
 
@@ -33,6 +34,58 @@ function createCatalogRootSchema(db: Database.Database): void {
     );
 
     CREATE INDEX idx_scan_roots_active ON scan_roots(is_active);
+
+    CREATE TABLE managed_blobs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      content_hash TEXT NOT NULL,
+      hash_algorithm TEXT NOT NULL,
+      storage_path TEXT NOT NULL,
+      normalized_storage_path TEXT NOT NULL,
+      size_bytes INTEGER,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_verified_at TEXT,
+      UNIQUE(content_hash, hash_algorithm),
+      UNIQUE(normalized_storage_path)
+    );
+
+    CREATE TABLE catalog_files (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      root_id INTEGER REFERENCES scan_roots(id),
+      path TEXT NOT NULL,
+      normalized_path TEXT NOT NULL,
+      filename TEXT NOT NULL,
+      extension TEXT,
+      size_bytes INTEGER,
+      modified_at TEXT,
+      created_at_fs TEXT,
+      quick_hash TEXT,
+      content_hash TEXT,
+      hash_algorithm TEXT,
+      storage_role TEXT NOT NULL DEFAULT 'source',
+      managed_blob_id INTEGER REFERENCES managed_blobs(id),
+      original_source_path TEXT,
+      original_source_root_id INTEGER REFERENCES scan_roots(id),
+      scan_status TEXT NOT NULL DEFAULT 'present',
+      missing_since TEXT,
+      metadata_json TEXT,
+      first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(normalized_path)
+    );
+
+    CREATE TABLE file_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      file_id INTEGER NOT NULL REFERENCES catalog_files(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL,
+      old_path TEXT,
+      new_path TEXT,
+      old_root_id INTEGER REFERENCES scan_roots(id),
+      new_root_id INTEGER REFERENCES scan_roots(id),
+      content_hash TEXT,
+      details_json TEXT,
+      detected_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 }
 
@@ -210,5 +263,107 @@ describe("catalog file discovery", () => {
         discovered,
       ),
     ).toBe(true);
+  });
+});
+
+describe("catalog scan execution", () => {
+  beforeEach(() => {
+    database = new Database(":memory:");
+    database.pragma("foreign_keys = ON");
+    createCatalogRootSchema(database);
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-scan-"));
+  });
+
+  afterEach(() => {
+    database.close();
+    if (tempDir && fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  function historyEvents(): string[] {
+    return database
+      .prepare("SELECT event_type FROM file_history ORDER BY id")
+      .all()
+      .map((row) => (row as { event_type: string }).event_type);
+  }
+
+  it("indexes new files and records discovered history", async () => {
+    const statements = createCatalogStatements(database);
+    const filePath = path.join(tempDir, "dragon.stl");
+    fs.writeFileSync(filePath, "dragon");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+
+    const summary = await scanCatalogRoot(statements, root);
+
+    expect(summary).toMatchObject({
+      scanned: 1,
+      added: 1,
+      changed: 0,
+      unchanged: 0,
+      missing: 0,
+      restored: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect(
+      database.prepare("SELECT filename, extension, scan_status FROM catalog_files").all(),
+    ).toEqual([{ filename: "dragon.stl", extension: "stl", scan_status: "present" }]);
+    expect(historyEvents()).toEqual(["discovered"]);
+  });
+
+  it("does not duplicate rows or history on unchanged scans", async () => {
+    const statements = createCatalogStatements(database);
+    fs.writeFileSync(path.join(tempDir, "dragon.stl"), "dragon");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+
+    await scanCatalogRoot(statements, root);
+    const summary = await scanCatalogRoot(statements, root);
+
+    expect(summary).toMatchObject({ added: 0, changed: 0, unchanged: 1, missing: 0, restored: 0 });
+    expect(database.prepare("SELECT COUNT(*) AS n FROM catalog_files").get()).toEqual({ n: 1 });
+    expect(historyEvents()).toEqual(["discovered"]);
+  });
+
+  it("updates changed files and records changed history", async () => {
+    const statements = createCatalogStatements(database);
+    const filePath = path.join(tempDir, "dragon.stl");
+    fs.writeFileSync(filePath, "dragon");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+    await scanCatalogRoot(statements, root);
+
+    fs.writeFileSync(filePath, "dragon v2");
+    fs.utimesSync(filePath, new Date("2026-07-06T00:00:00.000Z"), new Date("2026-07-06T00:00:00.000Z"));
+    const summary = await scanCatalogRoot(statements, root);
+
+    expect(summary).toMatchObject({ added: 0, changed: 1, unchanged: 0, missing: 0 });
+    expect(database.prepare("SELECT size_bytes, scan_status FROM catalog_files").get()).toEqual({
+      size_bytes: Buffer.byteLength("dragon v2"),
+      scan_status: "present",
+    });
+    expect(historyEvents()).toEqual(["discovered", "changed"]);
+  });
+
+  it("marks missing files without deleting rows and restores them when seen again", async () => {
+    const statements = createCatalogStatements(database);
+    const filePath = path.join(tempDir, "dragon.stl");
+    fs.writeFileSync(filePath, "dragon");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+    await scanCatalogRoot(statements, root);
+
+    fs.rmSync(filePath);
+    const missingSummary = await scanCatalogRoot(statements, root);
+
+    expect(missingSummary).toMatchObject({ added: 0, missing: 1, restored: 0 });
+    expect(database.prepare("SELECT scan_status FROM catalog_files").get()).toEqual({
+      scan_status: "missing",
+    });
+
+    fs.writeFileSync(filePath, "dragon");
+    const restoredSummary = await scanCatalogRoot(statements, root);
+
+    expect(restoredSummary).toMatchObject({ added: 0, missing: 0, restored: 1 });
+    expect(database.prepare("SELECT scan_status FROM catalog_files").get()).toEqual({
+      scan_status: "present",
+    });
+    expect(historyEvents()).toEqual(["discovered", "missing", "restored"]);
   });
 });

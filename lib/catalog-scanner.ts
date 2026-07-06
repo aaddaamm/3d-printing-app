@@ -35,6 +35,20 @@ export interface DiscoveredCatalogFileFingerprint {
   modifiedAt: string;
 }
 
+export interface CatalogScanSummary {
+  scanned: number;
+  added: number;
+  changed: number;
+  unchanged: number;
+  missing: number;
+  restored: number;
+  skipped: number;
+  failed: number;
+  durationMs: number;
+}
+
+const HASH_ALGORITHM = "sha256";
+
 const SUPPORTED_CATALOG_EXTENSIONS = new Set([
   ".3mf",
   ".stl",
@@ -141,4 +155,129 @@ export function deactivateScanRoot(statements: CatalogStatements, id: number): S
   const root = statements.getScanRootById.get(id);
   if (!root) throw new Error(`Scan root not found: ${id}`);
   return root;
+}
+
+function insertHistory(
+  statements: CatalogStatements,
+  file: CatalogFile,
+  eventType: string,
+  newPath: string | null,
+  contentHash: string | null,
+): void {
+  statements.insertFileHistory.run({
+    file_id: file.id,
+    event_type: eventType,
+    old_path: file.path ?? null,
+    new_path: newPath,
+    old_root_id: file.root_id ?? null,
+    new_root_id: file.root_id ?? null,
+    content_hash: contentHash,
+    details_json: null,
+  });
+}
+
+async function updatePresentCatalogFile(
+  statements: CatalogStatements,
+  existing: CatalogFile,
+  discovered: DiscoveredCatalogFile,
+  contentHash: string,
+  now: string,
+): Promise<CatalogFile> {
+  statements.updateCatalogFilePresent.run({
+    id: existing.id,
+    path: discovered.path,
+    normalized_path: discovered.normalizedPath,
+    filename: discovered.filename,
+    extension: discovered.extension,
+    size_bytes: discovered.sizeBytes,
+    modified_at: discovered.modifiedAt,
+    created_at_fs: discovered.createdAtFs,
+    content_hash: contentHash,
+    hash_algorithm: HASH_ALGORITHM,
+    last_seen_at: now,
+    updated_at: now,
+  });
+  return statements.getCatalogFileByNormalizedPath.get(discovered.normalizedPath)!;
+}
+
+export async function scanCatalogRoot(
+  statements: CatalogStatements,
+  root: ScanRoot,
+): Promise<CatalogScanSummary> {
+  const startedAt = Date.now();
+  const now = new Date().toISOString();
+  const discoveredFiles = discoverCatalogFiles(root.root_path);
+  const seenPaths = new Set<string>();
+  const summary: CatalogScanSummary = {
+    scanned: discoveredFiles.length,
+    added: 0,
+    changed: 0,
+    unchanged: 0,
+    missing: 0,
+    restored: 0,
+    skipped: 0,
+    failed: 0,
+    durationMs: 0,
+  };
+
+  for (const discovered of discoveredFiles) {
+    seenPaths.add(discovered.normalizedPath);
+    const existing = statements.getCatalogFileByNormalizedPath.get(discovered.normalizedPath);
+    if (!existing) {
+      const contentHash = await hashFileContent(discovered.path);
+      const result = statements.insertCatalogFile.run({
+        root_id: root.id,
+        path: discovered.path,
+        normalized_path: discovered.normalizedPath,
+        filename: discovered.filename,
+        extension: discovered.extension,
+        size_bytes: discovered.sizeBytes,
+        modified_at: discovered.modifiedAt,
+        created_at_fs: discovered.createdAtFs,
+        content_hash: contentHash,
+        hash_algorithm: HASH_ALGORITHM,
+      });
+      const inserted = statements.getCatalogFileByNormalizedPath.get(discovered.normalizedPath)!;
+      if (!inserted.id && result.lastInsertRowid) {
+        throw new Error(`Failed to insert catalog file: ${discovered.path}`);
+      }
+      insertHistory(statements, inserted, "discovered", discovered.path, contentHash);
+      summary.added++;
+      continue;
+    }
+
+    const wasMissing = existing.scan_status === "missing";
+    if (fileNeedsContentHash(existing, discovered) || wasMissing) {
+      const contentHash = await hashFileContent(discovered.path);
+      const updated = await updatePresentCatalogFile(
+        statements,
+        existing,
+        discovered,
+        contentHash,
+        now,
+      );
+      insertHistory(statements, updated, wasMissing ? "restored" : "changed", discovered.path, contentHash);
+      if (wasMissing) summary.restored++;
+      else summary.changed++;
+      continue;
+    }
+
+    if (!existing.content_hash) {
+      throw new Error(`Catalog file is missing content hash: ${existing.path}`);
+    }
+    await updatePresentCatalogFile(statements, existing, discovered, existing.content_hash, now);
+    summary.unchanged++;
+  }
+
+  for (const existing of statements.listCatalogFilesByRoot.all(root.id)) {
+    if (existing.scan_status === "missing" || seenPaths.has(existing.normalized_path)) continue;
+    statements.markCatalogFileMissing.run({ id: existing.id, missing_since: now, updated_at: now });
+    const missing = statements.getCatalogFileByNormalizedPath.get(existing.normalized_path)!;
+    insertHistory(statements, missing, "missing", null, existing.content_hash);
+    summary.missing++;
+  }
+
+  statements.updateScanRootLastScanned.run({ id: root.id, last_scanned_at: now, updated_at: now });
+  summary.durationMs = Date.now() - startedAt;
+  return summary;
 }
