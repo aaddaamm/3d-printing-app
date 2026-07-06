@@ -2,7 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addScanRoot,
   createCatalogStatements,
@@ -370,6 +370,31 @@ describe("catalog scan execution", () => {
     const summary = await scanCatalogRoot(statements, root);
 
     expect(summary).toMatchObject({ scanned: 1, added: 1, skipped: 3, failed: 0 });
+  });
+
+  it("continues scanning when file metadata disappears during discovery", async () => {
+    const statements = createCatalogStatements(database);
+    const badPath = path.join(tempDir, "bad.stl");
+    const goodPath = path.join(tempDir, "good.stl");
+    fs.writeFileSync(badPath, "bad");
+    fs.writeFileSync(goodPath, "good");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+    const originalStatSync = fs.statSync;
+    const statSpy = vi.spyOn(fs, "statSync").mockImplementation((targetPath, options) => {
+      if (targetPath === badPath) throw new Error("simulated stat failure");
+      return originalStatSync(targetPath, options as fs.StatSyncOptions);
+    });
+
+    try {
+      const summary = await scanCatalogRoot(statements, root);
+
+      expect(summary).toMatchObject({ scanned: 1, added: 1, failed: 1 });
+      expect(database.prepare("SELECT filename FROM catalog_files").all()).toEqual([
+        { filename: "good.stl" },
+      ]);
+    } finally {
+      statSpy.mockRestore();
+    }
   });
 
   it("continues scanning when hashing one file fails", async () => {

@@ -38,6 +38,7 @@ export interface DiscoveredCatalogFileFingerprint {
 export interface CatalogDiscoveryResult {
   files: DiscoveredCatalogFile[];
   skipped: number;
+  failed: number;
 }
 
 export interface CatalogScanOptions {
@@ -94,9 +95,18 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
   const root = path.resolve(rootPath);
   const discovered: DiscoveredCatalogFile[] = [];
   let skipped = 0;
+  let failed = 0;
 
   function visit(directory: string): void {
-    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      failed++;
+      return;
+    }
+
+    for (const entry of entries) {
       const entryPath = path.join(directory, entry.name);
       if (entry.isSymbolicLink()) {
         skipped++;
@@ -115,16 +125,20 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
         continue;
       }
 
-      const stat = fs.statSync(entryPath);
-      discovered.push({
-        path: entryPath,
-        normalizedPath: normalizeCatalogPath(entryPath),
-        filename: entry.name,
-        extension: path.extname(entry.name).slice(1).toLowerCase(),
-        sizeBytes: stat.size,
-        modifiedAt: stat.mtime.toISOString(),
-        createdAtFs: stat.birthtime.toISOString(),
-      });
+      try {
+        const stat = fs.statSync(entryPath);
+        discovered.push({
+          path: entryPath,
+          normalizedPath: normalizeCatalogPath(entryPath),
+          filename: entry.name,
+          extension: path.extname(entry.name).slice(1).toLowerCase(),
+          sizeBytes: stat.size,
+          modifiedAt: stat.mtime.toISOString(),
+          createdAtFs: stat.birthtime.toISOString(),
+        });
+      } catch {
+        failed++;
+      }
     }
   }
 
@@ -132,6 +146,7 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
   return {
     files: discovered.sort((a, b) => a.normalizedPath.localeCompare(b.normalizedPath)),
     skipped,
+    failed,
   };
 }
 
@@ -256,7 +271,7 @@ export async function scanCatalogRoot(
     missing: 0,
     restored: 0,
     skipped: discovery.skipped,
-    failed: 0,
+    failed: discovery.failed,
     durationMs: 0,
   };
 
