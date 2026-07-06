@@ -7,7 +7,12 @@ import {
   addScanRoot,
   createCatalogStatements,
   deactivateScanRoot,
+  discoverCatalogFiles,
+  fileNeedsContentHash,
+  hashFileContent,
+  isSupportedCatalogFilePath,
   listScanRoots,
+  shouldSkipCatalogDirectory,
 } from "../lib/catalog-scanner.js";
 
 let database: Database.Database;
@@ -102,5 +107,108 @@ describe("catalog scan roots", () => {
     expect(deactivated.is_active).toBe(0);
     expect(deactivated.id).toBe(root.id);
     expect(listScanRoots(statements)).toHaveLength(1);
+  });
+});
+
+describe("catalog file discovery", () => {
+  beforeEach(() => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-files-"));
+  });
+
+  afterEach(() => {
+    if (tempDir && fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it("recognizes supported 3D/source/G-code extensions case-insensitively", () => {
+    for (const filename of [
+      "part.3MF",
+      "part.stl",
+      "part.STEP",
+      "part.stp",
+      "part.obj",
+      "part.f3d",
+      "part.blend",
+      "part.gcode",
+    ]) {
+      expect(isSupportedCatalogFilePath(filename)).toBe(true);
+    }
+
+    for (const filename of ["archive.zip", "archive.rar", "archive.7z", "notes.txt"]) {
+      expect(isSupportedCatalogFilePath(filename)).toBe(false);
+    }
+  });
+
+  it("skips common noisy/system directories", () => {
+    expect(shouldSkipCatalogDirectory(".git")).toBe(true);
+    expect(shouldSkipCatalogDirectory("node_modules")).toBe(true);
+    expect(shouldSkipCatalogDirectory("__MACOSX")).toBe(true);
+    expect(shouldSkipCatalogDirectory("models")).toBe(false);
+  });
+
+  it("discovers supported files recursively with metadata and skips unsupported files", () => {
+    const nestedDir = path.join(tempDir, "Nested");
+    const ignoredDir = path.join(tempDir, "node_modules");
+    fs.mkdirSync(nestedDir);
+    fs.mkdirSync(ignoredDir);
+    const modelPath = path.join(tempDir, "Dragon.STL");
+    const gcodePath = path.join(nestedDir, "plate.gcode");
+    fs.writeFileSync(modelPath, "solid dragon");
+    fs.writeFileSync(gcodePath, "G1 X0 Y0");
+    fs.writeFileSync(path.join(tempDir, "archive.zip"), "ignored");
+    fs.writeFileSync(path.join(ignoredDir, "ignored.stl"), "ignored");
+
+    const files = discoverCatalogFiles(tempDir);
+
+    expect(files.map((file) => file.filename).sort()).toEqual(["Dragon.STL", "plate.gcode"]);
+    expect(files.find((file) => file.filename === "Dragon.STL")).toMatchObject({
+      path: modelPath,
+      normalizedPath: modelPath.toLowerCase(),
+      filename: "Dragon.STL",
+      extension: "stl",
+      sizeBytes: Buffer.byteLength("solid dragon"),
+    });
+    expect(files.every((file) => typeof file.modifiedAt === "string")).toBe(true);
+  });
+
+  it("hashes file content with stable SHA-256", async () => {
+    const filePath = path.join(tempDir, "part.stl");
+    fs.writeFileSync(filePath, "abc");
+
+    await expect(hashFileContent(filePath)).resolves.toBe(
+      "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+    );
+  });
+
+  it("requires content hashing only for new or changed files", () => {
+    const discovered = {
+      sizeBytes: 12,
+      modifiedAt: "2026-07-06T00:00:00.000Z",
+    };
+
+    expect(fileNeedsContentHash(null, discovered)).toBe(true);
+    expect(
+      fileNeedsContentHash(
+        { size_bytes: 12, modified_at: "2026-07-06T00:00:00.000Z", content_hash: "hash" },
+        discovered,
+      ),
+    ).toBe(false);
+    expect(
+      fileNeedsContentHash(
+        { size_bytes: 13, modified_at: "2026-07-06T00:00:00.000Z", content_hash: "hash" },
+        discovered,
+      ),
+    ).toBe(true);
+    expect(
+      fileNeedsContentHash(
+        { size_bytes: 12, modified_at: "2026-07-07T00:00:00.000Z", content_hash: "hash" },
+        discovered,
+      ),
+    ).toBe(true);
+    expect(
+      fileNeedsContentHash(
+        { size_bytes: 12, modified_at: "2026-07-06T00:00:00.000Z", content_hash: null },
+        discovered,
+      ),
+    ).toBe(true);
   });
 });
