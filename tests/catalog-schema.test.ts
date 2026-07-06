@@ -261,3 +261,45 @@ describe.sequential("catalog foundation schema migration", () => {
     expect(database!.prepare("SELECT COUNT(*) AS n FROM file_history").get()).toEqual({ n: 0 });
   });
 });
+
+describe.sequential("catalog foundation fresh db schema", () => {
+  let moduleDbPath = "";
+  let moduleTempDir = "";
+  let moduleDb: Database.Database | null = null;
+
+  afterEach(() => {
+    moduleDb?.close();
+    cleanupSqliteFiles(moduleDbPath);
+    if (moduleTempDir && fs.existsSync(moduleTempDir)) {
+      fs.rmSync(moduleTempDir, { recursive: true, force: true });
+    }
+    delete process.env["BAMBU_DB"];
+    moduleDb = null;
+  });
+
+  it("creates catalog tables when lib/db initializes a fresh database", async () => {
+    moduleTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-fresh-db-"));
+    moduleDbPath = path.join(moduleTempDir, `fresh-${Date.now()}.sqlite`);
+    process.env["BAMBU_DB"] = moduleDbPath;
+
+    const imported = await import(/* @vite-ignore */ `../lib/db.js?catalogFresh=${Date.now()}`);
+    moduleDb = imported.db;
+    const rows = imported.db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+      .all()
+      .map((row: { name: string }) => row.name);
+
+    expect(rows).toEqual(
+      expect.arrayContaining([
+        "scan_roots",
+        "managed_blobs",
+        "catalog_files",
+        "products",
+        "assets",
+        "asset_files",
+        "project_products",
+        "file_history",
+      ]),
+    );
+  });
+});
