@@ -573,7 +573,7 @@ describe.sequential("catalog foundation fresh db schema", () => {
 });
 ```
 
-- [ ] **Step 2: Run the new fresh DB test to verify it fails**
+- [ ] **Step 2: Run the new fresh DB test before adding base schema statements**
 
 Run:
 
@@ -581,7 +581,7 @@ Run:
 npm test -- tests/catalog-schema.test.ts
 ```
 
-Expected: FAIL because `lib/db.ts` does not yet create the catalog tables before migrations run on a fresh database in the expected base schema sequence.
+Expected: This may PASS because `lib/db.ts` runs migrations during initialization. Regardless of this result, still add matching base schema statements to `lib/db.ts` so the bootstrap schema mirrors the migration definitions.
 
 - [ ] **Step 3: Add base schema statements to `lib/db.ts`**
 
