@@ -19,6 +19,7 @@ vi.mock("node:fs", async (importOriginal) => {
       ...actual,
       mkdirSync: vi.fn(),
       existsSync: vi.fn(),
+      lstatSync: vi.fn(),
       writeFileSync: vi.fn(),
     },
   };
@@ -82,6 +83,10 @@ describe("downloadCovers", () => {
   it("skips a task whose local file already exists", async () => {
     mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.lstatSync).mockReturnValue({
+      isFile: () => true,
+      isSymbolicLink: () => false,
+    } as fs.Stats);
 
     const result = await downloadCovers();
 
