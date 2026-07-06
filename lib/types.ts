@@ -129,6 +129,107 @@ export interface Project {
   source_design_id: string | null; // set when auto-created from a designId; null for manual projects
 }
 
+export interface ScanRoot {
+  id: number;
+  name: string;
+  root_path: string;
+  normalized_root_path: string;
+  is_active: number;
+  last_scanned_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManagedBlob {
+  id: number;
+  content_hash: string;
+  hash_algorithm: string;
+  storage_path: string;
+  normalized_storage_path: string;
+  size_bytes: number | null;
+  created_at: string;
+  last_verified_at: string | null;
+}
+
+export interface CatalogFile {
+  id: number;
+  root_id: number | null;
+  path: string;
+  normalized_path: string;
+  filename: string;
+  extension: string | null;
+  size_bytes: number | null;
+  modified_at: string | null;
+  created_at_fs: string | null;
+  quick_hash: string | null;
+  content_hash: string | null;
+  hash_algorithm: string | null;
+  storage_role: string;
+  managed_blob_id: number | null;
+  original_source_path: string | null;
+  original_source_root_id: number | null;
+  scan_status: string;
+  missing_since: string | null;
+  metadata_json: string | null;
+  first_seen_at: string;
+  last_seen_at: string;
+  updated_at: string;
+}
+
+export interface Product {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  status: string;
+  designer: string | null;
+  marketplace: string | null;
+  source_url: string | null;
+  license_summary: string | null;
+  metadata_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Asset {
+  id: number;
+  product_id: number;
+  asset_type: string;
+  title: string;
+  description: string | null;
+  role: string | null;
+  metadata_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetFile {
+  asset_id: number;
+  file_id: number;
+  role: string;
+  created_at: string;
+}
+
+export interface ProjectProduct {
+  project_id: number;
+  product_id: number;
+  relationship: string;
+  created_at: string;
+}
+
+export interface FileHistory {
+  id: number;
+  file_id: number;
+  event_type: string;
+  old_path: string | null;
+  new_path: string | null;
+  old_root_id: number | null;
+  new_root_id: number | null;
+  content_hash: string | null;
+  details_json: string | null;
+  detected_at: string;
+}
+
 export interface JobFilament {
   id: number;
   task_id: string;
