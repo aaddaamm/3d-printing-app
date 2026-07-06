@@ -49,6 +49,7 @@ npm run api          # Start API server
 npm run sync         # Fetch all configured providers → SQLite → normalize → covers
 npm run sync:bambu   # Fetch Bambu API only → SQLite → normalize → download covers
 npm run sync:moonraker # Fetch Moonraker/Snapmaker U1 history only → SQLite → normalize
+npm run catalog      # Manage catalog scan roots and index local model/G-code files
 npm run normalize    # Rebuild sessions/jobs from existing print_tasks
 npm test             # Vitest suite
 npm run typecheck    # TypeScript check
@@ -114,6 +115,19 @@ Moonraker/Snapmaker U1 variables:
 | `BAMBU_DB`                | `./bambu_print_history.sqlite` | SQLite database path                                  |
 
 Cover image URLs from Bambu are short-lived. Sync downloads them to `covers/{task_id}.png` while they are still available.
+
+## Catalog file scanner
+
+The catalog scanner is index-first: it records local file paths and metadata in SQLite without copying, moving, or attaching files to products automatically.
+
+```bash
+npm run catalog -- roots add /path/to/models Models
+npm run catalog -- roots list
+npm run catalog -- scan
+npm run catalog -- roots remove 1
+```
+
+The first scanner slice indexes common 3D/source/G-code files (`.3mf`, `.stl`, `.step`, `.stp`, `.obj`, `.f3d`, `.blend`, `.gcode`) and skips archives by default. Scan output is a concise counts summary.
 
 ## Local API server and UI
 
