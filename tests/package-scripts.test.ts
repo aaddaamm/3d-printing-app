@@ -20,3 +20,9 @@ it("runs all configured provider sync jobs from npm run sync", () => {
   expect(scripts["sync:bambu"]).toBe("npx tsx dump-bambu-history.ts");
   expect(scripts["sync:moonraker"]).toBe("npx tsx sync-moonraker-history.ts");
 });
+
+it("exposes the catalog scanner CLI", () => {
+  const { scripts } = readPackageJson();
+
+  expect(scripts.catalog).toBe("npx tsx scan-catalog.ts");
+});
