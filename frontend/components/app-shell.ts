@@ -4,6 +4,7 @@ import htm from "htm";
 import { Toolbar, TotalsBar, TableView, GridView, PrinterBreakdownView } from "./jobs-view.js";
 import { ProjectsView, ProjectDetail } from "./projects-view.js";
 import { AdminView } from "./admin-view.js";
+import { CatalogView } from "./catalog-view.js";
 
 const html = (
   htm as unknown as {
@@ -257,6 +258,7 @@ export type RouteState = {
   isAdmin: boolean;
   isPrinters: boolean;
   isProjects: boolean;
+  isCatalog: boolean;
   projectId: number | null;
 };
 
@@ -266,6 +268,7 @@ export function getRouteState(loc: string): RouteState {
     isAdmin: loc.startsWith("/admin"),
     isPrinters: loc.startsWith("/printers"),
     isProjects: loc.startsWith("/projects"),
+    isCatalog: loc.startsWith("/catalog"),
     projectId: projectDetailMatch ? Number(projectDetailMatch[1]) : null,
   };
 }
@@ -332,6 +335,7 @@ export function renderMainContent({
   handleSort: (col: string) => void;
 }) {
   if (route.isAdmin) return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
+  if (route.isCatalog) return html`<${CatalogView} />`;
   if (route.isPrinters) {
     return html`<${PrinterBreakdownView}
       summary=${summary}

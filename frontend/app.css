@@ -1963,6 +1963,77 @@ tbody td {
   color: var(--subtext);
   margin: 0;
 }
+
+.catalog-page {
+  padding: 24px 28px 48px;
+}
+
+.catalog-header-row,
+.catalog-root-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.catalog-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.catalog-summary-pill {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(17, 21, 34, 0.72);
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: lowercase;
+}
+
+.catalog-summary-pill strong {
+  display: block;
+  color: var(--text);
+  font-size: 20px;
+  line-height: 1.1;
+}
+
+.catalog-root-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.catalog-root-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.catalog-root-path {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.catalog-root-meta {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+@media (max-width: 760px) {
+  .catalog-header-row,
+  .catalog-root-card,
+  .catalog-root-form {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+}
 .admin-card {
   background: var(--card);
   border: 1px solid var(--border);

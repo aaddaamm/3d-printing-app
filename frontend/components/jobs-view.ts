@@ -66,6 +66,7 @@ const NAV_ITEMS = [
   },
   { label: "Projects", path: "/projects", active: (loc: string) => loc.startsWith("/projects") },
   { label: "Printers", path: "/printers", active: (loc: string) => loc.startsWith("/printers") },
+  { label: "Catalog", path: "/catalog", active: (loc: string) => loc.startsWith("/catalog") },
   { label: "Rates", path: "/admin", active: (loc: string) => loc.startsWith("/admin") },
 ] as const;
 
