@@ -7,6 +7,7 @@ import { summary } from "./routes/summary.js";
 import { rates } from "./routes/rates.js";
 import { projects } from "./routes/projects.js";
 import { printers } from "./routes/printers.js";
+import { catalog } from "./routes/catalog.js";
 import { createUiApp } from "./routes/ui.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
@@ -38,6 +39,7 @@ function mountRoutes(): void {
   app.route("/printers", printers);
   app.route("/summary", summary);
   app.route("/rates", rates);
+  app.route("/catalog", catalog);
 }
 
 function startServer(): void {
