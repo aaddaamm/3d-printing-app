@@ -121,7 +121,7 @@
             onJobClick=${n}
           />`)}
     </div>
-  `}const j=R.bind(E);function un(t){return!t.startsWith("/projects")&&!t.startsWith("/admin")&&!t.startsWith("/printers")}function pn(t,e){const n=new URLSearchParams;t&&n.set("status",t),e&&n.set("device",e);const a=n.toString();return"/jobs/export.csv"+(a?"?"+a:"")}function _n(t){return t.reduce((e,n)=>(e.weight+=n.total_weight_g||0,e.time+=n.total_time_s||0,e),{weight:0,time:0})}function vn(t){return!t||t==="actual"?null:t==="slicer_estimate"?"estimate":t==="manual"?"manual":"unknown"}function Je({confidence:t}){const e=vn(t);return e?j`<span class="usage-confidence">${e}</span>`:null}const $n=[{label:"Jobs",path:"/",active:un},{label:"Projects",path:"/projects",active:t=>t.startsWith("/projects")},{label:"Printers",path:"/printers",active:t=>t.startsWith("/printers")},{label:"Catalog",path:"/catalog",active:t=>t.startsWith("/catalog")},{label:"Rates",path:"/admin",active:t=>t.startsWith("/admin")}],fn=[["","All Statuses"],["finish","Finished"],["cancel","Cancelled"],["running","Running"],["failed","Failed"],["pause","Paused"]];function Lt(t,e){const n=(t==null?void 0:t.by_device)??[];return n.length?n.map(a=>{const r=a.deviceModel||"Unknown printer";return e==="jobs"?`${r}: ${(a.total_jobs??0).toLocaleString()} jobs`:e==="plates"?`${r}: ${(a.total_plates??0).toLocaleString()} plates`:`${r}: ${((a.total_time_s??0)/3600).toFixed(1).toLocaleString()} h`}).join(`
+  `}const j=R.bind(E);function un(t){return!t.startsWith("/projects")&&!t.startsWith("/admin")&&!t.startsWith("/printers")&&!t.startsWith("/catalog")}function pn(t,e){const n=new URLSearchParams;t&&n.set("status",t),e&&n.set("device",e);const a=n.toString();return"/jobs/export.csv"+(a?"?"+a:"")}function _n(t){return t.reduce((e,n)=>(e.weight+=n.total_weight_g||0,e.time+=n.total_time_s||0,e),{weight:0,time:0})}function vn(t){return!t||t==="actual"?null:t==="slicer_estimate"?"estimate":t==="manual"?"manual":"unknown"}function Je({confidence:t}){const e=vn(t);return e?j`<span class="usage-confidence">${e}</span>`:null}const $n=[{label:"Jobs",path:"/",active:un},{label:"Projects",path:"/projects",active:t=>t.startsWith("/projects")},{label:"Printers",path:"/printers",active:t=>t.startsWith("/printers")},{label:"Catalog",path:"/catalog",active:t=>t.startsWith("/catalog")},{label:"Rates",path:"/admin",active:t=>t.startsWith("/admin")}],fn=[["","All Statuses"],["finish","Finished"],["cancel","Cancelled"],["running","Running"],["failed","Failed"],["pause","Paused"]];function Lt(t,e){const n=(t==null?void 0:t.by_device)??[];return n.length?n.map(a=>{const r=a.deviceModel||"Unknown printer";return e==="jobs"?`${r}: ${(a.total_jobs??0).toLocaleString()} jobs`:e==="plates"?`${r}: ${(a.total_plates??0).toLocaleString()} plates`:`${r}: ${((a.total_time_s??0)/3600).toFixed(1).toLocaleString()} h`}).join(`
 `):"No printer breakdown available"}function mn({loc:t,navigate:e}){return j`<nav class="top-nav">
     ${$n.map(n=>{const a=n.active(t);return j`
         <button
@@ -953,7 +953,9 @@
           `)}
       </${nt}>
     </div>
-  `}const K=R.bind(E);function G({label:t,value:e}){return K`<div class="catalog-summary-pill"><strong>${e.toLocaleString()}</strong>${t}</div>`}function oa({summary:t}){return t?K`
+  `}const K=R.bind(E);function G({label:t,value:e}){return K`<div class="catalog-summary-pill">
+    <strong>${e.toLocaleString()}</strong>${t}
+  </div>`}function oa({summary:t}){return t?K`
     <div class="catalog-summary" role="status" aria-live="polite">
       <${G} label="scanned" value=${t.scanned} />
       <${G} label="added" value=${t.added} />
@@ -974,7 +976,11 @@
               Index local model and G-code files without copying or attaching them to products.
             </p>
           </div>
-          <button class="btn-primary" onClick=${async()=>{c(!0);try{const u=await dt("/catalog/scan",{},"Catalog scan failed.",{timeoutMs:null});if(!u)return;i(u.summary),Y("Catalog scan complete.",u.summary.failed>0?"info":"success"),await p()}finally{c(!1)}}} disabled=${d||t.every(u=>!u.is_active)}>
+          <button
+            class="btn-primary"
+            onClick=${async()=>{c(!0);try{const u=await dt("/catalog/scan",{},"Catalog scan failed.",{timeoutMs:null});if(!u)return;i(u.summary),Y("Catalog scan complete.",u.summary.failed>0?"info":"success"),await p()}finally{c(!1)}}}
+            disabled=${d||t.every(u=>!u.is_active)}
+          >
             ${d?"Scanning…":"Run scan"}
           </button>
         </div>
@@ -1007,18 +1013,18 @@
 
         ${o?K`<div class="empty">Loading scan roots…</div>`:t.length===0?K`<div class="empty">No scan roots configured.</div>`:K`<div class="catalog-root-list">
                 ${t.map(u=>K`<div class="admin-card catalog-root-card" key=${u.id}>
-                    <div>
-                      <div class="admin-card-name">${u.name}</div>
-                      <div class="catalog-root-path">${u.root_path}</div>
-                      <div class="catalog-root-meta">
-                        ${u.is_active?"active":"inactive"}
-                        ${u.last_scanned_at?` · scanned ${u.last_scanned_at}`:""}
+                      <div>
+                        <div class="admin-card-name">${u.name}</div>
+                        <div class="catalog-root-path">${u.root_path}</div>
+                        <div class="catalog-root-meta">
+                          ${u.is_active?"active":"inactive"}
+                          ${u.last_scanned_at?` · scanned ${u.last_scanned_at}`:""}
+                        </div>
                       </div>
-                    </div>
-                    ${u.is_active?K`<button class="btn-ghost" onClick=${()=>m(u.id)}>
-                          Deactivate
-                        </button>`:null}
-                  </div>`)}
+                      ${u.is_active?K`<button class="btn-ghost" onClick=${()=>m(u.id)}>
+                            Deactivate
+                          </button>`:null}
+                    </div>`)}
               </div>`}
       </section>
     </main>

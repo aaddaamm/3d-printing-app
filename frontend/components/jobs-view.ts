@@ -23,8 +23,13 @@ const html = (
   }
 ).bind(h);
 
-function isJobsRoute(loc: string): boolean {
-  return !loc.startsWith("/projects") && !loc.startsWith("/admin") && !loc.startsWith("/printers");
+export function isJobsRoute(loc: string): boolean {
+  return (
+    !loc.startsWith("/projects") &&
+    !loc.startsWith("/admin") &&
+    !loc.startsWith("/printers") &&
+    !loc.startsWith("/catalog")
+  );
 }
 
 function buildJobsCsvUrl(statusFilter: string, deviceFilter: string): string {
