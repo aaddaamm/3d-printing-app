@@ -36,7 +36,9 @@ type RootResponse = { root: ScanRoot };
 type ScanResponse = { summary: CatalogScanSummary };
 
 function SummaryPill({ label, value }: { label: string; value: number }) {
-  return html`<div class="catalog-summary-pill"><strong>${value.toLocaleString()}</strong>${label}</div>`;
+  return html`<div class="catalog-summary-pill">
+    <strong>${value.toLocaleString()}</strong>${label}
+  </div>`;
 }
 
 function ScanSummary({ summary }: { summary: CatalogScanSummary | null }) {
@@ -77,8 +79,14 @@ export function CatalogView() {
     event.preventDefault();
     const trimmedPath = rootPath.trim();
     if (!trimmedPath) return;
-    const payload = name.trim() ? { rootPath: trimmedPath, name: name.trim() } : { rootPath: trimmedPath };
-    const data = await postJsonOrToast<RootResponse>("/catalog/roots", payload, "Failed to add root.");
+    const payload = name.trim()
+      ? { rootPath: trimmedPath, name: name.trim() }
+      : { rootPath: trimmedPath };
+    const data = await postJsonOrToast<RootResponse>(
+      "/catalog/roots",
+      payload,
+      "Failed to add root.",
+    );
     if (!data) return;
     setRoots((items) => [...items, data.root]);
     setRootPath("");
@@ -87,9 +95,13 @@ export function CatalogView() {
   };
 
   const deactivateRoot = async (id: number) => {
-    const data = await fetchJsonOrToast<RootResponse>(`/catalog/roots/${id}`, "Failed to remove root.", {
-      method: "DELETE",
-    });
+    const data = await fetchJsonOrToast<RootResponse>(
+      `/catalog/roots/${id}`,
+      "Failed to remove root.",
+      {
+        method: "DELETE",
+      },
+    );
     if (!data) return;
     setRoots((items) => items.map((item) => (item.id === id ? data.root : item)));
   };
@@ -97,7 +109,14 @@ export function CatalogView() {
   const runScan = async () => {
     setScanning(true);
     try {
-      const data = await postJsonOrToast<ScanResponse>("/catalog/scan", {}, "Catalog scan failed.");
+      const data = await postJsonOrToast<ScanResponse>(
+        "/catalog/scan",
+        {},
+        "Catalog scan failed.",
+        {
+          timeoutMs: null,
+        },
+      );
       if (!data) return;
       setSummary(data.summary);
       toast("Catalog scan complete.", data.summary.failed > 0 ? "info" : "success");
@@ -117,7 +136,11 @@ export function CatalogView() {
               Index local model and G-code files without copying or attaching them to products.
             </p>
           </div>
-          <button class="btn-primary" onClick=${runScan} disabled=${scanning || roots.every((root) => !root.is_active)}>
+          <button
+            class="btn-primary"
+            onClick=${runScan}
+            disabled=${scanning || roots.every((root) => !root.is_active)}
+          >
             ${scanning ? "Scanning…" : "Run scan"}
           </button>
         </div>
@@ -154,21 +177,22 @@ export function CatalogView() {
             ? html`<div class="empty">No scan roots configured.</div>`
             : html`<div class="catalog-root-list">
                 ${roots.map(
-                  (root) => html`<div class="admin-card catalog-root-card" key=${root.id}>
-                    <div>
-                      <div class="admin-card-name">${root.name}</div>
-                      <div class="catalog-root-path">${root.root_path}</div>
-                      <div class="catalog-root-meta">
-                        ${root.is_active ? "active" : "inactive"}
-                        ${root.last_scanned_at ? ` · scanned ${root.last_scanned_at}` : ""}
+                  (root) =>
+                    html`<div class="admin-card catalog-root-card" key=${root.id}>
+                      <div>
+                        <div class="admin-card-name">${root.name}</div>
+                        <div class="catalog-root-path">${root.root_path}</div>
+                        <div class="catalog-root-meta">
+                          ${root.is_active ? "active" : "inactive"}
+                          ${root.last_scanned_at ? ` · scanned ${root.last_scanned_at}` : ""}
+                        </div>
                       </div>
-                    </div>
-                    ${root.is_active
-                      ? html`<button class="btn-ghost" onClick=${() => deactivateRoot(root.id)}>
-                          Deactivate
-                        </button>`
-                      : null}
-                  </div>`,
+                      ${root.is_active
+                        ? html`<button class="btn-ghost" onClick=${() => deactivateRoot(root.id)}>
+                            Deactivate
+                          </button>`
+                        : null}
+                    </div>`,
                 )}
               </div>`}
       </section>

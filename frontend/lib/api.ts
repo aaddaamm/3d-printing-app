@@ -3,7 +3,7 @@ import { FETCH_TIMEOUT_MS } from "./constants.js";
 
 type JsonRecord = Record<string, unknown>;
 
-type RequestOptions = RequestInit | undefined;
+type RequestOptions = (RequestInit & { timeoutMs?: number | null }) | undefined;
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
@@ -15,7 +15,9 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
 }
 
 function requestOptions(options: RequestOptions): RequestInit {
-  return { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS), ...options };
+  const { timeoutMs = FETCH_TIMEOUT_MS, ...requestInit } = options ?? {};
+  if (requestInit.signal || timeoutMs === null) return requestInit;
+  return { signal: AbortSignal.timeout(timeoutMs), ...requestInit };
 }
 
 function toRequestError(err: unknown, fallback: string): Error {
@@ -81,10 +83,12 @@ export async function postJsonOrToast<T = JsonRecord>(
   url: string,
   payload: unknown,
   fallback: string,
+  options?: RequestOptions,
 ): Promise<T | null> {
   return fetchJsonOrToast<T>(url, fallback, {
+    ...options,
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...options?.headers },
     body: JSON.stringify(payload),
   });
 }
