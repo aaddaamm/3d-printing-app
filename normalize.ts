@@ -74,7 +74,9 @@ function asNumber(v: unknown): number | null {
 }
 
 function asString(v: unknown): string | null {
-  return typeof v === "string" ? v : null;
+  if (typeof v !== "string") return null;
+  const trimmed = v.trim();
+  return trimmed ? trimmed : null;
 }
 
 function createAccumulator(

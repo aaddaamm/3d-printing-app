@@ -144,6 +144,60 @@ describe.sequential("provider-aware normalization", () => {
     expect(job.printer_id).toBe(printerId);
   });
 
+  it("falls back to task title when Bambu designTitle is blank", () => {
+    const db = dbModule!.db;
+    dbModule!.stmts.upsertTask.run({
+      id: "2000",
+      provider: "bambu",
+      provider_task_id: "2000",
+      provider_printer_id: "a1-mini-001",
+      printer_id: null,
+      session_id: null,
+      instanceId: 2000,
+      plateIndex: 1,
+      deviceId: "a1-mini-001",
+      deviceName: "A1 Mini",
+      deviceModel: "A1 Mini",
+      designId: "0",
+      designTitle: "",
+      modelId: null,
+      profileId: null,
+      title: "ZVOX AV835 wall mounts_plate_1",
+      status: "finish",
+      failedType: null,
+      bedType: null,
+      weight: 10,
+      length: null,
+      costTime: 600,
+      startTime: "2026-02-01T10:00:00.000Z",
+      endTime: "2026-02-01T10:10:00.000Z",
+      cover: null,
+      thumbnail: null,
+      raw_json: JSON.stringify({
+        id: 2000,
+        instanceId: 2000,
+        deviceId: "a1-mini-001",
+        deviceModel: "A1 Mini",
+        designId: "0",
+        designTitle: "",
+        title: "ZVOX AV835 wall mounts_plate_1",
+        status: 2,
+        weight: 10,
+        costTime: 600,
+        startTime: "2026-02-01T10:00:00.000Z",
+        endTime: "2026-02-01T10:10:00.000Z",
+      }),
+    });
+
+    normalizeModule!.runNormalize();
+
+    const job = db.prepare("SELECT designTitle FROM jobs WHERE session_id = ?").get("2000") as {
+      designTitle: string;
+    };
+
+    expect(job.designTitle).toBe("ZVOX AV835 wall mounts_plate_1");
+  });
+
   it("converts a generic provider history record into a priced job without Bambu instanceId", () => {
     const db = dbModule!.db;
     db.prepare("INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)").run(
