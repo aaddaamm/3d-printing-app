@@ -97,7 +97,7 @@ function validateConfig(token: string): void {
 
 function printHeader(): void {
   const tokenSource = process.env["BAMBU_TOKEN"] ? "BAMBU_TOKEN env var" : TOKEN_PATH;
-  logInfo(bold(cyan("=== bambu-history-dump ===")));
+  logInfo(bold(cyan("=== bambu-cloud-sync ===")));
   logInfo(`  ${dim("Token :")} ${tokenSource}`);
   logInfo(`  ${dim("API   :")} ${cyan(BASE_URL)}`);
   logInfo(`  ${dim("DB    :")} ${dim(DB_PATH)}`);

@@ -45,7 +45,7 @@ function mountRoutes(): void {
 function startServer(): void {
   serve({ fetch: app.fetch, port: PORT, hostname: HOST }, (info) => {
     const origin = `http://${HOST}:${info.port}`;
-    logInfo(bold(cyan("=== bambu-api ===")));
+    logInfo(bold(cyan("=== printworks-api ===")));
     logInfo(`  Listening on ${cyan(origin)}`);
     logInfo(`  UI:          ${cyan(`${origin}/ui`)}`);
     logInfo(`  DB: ${dim(DB_PATH)}`);

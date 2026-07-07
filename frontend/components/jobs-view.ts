@@ -149,7 +149,7 @@ export function Header({ summary, dataRange }: { summary: Summary; dataRange: Da
   return html`
     <header>
       <div class="header-left">
-        <h1><span class="brand-cursor" aria-hidden="true"></span><span>bambu history</span></h1>
+        <h1><span class="brand-cursor" aria-hidden="true"></span><span>PrintWorks</span></h1>
         ${hasHistoryRange &&
         html`<div class="header-range">
           History: ${fmtDateShort(minStart)} → ${fmtDateShort(maxStart)}

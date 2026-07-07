@@ -1,8 +1,8 @@
 {
-  "name": "bambu-history-dump",
+  "name": "printworks",
   "version": "1.0.0",
-  "description": "Sync Bambu Lab print history to SQLite with pricing, projects, and a lightweight dashboard.",
-  "main": "dump-bambu-history.ts",
+  "description": "Local-first 3D print history, pricing, and catalog dashboard with multi-provider sync.",
+  "main": "api.ts",
   "scripts": {
     "sync": "npx tsx sync-configured-providers.ts",
     "sync:bambu": "npx tsx dump-bambu-history.ts",

@@ -1,6 +1,6 @@
-# bambu-history-dump
+# PrintWorks
 
-Fetches 3D printer history into a local SQLite database, normalizes prints into jobs/projects, caches cover images, and serves an internal HTTP API plus a small Preact UI for pricing and customer tracking.
+PrintWorks is a local-first 3D print history, pricing, and catalog app. It syncs provider history into SQLite, normalizes prints into jobs/projects, caches cover images, and serves an internal HTTP API plus a small Preact UI for pricing and customer tracking.
 
 The app is moving in a **local-first** direction: run it on a machine inside the same LAN as your printers, keep SQLite/covers on persistent local disk, and avoid exposing local printer APIs publicly.
 
@@ -16,7 +16,7 @@ See `docs/local-first-deployment.md` for the current local deployment direction.
 
 ## Authentication
 
-### Bambu sync token
+### Bambu Cloud token
 
 Store your Bambu Lab API token in `~/.bambu_token`:
 
@@ -47,7 +47,7 @@ npm run dev:api      # Hot-reload API server only (tsx watch)
 npm run dev:ui       # Vite dev server for UI (HMR)
 npm run api          # Start API server
 npm run sync         # Fetch all configured providers → SQLite → normalize → covers
-npm run sync:bambu   # Fetch Bambu API only → SQLite → normalize → download covers
+npm run sync:bambu   # Fetch Bambu Cloud provider only → SQLite → normalize → download covers
 npm run sync:moonraker # Fetch Moonraker/Snapmaker U1 history only → SQLite → normalize
 npm run catalog      # Manage catalog scan roots and index local model/G-code files
 npm run normalize    # Rebuild sessions/jobs from existing print_tasks
@@ -57,7 +57,7 @@ npm run lint         # ESLint
 npm run build        # Compile with tsconfig.build.json
 ```
 
-## Sync
+## Provider sync
 
 ```bash
 npm run sync
@@ -65,13 +65,13 @@ npm run sync
 
 Runs every provider in `printworks.config.json`, such as Bambu Cloud and Moonraker/Snapmaker U1, then normalizes jobs, auto-groups projects, downloads available covers, and records runs in `sync_log`.
 
-To run only the legacy Bambu cloud sync:
+To run only the Bambu Cloud provider sync:
 
 ```bash
 npm run sync:bambu
 ```
 
-This fetches up to `BAMBU_LIMIT` tasks from the Bambu cloud API, upserts them into `print_tasks`, normalizes related plates into `jobs`, auto-groups jobs into `projects`, downloads currently available cover images, and records the run in `sync_log`.
+This fetches up to `BAMBU_LIMIT` tasks from Bambu Cloud, upserts them into `print_tasks`, normalizes related plates into `jobs`, auto-groups jobs into `projects`, downloads currently available cover images, and records the run in `sync_log`. The `sync:bambu` script remains as a provider-specific compatibility command.
 
 For only a Snapmaker U1 or other Moonraker-compatible printer:
 
@@ -82,6 +82,8 @@ MOONRAKER_BASE_URL=http://snapmaker-u1.local npm run sync:moonraker
 Moonraker sync imports one history job as one app job/session. It uses slicer metadata for estimated filament weight when available; raw history payloads are retained in `print_tasks.raw_json`.
 
 ### Sync environment variables
+
+Some environment variable names retain `BAMBU_` prefixes for backward compatibility with existing local installs. They are provider-specific or legacy compatibility names, not the app name.
 
 | Variable           | Default                        | Description                            |
 | ------------------ | ------------------------------ | -------------------------------------- |
@@ -97,7 +99,7 @@ Scheduler variables:
 
 | Variable                        | Default      | Description                                                 |
 | ------------------------------- | ------------ | ----------------------------------------------------------- |
-| `SYNC_INTERVAL_HOURS`           | `0`          | Legacy Bambu sync interval; shared fallback with providers  |
+| `SYNC_INTERVAL_HOURS`           | `0`          | Shared fallback sync interval for configured providers      |
 | `SYNC_PROVIDERS`                | _(auto)_     | Comma-separated scheduled providers, e.g. `bambu,moonraker` |
 | `BAMBU_SYNC_INTERVAL_HOURS`     | legacy value | Bambu-specific API-server sync interval                     |
 | `MOONRAKER_SYNC_INTERVAL_HOURS` | `0`          | Moonraker-specific API-server sync interval                 |
@@ -159,7 +161,7 @@ Override target with `VITE_API_PROXY_TARGET` if needed.
 | ------------------------------- | ------------------------------ | ----------------------------------------------------------- |
 | `PORT`                          | `3000`                         | Server port                                                 |
 | `BAMBU_DB`                      | `./bambu_print_history.sqlite` | SQLite database path                                        |
-| `SYNC_INTERVAL_HOURS`           | `0`                            | Legacy Bambu sync interval; shared fallback with providers  |
+| `SYNC_INTERVAL_HOURS`           | `0`                            | Shared fallback sync interval for configured providers      |
 | `SYNC_PROVIDERS`                | _(auto)_                       | Comma-separated scheduled providers, e.g. `bambu,moonraker` |
 | `BAMBU_SYNC_INTERVAL_HOURS`     | legacy value                   | Bambu-specific scheduled sync interval                      |
 | `MOONRAKER_SYNC_INTERVAL_HOURS` | `0`                            | Moonraker-specific scheduled sync interval                  |
@@ -180,7 +182,7 @@ gate in the local-first mode.
 
 ### Tasks
 
-`print_tasks` are the raw per-plate Bambu API records after light normalization.
+`print_tasks` are raw imported provider history records after light normalization. Bambu records are usually per-plate; Moonraker records are completed history jobs.
 
 | Method | Path         | Description  |
 | ------ | ------------ | ------------ |

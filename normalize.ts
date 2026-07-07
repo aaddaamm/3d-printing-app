@@ -283,7 +283,7 @@ export function runNormalize(): void {
 // ── Standalone entry point ────────────────────────────────────────────────────
 
 if (process.argv[1]?.endsWith("normalize.ts") || process.argv[1]?.endsWith("normalize.js")) {
-  logInfo("=== bambu-normalize ===");
+  logInfo("=== printworks-normalize ===");
   logInfo(`  DB: ${DB_PATH}`);
   logInfo("");
   runNormalize();

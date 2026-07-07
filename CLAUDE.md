@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 npm run dev          # Hot-reload API server (tsx watch)
 npm run sync         # Fetch all configured providers + normalize + covers
-npm run sync:bambu   # Fetch from Bambu API only + normalize + covers
+npm run sync:bambu   # Fetch from Bambu Cloud provider only + normalize + covers
 npm run sync:moonraker # Fetch from Moonraker/Snapmaker U1 only + normalize
 npm run api          # Start local API/UI server
 npm test             # vitest run (all tests)
@@ -27,7 +27,7 @@ Run a single test file: `npx vitest run tests/pricing.test.ts`
 ## Architecture
 
 ```
-dump-bambu-history.ts   CLI: fetch Bambu API → upsert tasks → normalize → download covers
+dump-bambu-history.ts   Bambu Cloud provider CLI → upsert tasks → normalize → download covers
 sync-moonraker-history.ts CLI: fetch Moonraker history → upsert tasks → normalize
 normalize.ts            Session detection & job upsert (importable)
 api.ts                  Hono HTTP server entry point
@@ -45,15 +45,15 @@ lib/
   types.ts              Shared TypeScript interfaces
   constants.ts          SESSION_GAP_S and other shared constants
   util.ts               Route/model utility helpers
-frontend/               Preact 10 + htm frontend — no build step, ESM from esm.sh
-  app.js                Root component, routing, data fetching
+frontend/               Preact 10 + htm frontend built with Vite
+  app.ts                Root component, routing, data fetching
   components/           Preact components (atoms, modal, views, toast, router)
 ```
 
 ## Key data model
 
-- **print_task**: one plate from one Bambu API task. Raw API data stored in `raw_json`.
-- **session**: plates from the same `(instanceId, deviceId)` within `SESSION_GAP_S` (4h). `session_id` = first task's Bambu API id.
+- **print_task**: one imported provider history record. Bambu records are plates; Moonraker records are completed history jobs. Raw provider data stored in `raw_json`.
+- **session/job**: Bambu plates from the same `(instanceId, deviceId)` within `SESSION_GAP_S` are grouped; generic providers usually map one history record to one job.
 - **job**: one row per session — the unit for pricing and customer tracking.
 - **project**: group of related jobs. Auto-created by `autoGroupProjects` or manually via UI.
 - **job_filaments**: AMS slot data per task (filament type, color hex, weight used).
@@ -63,8 +63,7 @@ frontend/               Preact 10 + htm frontend — no build step, ESM from esm
 - Deployment direction is local-first. Prefer docs and implementation choices that keep the app running on a LAN machine with persistent SQLite/covers instead of assuming serverless/cloud hosting.
 - `better-sqlite3` is synchronous — no `await` on DB calls.
 - Frontend uses `toast()` from `frontend/components/toast.js` — never `alert()`/`confirm()`.
-- `frontend/` is excluded from ESLint (plain JS, no TypeScript).
-- Do not add React/Vue/Svelte/Vite to the frontend.
+- Frontend is TypeScript with Preact 10 + htm and Vite. Do not replace the stack with React/Vue/Svelte.
 - Pricing: per-project applies one labor charge across all jobs; only **finished** plates count toward weight/time.
 - GitHub Issues are the source of truth for deferred work; check relevant open issues before significant changes.
 - Commit with conventional-commit prefixes (`feat:`, `fix:`, `chore:`, `refactor:`, `perf:`). Stage only related files — never `git add -A`.

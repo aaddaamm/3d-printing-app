@@ -1,4 +1,4 @@
-# Agent Guidance — bambu-history-dump
+# Agent Guidance — PrintWorks
 
 ## Issue hygiene
 
@@ -15,37 +15,40 @@ session where significant features or refactoring are discussed:
 ## Architecture overview
 
 ```
-dump-bambu-history.ts   — CLI: fetch from Bambu API → insert → normalize → download covers
-normalize.ts            — Session detection & job upsert (also importable)
-api.ts                  — Hono HTTP server entry point
-routes/                 — Hono route handlers (jobs, projects, tasks, rates, summary, ui)
-models/                 — DB query functions called by routes
+sync-configured-providers.ts — CLI: sync all configured providers → normalize → covers
+dump-bambu-history.ts       — Bambu Cloud provider CLI → insert → normalize → download covers
+sync-moonraker-history.ts   — Moonraker provider CLI → insert → normalize
+normalize.ts                — Session detection & job upsert (also importable)
+api.ts                      — Hono HTTP server entry point
+routes/                     — Hono route handlers (jobs, projects, printers, catalog, rates, summary, ui)
+models/                     — DB query functions called by routes
 lib/
-  auto-group.ts         — Auto-group unassigned jobs into projects (by designId or title)
-  colors.ts             — ANSI color helpers for CLI/server logs
-  constants.ts          — Shared constants (session gap, API limits, timeouts)
-  covers.ts             — Local cover image cache (download + serve)
-  db.ts                 — Schema, migrations, prepared statements (better-sqlite3)
-  fetch.ts              — Bambu API fetch with retry + pagination
-  migrations.ts         — Numbered migration helpers and schema_migrations bookkeeping
-  normalize.ts          — normalizeTask() — maps raw API shape to PrintTask
-  pricing.ts            — Pure pricing functions (no DB access)
-  session-detection.ts  — Shared session grouping logic used by normalization
-  types.ts              — Shared TypeScript interfaces
-  util.ts               — Route/model utility helpers
-frontend/               — Frontend (Preact + htm, no build step)
-  index.html            — Shell HTML served by the UI route
-  app.js                — Root component, routing, data fetching
-  app.css               — All styles
-  components/           — Preact components (atoms, modal, views, toast, router)
-covers/                 — Cached cover PNGs (gitignored, populated by sync)
+  auto-group.ts             — Auto-group unassigned jobs into projects (by designId or title)
+  colors.ts                 — ANSI color helpers for CLI/server logs
+  constants.ts              — Shared constants (session gap, API limits, timeouts)
+  covers.ts                 — Local cover image cache (download + serve)
+  db.ts                     — Schema, migrations, prepared statements (better-sqlite3)
+  providers/                — Provider integrations (Bambu Cloud, Moonraker)
+  migrations.ts             — Numbered migration helpers and schema_migrations bookkeeping
+  normalize.ts              — normalizeTask() — maps raw API shape to PrintTask
+  pricing.ts                — Pure pricing functions (no DB access)
+  session-detection.ts      — Shared session grouping logic used by normalization
+  types.ts                  — Shared TypeScript interfaces
+  util.ts                   — Route/model utility helpers
+frontend/                   — Frontend (Preact + htm + Vite)
+  index.html                — Shell HTML served by the UI route
+  app.ts                    — Root component, routing, data fetching
+  app.css                   — All styles
+  components/               — Preact components (atoms, modal, views, toast, router)
+covers/                     — Cached cover PNGs (gitignored, populated by sync)
 ```
 
 ### Key data concepts
 
-- **print_task**: one plate from one Bambu API task record. Raw API data stored in `raw_json`.
-- **session**: group of plates from the same `(instanceId, deviceId)` printed within 4 hours
-  of each other (configurable via `SESSION_GAP_S`). `session_id` = the first task's Bambu API id.
+- **print_task**: one imported provider history record. Bambu records are plates;
+  Moonraker records are completed history jobs. Raw provider data stored in `raw_json`.
+- **session**: group of Bambu plates from the same `(instanceId, deviceId)` printed within 4 hours
+  of each other (configurable via `SESSION_GAP_S`); generic providers usually map one record to one job.
 - **job**: one row per session. The unit for pricing and customer tracking.
 - **project**: a group of related jobs. Auto-created by `autoGroupProjects` or created manually in the UI.
 - **job_filaments**: AMS slot data per task (filament type, color hex, weight used).
@@ -106,25 +109,24 @@ Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas
 npm run dev       # Hot-reload API server (tsx watch)
 npm run api       # Start API server once
 npm run sync      # Fetch all configured providers + normalize + covers
-npm run sync:bambu # Fetch from Bambu API only + normalize + covers
+npm run sync:bambu # Fetch from Bambu Cloud provider only + normalize + covers
 npm run normalize # Rebuild sessions/jobs from existing print_tasks
 npm run typecheck
 npm run lint
 npm test
 ```
 
-The local API/UI has no application-level auth gate. Sync requires `BAMBU_TOKEN`
-(or `~/.bambu_token`).
+The local API/UI has no application-level auth gate. Bambu Cloud sync requires `BAMBU_TOKEN`
+(or `~/.bambu_token`); other providers have their own configuration.
 Set `SYNC_INTERVAL_HOURS` on the API server to run sync on startup and then periodically.
 
 ## Frontend architecture
 
-The UI uses **Preact 10 + htm** via ESM imports from `https://esm.sh` — no build step,
-no bundler. Browser caches modules after first load; requires internet on first load.
+The UI uses **Preact 10 + htm** with Vite.
 
 - `routes/ui.ts` is a thin server: serves the HTML shell and static files from
   `frontend/`, provides `/data` and `/covers/:taskId` endpoints.
-- Components live in `frontend/components/` as plain `.js` modules.
+- Components live in `frontend/components/` as TypeScript modules.
 - Use `toast()` from `frontend/components/toast.js` for user feedback — **never use
   `alert()` or `confirm()`** in the frontend.
 
@@ -132,7 +134,7 @@ no bundler. Browser caches modules after first load; requires internet on first 
 
 - Add new components to `frontend/components/`
 - Add new API endpoints in `routes/` and `models/` as needed
-- Do NOT add React/Vue/Svelte/Vite — build pipeline overhead isn't worth it
+- Do NOT replace the current Preact + htm + Vite stack with React/Vue/Svelte.
 
 ## Cover images
 
