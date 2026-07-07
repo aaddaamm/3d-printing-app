@@ -10,6 +10,7 @@ export type Job = {
   final_price?: number | null;
   plate_count?: number | null;
   print_run?: number;
+  printer_id?: number | null;
   cover_url?: string | null;
   filament_colors?: string[];
   material_usage_confidence?: string | null;

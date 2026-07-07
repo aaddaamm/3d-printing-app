@@ -20,6 +20,7 @@ export interface UiJobRow {
   price_override: number | null;
   extra_labor_minutes: number | null;
   project_id: number | null;
+  printer_id: number | null;
   cover_url: string | null;
   filament_colors: string[];
   material_usage_confidence: string | null;
@@ -101,6 +102,7 @@ export function listUiJobs(): UiJobRow[] {
         j.total_weight_g, j.total_time_s, j.plate_count,
         COALESCE(j.status_override, j.status) AS status, j.status_override,
         j.customer, j.notes, j.price_override, j.extra_labor_minutes, j.project_id,
+        j.printer_id,
         pt_first.id AS first_task_id,
         pt_first.provider AS first_task_provider,
         pt_first.provider_printer_id AS first_task_provider_printer_id,

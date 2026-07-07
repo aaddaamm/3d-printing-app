@@ -25,6 +25,7 @@ type Summary = {
 type Job = {
   id: number;
   project_id?: number | null;
+  printer_id?: number | null;
   deviceModel?: string;
   status?: string;
   startTime?: string;

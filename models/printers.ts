@@ -20,7 +20,9 @@ export type PrinterPatch = {
 };
 
 export function listPrinters({ includeRetired = true } = {}): PrinterInventoryRow[] {
-  const where = includeRetired ? "" : "WHERE p.is_active = 1";
+  const where = includeRetired
+    ? "WHERE p.is_active = 1 OR job_totals.job_count IS NOT NULL OR task_totals.task_count IS NOT NULL"
+    : "WHERE p.is_active = 1";
   return db
     .prepare<[], PrinterInventoryRow>(
       `SELECT

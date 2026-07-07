@@ -88,6 +88,20 @@ describe.sequential("printer inventory model", () => {
     expect(printersModule!.listPrinters({ includeRetired: false })).toEqual([]);
   });
 
+  it("omits inactive printers that have no historical jobs or tasks", () => {
+    const db = dbModule!.db;
+    db.prepare("INSERT OR IGNORE INTO providers (id, display_name) VALUES (?, ?)").run(
+      "moonraker",
+      "Moonraker",
+    );
+    db.prepare(
+      `INSERT INTO printers (provider, provider_printer_id, name, model, is_active)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run("moonraker", "stale-ip", "Snapmaker U1", "Snapmaker U1", 0);
+
+    expect(printersModule!.listPrinters()).toEqual([]);
+  });
+
   it("does not multiply job totals when a printer has multiple task rows", () => {
     const db = dbModule!.db;
     db.prepare(

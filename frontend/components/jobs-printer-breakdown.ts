@@ -173,9 +173,8 @@ function InventoryPrinterCard({
   `;
 }
 
-function jobsForInventoryPrinter(printer: PrinterInventory, jobs: Job[]): Job[] {
-  const names = new Set([printer.model, printer.name, printer.provider_printer_id].filter(Boolean));
-  return jobs.filter((job) => names.has(job.deviceModel));
+export function jobsForInventoryPrinter(printer: PrinterInventory, jobs: Job[]): Job[] {
+  return jobs.filter((job) => job.printer_id === printer.id);
 }
 
 export function PrinterBreakdownView({
