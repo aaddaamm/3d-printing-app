@@ -118,7 +118,7 @@ Cover image URLs from Bambu are short-lived. Sync downloads them to `covers/{tas
 
 ## Catalog file scanner
 
-The catalog scanner is index-first: it records local file paths and metadata in SQLite without copying, moving, or attaching files to products automatically.
+The catalog scanner is index-first: it records local file paths and metadata in SQLite without copying, moving, or attaching files to products automatically. In the local UI, use the Catalog tab to manage scan roots and run a synchronous scan.
 
 ```bash
 npm run catalog -- roots add /path/to/models Models
