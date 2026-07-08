@@ -29,6 +29,12 @@ export type ProductSummary = {
   preferred_printer_id: number | null;
   estimated_print_time_s: number | null;
   estimated_filament_g: number | null;
+  booth_price: number | null;
+  etsy_price: number | null;
+  packaging_cost: number | null;
+  handling_minutes: number | null;
+  target_margin_pct: number | null;
+  pricing_notes: string | null;
   notes: string | null;
   can_sell_level: SellabilityLevel;
   can_sell_label: string;
@@ -53,13 +59,74 @@ export type ProductInput = Partial<{
   estimated_print_time_s: number | null;
   estimated_filament_g: number | null;
   target_sale_price: number | null;
+  booth_price: number | null;
+  etsy_price: number | null;
+  packaging_cost: number | null;
+  handling_minutes: number | null;
+  target_margin_pct: number | null;
+  pricing_notes: string | null;
   notes: string | null;
   is_original_design: boolean;
   restock_priority: string | null;
 }>;
 
+export type PricingProfileOption = {
+  id: "personal" | "booth" | "etsy" | "custom";
+  label: string;
+};
+
+export const PRICING_PROFILE_OPTIONS: readonly PricingProfileOption[] = [
+  { id: "personal", label: "Personal" },
+  { id: "booth", label: "Booth" },
+  { id: "etsy", label: "Etsy" },
+  { id: "custom", label: "Custom" },
+] as const;
+
+export type BatchSummary = {
+  id: number;
+  product_id: number;
+  product_name: string;
+  pricing_profile_id: string;
+  pricing_profile_label: string;
+  planned_quantity: number;
+  completed_quantity: number;
+  failed_quantity: number;
+  material_type: string | null;
+  primary_color: string | null;
+  total_filament_g: number | null;
+  total_print_time_s: number | null;
+  setup_minutes?: number | null;
+  handling_minutes_per_unit?: number | null;
+  packaging_cost_per_unit?: number | null;
+  unit_cost: number | null;
+  suggested_price: number | null;
+  estimated_margin_pct: number | null;
+  notes: string | null;
+};
+
+export type BatchInput = Partial<{
+  product_id: number;
+  pricing_profile_id: string;
+  planned_quantity: number;
+  completed_quantity: number;
+  failed_quantity: number;
+  material_type: string | null;
+  primary_color: string | null;
+  printer_id: number | null;
+  total_filament_g: number | null;
+  total_print_time_s: number | null;
+  setup_minutes: number | null;
+  handling_minutes_per_unit: number | null;
+  packaging_cost_per_unit: number | null;
+  target_margin_pct: number | null;
+  platform_fee_pct: number | null;
+  notes: string | null;
+}>;
+
 type ProductsResponse = { products: ProductSummary[] };
 type ProductResponse = { product: ProductSummary };
+type BatchesResponse = { batches: BatchSummary[] };
+type BatchResponse = { batch: BatchSummary };
 
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
@@ -186,4 +253,32 @@ export async function updateProduct(
     "Failed to update product.",
   );
   return data?.product ?? null;
+}
+
+export async function fetchBatches(): Promise<BatchSummary[]> {
+  const data = await fetchJson<BatchesResponse>("/api/batches", "Failed to load batches.");
+  return data.batches;
+}
+
+export async function fetchBatch(id: number): Promise<BatchSummary> {
+  const data = await fetchJson<BatchResponse>(`/api/batches/${id}`, "Failed to load batch.");
+  return data.batch;
+}
+
+export async function createBatch(input: BatchInput): Promise<BatchSummary | null> {
+  const data = await postJsonOrToast<BatchResponse>(
+    "/api/batches",
+    input,
+    "Failed to create batch.",
+  );
+  return data?.batch ?? null;
+}
+
+export async function updateBatch(id: number, input: BatchInput): Promise<BatchSummary | null> {
+  const data = await patchJsonOrToast<BatchResponse>(
+    `/api/batches/${id}`,
+    input,
+    "Failed to update batch.",
+  );
+  return data?.batch ?? null;
 }

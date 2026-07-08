@@ -35,6 +35,12 @@ type DetailFormState = {
   preferredPrinterId: string;
   estimatedPrintTimeHours: string;
   estimatedFilamentG: string;
+  boothPrice: string;
+  etsyPrice: string;
+  packagingCost: string;
+  handlingMinutes: string;
+  targetMarginPct: string;
+  pricingNotes: string;
   notes: string;
 };
 
@@ -61,6 +67,12 @@ export function initialProductDetailForm(product: ProductSummary): DetailFormSta
     estimatedPrintTimeHours: hoursFromSeconds(product.estimated_print_time_s),
     estimatedFilamentG:
       product.estimated_filament_g === null ? "" : String(product.estimated_filament_g),
+    boothPrice: product.booth_price === null ? "" : String(product.booth_price),
+    etsyPrice: product.etsy_price === null ? "" : String(product.etsy_price),
+    packagingCost: product.packaging_cost === null ? "" : String(product.packaging_cost),
+    handlingMinutes: product.handling_minutes === null ? "" : String(product.handling_minutes),
+    targetMarginPct: product.target_margin_pct === null ? "" : String(product.target_margin_pct),
+    pricingNotes: product.pricing_notes ?? "",
     notes: product.notes ?? "",
   };
 }
@@ -118,6 +130,14 @@ function DetailFacts({ product }: { product: ProductSummary }) {
       >
     </div>
     <div><span>Restock</span><strong>${product.restock_priority}</strong></div>
+    <div>
+      <span>Booth</span
+      ><strong>${product.booth_price === null ? "—" : `$${product.booth_price.toFixed(2)}`}</strong>
+    </div>
+    <div>
+      <span>Etsy</span
+      ><strong>${product.etsy_price === null ? "—" : `$${product.etsy_price.toFixed(2)}`}</strong>
+    </div>
     <div><span>Material</span><strong>${product.default_material || "Not set"}</strong></div>
     <div><span>Colors</span><strong>${colors || "Not set"}</strong></div>
     <div>
@@ -186,6 +206,12 @@ export function ProductDetailView({
       preferred_printer_id: positiveIntegerOrNull(form.preferredPrinterId),
       estimated_print_time_s: secondsFromHours(form.estimatedPrintTimeHours),
       estimated_filament_g: numberOrNull(form.estimatedFilamentG),
+      booth_price: numberOrNull(form.boothPrice),
+      etsy_price: numberOrNull(form.etsyPrice),
+      packaging_cost: numberOrNull(form.packagingCost),
+      handling_minutes: numberOrNull(form.handlingMinutes),
+      target_margin_pct: numberOrNull(form.targetMarginPct),
+      pricing_notes: form.pricingNotes.trim() || null,
       notes: form.notes.trim() || null,
     };
 
@@ -412,6 +438,81 @@ export function ProductDetailView({
               placeholder="Tuning notes, photo needs, listing copy reminders…"
               onInput=${(event: Event) =>
                 setField("notes", (event.target as HTMLTextAreaElement).value)}
+            ></textarea>
+          </label>
+        </section>
+
+        <section class="admin-section">
+          <h3 class="admin-section-title">Product pricing defaults</h3>
+          <p class="admin-section-desc">
+            Defaults used when planning booth and Etsy batches. Batch-specific values can still
+            override these when needed.
+          </p>
+          <div class="product-form-grid">
+            <label class="form-label">
+              Booth price
+              <input
+                class="form-input"
+                inputmode="decimal"
+                value=${form.boothPrice}
+                placeholder="12.00"
+                onInput=${(event: Event) =>
+                  setField("boothPrice", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Etsy price
+              <input
+                class="form-input"
+                inputmode="decimal"
+                value=${form.etsyPrice}
+                placeholder="14.99"
+                onInput=${(event: Event) =>
+                  setField("etsyPrice", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Packaging cost
+              <input
+                class="form-input"
+                inputmode="decimal"
+                value=${form.packagingCost}
+                placeholder="0.75"
+                onInput=${(event: Event) =>
+                  setField("packagingCost", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Handling minutes
+              <input
+                class="form-input"
+                inputmode="decimal"
+                value=${form.handlingMinutes}
+                placeholder="3"
+                onInput=${(event: Event) =>
+                  setField("handlingMinutes", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Target margin
+              <input
+                class="form-input"
+                inputmode="decimal"
+                value=${form.targetMarginPct}
+                placeholder="0.50"
+                onInput=${(event: Event) =>
+                  setField("targetMarginPct", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+          </div>
+          <label class="form-label product-notes-field">
+            Pricing notes
+            <textarea
+              class="form-input form-textarea"
+              value=${form.pricingNotes}
+              placeholder="Booth/Etsy pricing rationale, packaging assumptions, margin notes…"
+              onInput=${(event: Event) =>
+                setField("pricingNotes", (event.target as HTMLTextAreaElement).value)}
             ></textarea>
           </label>
         </section>

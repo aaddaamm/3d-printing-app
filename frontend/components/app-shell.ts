@@ -4,6 +4,8 @@ import htm from "htm";
 import { Toolbar, TotalsBar, TableView, GridView, PrinterBreakdownView } from "./jobs-view.js";
 import { ProjectsView, ProjectDetail } from "./projects-view.js";
 import { AdminView } from "./admin-view.js";
+import { BatchDetailView } from "./batch-detail-view.js";
+import { BatchesView } from "./batches-view.js";
 import { CatalogView } from "./catalog-view.js";
 import { ProductDetailView } from "./product-detail-view.js";
 import { ProductPrintNextView } from "./product-print-next-view.js";
@@ -266,13 +268,16 @@ export type RouteState = {
   isProducts: boolean;
   isProductPipeline: boolean;
   isProductPrintNext: boolean;
+  isBatches: boolean;
   projectId: number | null;
   productId: number | null;
+  batchId: number | null;
 };
 
 export function getRouteState(loc: string): RouteState {
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
   const productDetailMatch = loc.match(/^\/products\/(\d+)$/);
+  const batchDetailMatch = loc.match(/^\/batches\/(\d+)$/);
   return {
     isAdmin: loc.startsWith("/admin"),
     isPrinters: loc.startsWith("/printers"),
@@ -281,8 +286,10 @@ export function getRouteState(loc: string): RouteState {
     isProducts: loc.startsWith("/products"),
     isProductPipeline: loc === "/products/pipeline",
     isProductPrintNext: loc === "/products/print-next",
+    isBatches: loc.startsWith("/batches"),
     projectId: projectDetailMatch ? Number(projectDetailMatch[1]) : null,
     productId: productDetailMatch ? Number(productDetailMatch[1]) : null,
+    batchId: batchDetailMatch ? Number(batchDetailMatch[1]) : null,
   };
 }
 
@@ -348,6 +355,10 @@ export function renderMainContent({
   handleSort: (col: string) => void;
 }) {
   if (route.isAdmin) return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
+  if (route.batchId != null) {
+    return html`<${BatchDetailView} batchId=${route.batchId} navigate=${navigate} />`;
+  }
+  if (route.isBatches) return html`<${BatchesView} navigate=${navigate} />`;
   if (route.productId != null) {
     return html`<${ProductDetailView} productId=${route.productId} navigate=${navigate} />`;
   }

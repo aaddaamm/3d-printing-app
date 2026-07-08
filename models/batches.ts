@@ -16,6 +16,9 @@ export interface BatchSummary {
   primary_color: string | null;
   total_filament_g: number | null;
   total_print_time_s: number | null;
+  setup_minutes: number | null;
+  handling_minutes_per_unit: number | null;
+  packaging_cost_per_unit: number | null;
   unit_cost: number | null;
   suggested_price: number | null;
   estimated_margin_pct: number | null;
@@ -434,6 +437,15 @@ function summaryFromRow(row: BatchRow): BatchSummary {
     primary_color: row.batch_primary_color ?? row.product_primary_color ?? null,
     total_filament_g: totals.total_filament_g,
     total_print_time_s: totals.total_print_time_s,
+    setup_minutes: row.setup_minutes ?? row.profile_default_setup_minutes,
+    handling_minutes_per_unit:
+      row.handling_minutes_per_unit ??
+      row.product_handling_minutes ??
+      row.profile_default_handling_minutes,
+    packaging_cost_per_unit:
+      row.packaging_cost_per_unit ??
+      row.product_packaging_cost ??
+      row.profile_default_packaging_cost,
     unit_cost: unitCost,
     suggested_price: suggestedPrice,
     estimated_margin_pct: estimatedMarginPct,
