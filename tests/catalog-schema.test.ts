@@ -208,6 +208,64 @@ describe.sequential("catalog foundation schema migration", () => {
       ]),
     );
 
+    const starterProducts = database!
+      .prepare<[], { slug: string; category_id: string | null; status_id: string; license_id: string | null; source_id: string | null; is_original_design: number }>(
+        `SELECT slug, category_id, status_id, license_id, source_id, is_original_design
+         FROM products
+         WHERE slug IN (
+          'controller-stand',
+          'gridfinity-bin',
+          'woodland-switch-cover',
+          'family-name-sign',
+          'qr-code-business-sign'
+         )
+         ORDER BY slug`,
+      )
+      .all();
+    expect(starterProducts).toEqual([
+      {
+        slug: "controller-stand",
+        category_id: "gaming",
+        status_id: "idea",
+        license_id: "unknown_verify",
+        source_id: null,
+        is_original_design: 0,
+      },
+      {
+        slug: "family-name-sign",
+        category_id: "personalized",
+        status_id: "idea",
+        license_id: "original_owned",
+        source_id: "original",
+        is_original_design: 1,
+      },
+      {
+        slug: "gridfinity-bin",
+        category_id: "workshop",
+        status_id: "idea",
+        license_id: "unknown_verify",
+        source_id: null,
+        is_original_design: 0,
+      },
+      {
+        slug: "qr-code-business-sign",
+        category_id: "personalized",
+        status_id: "idea",
+        license_id: "original_owned",
+        source_id: "original",
+        is_original_design: 1,
+      },
+      {
+        slug: "woodland-switch-cover",
+        category_id: "decor",
+        status_id: "idea",
+        license_id: "unknown_verify",
+        source_id: null,
+        is_original_design: 0,
+      },
+    ]);
+    expect(database!.prepare("SELECT COUNT(*) FROM products").pluck().get()).toBe(5);
+
     expect(indexNames()).toEqual(
       expect.arrayContaining([
         "idx_scan_roots_active",

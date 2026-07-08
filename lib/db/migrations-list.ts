@@ -10,6 +10,86 @@ import {
 } from "../migrations.js";
 import { LABOR_BUFFER_MIGRATION } from "./labor-config.js";
 
+type StarterProductSeed = {
+  name: string;
+  slug: string;
+  categoryId: string;
+  sourceId: string | null;
+  licenseId: string;
+  isOriginalDesign: 0 | 1;
+};
+
+const STARTER_PRODUCT_SEEDS: StarterProductSeed[] = [
+  {
+    name: "Controller Stand",
+    slug: "controller-stand",
+    categoryId: "gaming",
+    sourceId: null,
+    licenseId: "unknown_verify",
+    isOriginalDesign: 0,
+  },
+  {
+    name: "Gridfinity Bin",
+    slug: "gridfinity-bin",
+    categoryId: "workshop",
+    sourceId: null,
+    licenseId: "unknown_verify",
+    isOriginalDesign: 0,
+  },
+  {
+    name: "Woodland Switch Cover",
+    slug: "woodland-switch-cover",
+    categoryId: "decor",
+    sourceId: null,
+    licenseId: "unknown_verify",
+    isOriginalDesign: 0,
+  },
+  {
+    name: "Family Name Sign",
+    slug: "family-name-sign",
+    categoryId: "personalized",
+    sourceId: "original",
+    licenseId: "original_owned",
+    isOriginalDesign: 1,
+  },
+  {
+    name: "QR Code Business Sign",
+    slug: "qr-code-business-sign",
+    categoryId: "personalized",
+    sourceId: "original",
+    licenseId: "original_owned",
+    isOriginalDesign: 1,
+  },
+];
+
+function seedStarterProducts(database: Database.Database): void {
+  const insertProduct = database.prepare<{
+    name: string;
+    slug: string;
+    categoryId: string;
+    sourceId: string | null;
+    licenseId: string;
+    isOriginalDesign: number;
+  }>(
+    `INSERT OR IGNORE INTO products (
+      name, slug, status, status_id, category_id, source_id, license_id, is_original_design
+    ) VALUES (
+      @name, @slug, 'idea', 'idea', @categoryId, @sourceId, @licenseId, @isOriginalDesign
+    )`,
+  );
+
+  for (const product of STARTER_PRODUCT_SEEDS) {
+    insertProduct.run({
+      name: product.name,
+      slug: product.slug,
+      categoryId: product.categoryId,
+      sourceId: product.sourceId,
+      licenseId: product.licenseId,
+      isOriginalDesign: product.isOriginalDesign,
+    });
+  }
+}
+
 const DB_MIGRATIONS: Migration[] = [
   {
     id: 1,
@@ -610,6 +690,13 @@ const DB_MIGRATIONS: Migration[] = [
       }
 
       database.exec("UPDATE products SET status_id = 'idea' WHERE status_id IS NULL");
+    },
+  },
+  {
+    id: 15,
+    description: "seed starter product ideas",
+    up(database) {
+      seedStarterProducts(database);
     },
   },
 ];

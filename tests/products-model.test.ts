@@ -64,7 +64,7 @@ describe.sequential("products model", () => {
       can_sell_label: "Personal use only",
       ready_to_list: false,
     });
-    expect(productsModule!.listProducts()).toEqual([product]);
+    expect(productsModule!.listProducts()).toContainEqual(product);
   });
 
   it("computes ready-to-list after a main photo is linked", () => {
