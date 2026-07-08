@@ -131,6 +131,39 @@ npm run catalog -- roots remove 1
 
 The first scanner slice indexes common 3D/source/G-code files (`.3mf`, `.stl`, `.step`, `.stp`, `.obj`, `.f3d`, `.blend`, `.gcode`) and skips archives by default. Scan output is a concise counts summary.
 
+## Product Pipeline
+
+The Product Pipeline is a lightweight product catalog for Robinson PrintWorks. It is intentionally card-based rather than spreadsheet-like: use it to decide what to add, test, photograph, list, keep active, restock, or retire.
+
+Product statuses are:
+
+- Idea
+- Downloaded / Designed
+- Test Print
+- Needs Tuning
+- Ready for Photos
+- Listed
+- Active
+- Selling Well
+- Retired
+
+License and sellability are shown as a red/yellow/green indicator:
+
+- Green: OK to sell, including commercial-allowed, Hive Community, Hive+, and original Robinson PrintWorks designs.
+- Yellow: sell with conditions, such as attribution required.
+- Red: do not list, including Personal Use Only and Unknown / Verify.
+
+Hive Community products are allowed for physical-print sales, but the app warns not to redistribute STL/model files. Original Robinson PrintWorks products are marked with the highest sellability confidence.
+
+Product cards can link to local catalog files, photos, Etsy/model URLs, preferred printer, material/color notes, target sale price, and estimated print time/filament. Print jobs remain the production/pricing source of truth; products are the workflow and listing layer above jobs/projects.
+
+Main UI views:
+
+- Product Pipeline: Kanban columns by status.
+- Product Catalog: searchable card grid.
+- Product Detail: sellability, notes, URLs, estimates, and editable product fields.
+- Print Next: active/selling-well products with restock priority.
+
 ## Local API server and UI
 
 This is the preferred operating mode for now. Run the API/UI on your Mac or another always-on machine on the same LAN as your printers.
@@ -179,6 +212,16 @@ gate in the local-first mode.
 | `GET`  | `/ui`                | Browser UI                    |
 | `GET`  | `/ui/data`           | UI bootstrap payload          |
 | `GET`  | `/ui/covers/:taskId` | Cached cover image            |
+
+### Products
+
+| Method  | Path                       | Description                    |
+| ------- | -------------------------- | ------------------------------ |
+| `GET`   | `/api/products`            | Product catalog summaries      |
+| `POST`  | `/api/products`            | Create a product               |
+| `GET`   | `/api/products/print-next` | Products queued for restock    |
+| `GET`   | `/api/products/:id`        | Product detail/summary fields  |
+| `PATCH` | `/api/products/:id`        | Update product workflow fields |
 
 ### Tasks
 
