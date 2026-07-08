@@ -8,6 +8,7 @@ import { rates } from "./routes/rates.js";
 import { projects } from "./routes/projects.js";
 import { printers } from "./routes/printers.js";
 import { catalog } from "./routes/catalog.js";
+import { products } from "./routes/products.js";
 import { createUiApp } from "./routes/ui.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
@@ -40,6 +41,7 @@ function mountRoutes(): void {
   app.route("/summary", summary);
   app.route("/rates", rates);
   app.route("/catalog", catalog);
+  app.route("/api/products", products);
 }
 
 function startServer(): void {
