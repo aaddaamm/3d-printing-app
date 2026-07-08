@@ -28,7 +28,8 @@ export function isJobsRoute(loc: string): boolean {
     !loc.startsWith("/projects") &&
     !loc.startsWith("/admin") &&
     !loc.startsWith("/printers") &&
-    !loc.startsWith("/catalog")
+    !loc.startsWith("/catalog") &&
+    !loc.startsWith("/products")
   );
 }
 
@@ -71,6 +72,11 @@ const NAV_ITEMS = [
   },
   { label: "Projects", path: "/projects", active: (loc: string) => loc.startsWith("/projects") },
   { label: "Printers", path: "/printers", active: (loc: string) => loc.startsWith("/printers") },
+  {
+    label: "Products",
+    path: "/products/pipeline",
+    active: (loc: string) => loc.startsWith("/products"),
+  },
   { label: "Catalog", path: "/catalog", active: (loc: string) => loc.startsWith("/catalog") },
   { label: "Rates", path: "/admin", active: (loc: string) => loc.startsWith("/admin") },
 ] as const;

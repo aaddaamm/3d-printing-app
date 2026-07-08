@@ -5,6 +5,53 @@ type JsonRecord = Record<string, unknown>;
 
 type RequestOptions = (RequestInit & { timeoutMs?: number | null }) | undefined;
 
+export type SellabilityLevel = "green" | "yellow" | "red";
+
+export type ProductSummary = {
+  id: number;
+  name: string;
+  category_id: string | null;
+  category_label: string | null;
+  status_id: string;
+  status_label: string;
+  source_id: string | null;
+  source_label: string | null;
+  license_id: string | null;
+  license_label: string | null;
+  main_photo_path: string | null;
+  target_sale_price: number | null;
+  restock_priority: string;
+  can_sell_level: SellabilityLevel;
+  can_sell_label: string;
+  ready_to_list: boolean;
+};
+
+export type ProductInput = Partial<{
+  name: string;
+  description: string | null;
+  category_id: string | null;
+  status_id: string;
+  source_id: string | null;
+  license_id: string | null;
+  model_url: string | null;
+  main_file_id: number | null;
+  main_photo_id: number | null;
+  etsy_listing_url: string | null;
+  default_material: string | null;
+  primary_color: string | null;
+  accent_color: string | null;
+  preferred_printer_id: number | null;
+  estimated_print_time_s: number | null;
+  estimated_filament_g: number | null;
+  target_sale_price: number | null;
+  notes: string | null;
+  is_original_design: boolean;
+  restock_priority: string | null;
+}>;
+
+type ProductsResponse = { products: ProductSummary[] };
+type ProductResponse = { product: ProductSummary };
+
 async function errorMessage(res: Response, fallback: string): Promise<string> {
   try {
     const data = (await res.json()) as JsonRecord;
@@ -91,4 +138,43 @@ export async function postJsonOrToast<T = JsonRecord>(
     headers: { "Content-Type": "application/json", ...options?.headers },
     body: JSON.stringify(payload),
   });
+}
+
+export async function fetchProducts(): Promise<ProductSummary[]> {
+  const data = await fetchJson<ProductsResponse>("/api/products", "Failed to load products.");
+  return data.products;
+}
+
+export async function fetchProduct(id: number): Promise<ProductSummary> {
+  const data = await fetchJson<ProductResponse>(`/api/products/${id}`, "Failed to load product.");
+  return data.product;
+}
+
+export async function fetchPrintNextProducts(): Promise<ProductSummary[]> {
+  const data = await fetchJson<ProductsResponse>(
+    "/api/products/print-next",
+    "Failed to load print-next products.",
+  );
+  return data.products;
+}
+
+export async function createProduct(input: ProductInput): Promise<ProductSummary | null> {
+  const data = await postJsonOrToast<ProductResponse>(
+    "/api/products",
+    input,
+    "Failed to create product.",
+  );
+  return data?.product ?? null;
+}
+
+export async function updateProduct(
+  id: number,
+  input: ProductInput,
+): Promise<ProductSummary | null> {
+  const data = await patchJsonOrToast<ProductResponse>(
+    `/api/products/${id}`,
+    input,
+    "Failed to update product.",
+  );
+  return data?.product ?? null;
 }

@@ -5,6 +5,9 @@ import { Toolbar, TotalsBar, TableView, GridView, PrinterBreakdownView } from ".
 import { ProjectsView, ProjectDetail } from "./projects-view.js";
 import { AdminView } from "./admin-view.js";
 import { CatalogView } from "./catalog-view.js";
+import { ProductDetailView } from "./product-detail-view.js";
+import { ProductPrintNextView } from "./product-print-next-view.js";
+import { ProductsView } from "./products-view.js";
 
 const html = (
   htm as unknown as {
@@ -260,17 +263,26 @@ export type RouteState = {
   isPrinters: boolean;
   isProjects: boolean;
   isCatalog: boolean;
+  isProducts: boolean;
+  isProductPipeline: boolean;
+  isProductPrintNext: boolean;
   projectId: number | null;
+  productId: number | null;
 };
 
 export function getRouteState(loc: string): RouteState {
   const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
+  const productDetailMatch = loc.match(/^\/products\/(\d+)$/);
   return {
     isAdmin: loc.startsWith("/admin"),
     isPrinters: loc.startsWith("/printers"),
     isProjects: loc.startsWith("/projects"),
     isCatalog: loc.startsWith("/catalog"),
+    isProducts: loc.startsWith("/products"),
+    isProductPipeline: loc === "/products/pipeline",
+    isProductPrintNext: loc === "/products/print-next",
     projectId: projectDetailMatch ? Number(projectDetailMatch[1]) : null,
+    productId: productDetailMatch ? Number(productDetailMatch[1]) : null,
   };
 }
 
@@ -336,6 +348,16 @@ export function renderMainContent({
   handleSort: (col: string) => void;
 }) {
   if (route.isAdmin) return html`<${AdminView} onRatesChanged=${handleRatesChanged} />`;
+  if (route.productId != null) {
+    return html`<${ProductDetailView} productId=${route.productId} navigate=${navigate} />`;
+  }
+  if (route.isProductPrintNext) return html`<${ProductPrintNextView} navigate=${navigate} />`;
+  if (route.isProducts) {
+    return html`<${ProductsView}
+      mode=${route.isProductPipeline ? "pipeline" : "catalog"}
+      navigate=${navigate}
+    />`;
+  }
   if (route.isCatalog) return html`<${CatalogView} />`;
   if (route.isPrinters) {
     return html`<${PrinterBreakdownView}

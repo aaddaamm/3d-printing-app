@@ -6,5 +6,7 @@ it("does not mark the Jobs nav item active on non-job routes", () => {
   expect(isJobsRoute("/catalog")).toBe(false);
   expect(isJobsRoute("/projects")).toBe(false);
   expect(isJobsRoute("/printers")).toBe(false);
+  expect(isJobsRoute("/products")).toBe(false);
+  expect(isJobsRoute("/products/pipeline")).toBe(false);
   expect(isJobsRoute("/admin")).toBe(false);
 });

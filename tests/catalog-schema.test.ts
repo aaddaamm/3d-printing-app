@@ -209,7 +209,17 @@ describe.sequential("catalog foundation schema migration", () => {
     );
 
     const starterProducts = database!
-      .prepare<[], { slug: string; category_id: string | null; status_id: string; license_id: string | null; source_id: string | null; is_original_design: number }>(
+      .prepare<
+        [],
+        {
+          slug: string;
+          category_id: string | null;
+          status_id: string;
+          license_id: string | null;
+          source_id: string | null;
+          is_original_design: number;
+        }
+      >(
         `SELECT slug, category_id, status_id, license_id, source_id, is_original_design
          FROM products
          WHERE slug IN (
