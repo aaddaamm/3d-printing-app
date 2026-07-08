@@ -30,6 +30,20 @@ function indexNames(): string[] {
     .map((row) => (row as { name: string }).name);
 }
 
+function columnNames(tableName: string): string[] {
+  return database!
+    .prepare(`PRAGMA table_info(${tableName})`)
+    .all()
+    .map((row) => (row as { name: string }).name);
+}
+
+function sortedLookupIds(tableName: string): string[] {
+  return database!
+    .prepare(`SELECT id FROM ${tableName} ORDER BY sort_order`)
+    .all()
+    .map((row) => (row as { id: string }).id);
+}
+
 function createRequiredExistingTables(): void {
   database!.exec(`
     PRAGMA foreign_keys = ON;
@@ -105,6 +119,92 @@ describe.sequential("catalog foundation schema migration", () => {
         "asset_files",
         "project_products",
         "file_history",
+        "product_statuses",
+        "product_categories",
+        "product_sources",
+        "product_licenses",
+        "product_files",
+        "product_photos",
+        "product_links",
+        "product_jobs",
+      ]),
+    );
+
+    expect(sortedLookupIds("product_statuses")).toEqual([
+      "idea",
+      "downloaded_designed",
+      "test_print",
+      "needs_tuning",
+      "ready_for_photos",
+      "listed",
+      "active",
+      "selling_well",
+      "retired",
+    ]);
+    expect(sortedLookupIds("product_categories")).toEqual([
+      "gaming",
+      "workshop",
+      "home_organization",
+      "decor",
+      "personalized",
+      "seasonal",
+      "custom_repair_parts",
+    ]);
+    expect(sortedLookupIds("product_sources")).toEqual([
+      "hive",
+      "original",
+      "printables",
+      "makerworld",
+      "thangs",
+      "stlflix",
+      "custom_commission",
+    ]);
+    expect(sortedLookupIds("product_licenses")).toEqual([
+      "commercial_allowed",
+      "personal_use_only",
+      "attribution_required",
+      "hive_community",
+      "hive_plus",
+      "original_owned",
+      "unknown_verify",
+    ]);
+
+    expect(
+      database!.prepare("SELECT label FROM product_statuses WHERE id = ?").pluck().get("idea"),
+    ).toBe("Idea");
+    expect(
+      database!
+        .prepare("SELECT allows_commercial_sale FROM product_licenses WHERE id = ?")
+        .pluck()
+        .get("personal_use_only"),
+    ).toBe(0);
+    expect(
+      database!
+        .prepare("SELECT allows_commercial_sale FROM product_licenses WHERE id = ?")
+        .pluck()
+        .get("hive_community"),
+    ).toBe(1);
+
+    expect(columnNames("products")).toEqual(
+      expect.arrayContaining([
+        "category_id",
+        "status_id",
+        "source_id",
+        "license_id",
+        "model_url",
+        "main_file_id",
+        "main_photo_id",
+        "etsy_listing_url",
+        "default_material",
+        "primary_color",
+        "accent_color",
+        "preferred_printer_id",
+        "estimated_print_time_s",
+        "estimated_filament_g",
+        "target_sale_price",
+        "notes",
+        "is_original_design",
+        "restock_priority",
       ]),
     );
 
@@ -299,6 +399,42 @@ describe.sequential("catalog foundation fresh db schema", () => {
         "asset_files",
         "project_products",
         "file_history",
+        "product_statuses",
+        "product_categories",
+        "product_sources",
+        "product_licenses",
+        "product_files",
+        "product_photos",
+        "product_links",
+        "product_jobs",
+      ]),
+    );
+
+    const productColumns = imported.db
+      .prepare("PRAGMA table_info(products)")
+      .all()
+      .map((row: { name: string }) => row.name);
+
+    expect(productColumns).toEqual(
+      expect.arrayContaining([
+        "category_id",
+        "status_id",
+        "source_id",
+        "license_id",
+        "model_url",
+        "main_file_id",
+        "main_photo_id",
+        "etsy_listing_url",
+        "default_material",
+        "primary_color",
+        "accent_color",
+        "preferred_printer_id",
+        "estimated_print_time_s",
+        "estimated_filament_g",
+        "target_sale_price",
+        "notes",
+        "is_original_design",
+        "restock_priority",
       ]),
     );
   });

@@ -393,6 +393,225 @@ const DB_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    id: 14,
+    description: "add product pipeline catalog schema",
+    up(database) {
+      database.exec(`CREATE TABLE IF NOT EXISTS product_statuses (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL
+      )`);
+      database.exec(`CREATE TABLE IF NOT EXISTS product_categories (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL
+      )`);
+      database.exec(`CREATE TABLE IF NOT EXISTS product_sources (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL
+      )`);
+      database.exec(`CREATE TABLE IF NOT EXISTS product_licenses (
+        id TEXT PRIMARY KEY,
+        label TEXT NOT NULL,
+        allows_commercial_sale INTEGER NOT NULL DEFAULT 0,
+        requires_attribution INTEGER NOT NULL DEFAULT 0,
+        allows_stl_redistribution INTEGER NOT NULL DEFAULT 0,
+        warning TEXT,
+        sort_order INTEGER NOT NULL
+      )`);
+
+      for (const [id, label, sortOrder] of [
+        ["idea", "Idea", 10],
+        ["downloaded_designed", "Downloaded / Designed", 20],
+        ["test_print", "Test Print", 30],
+        ["needs_tuning", "Needs Tuning", 40],
+        ["ready_for_photos", "Ready for Photos", 50],
+        ["listed", "Listed", 60],
+        ["active", "Active", 70],
+        ["selling_well", "Selling Well", 80],
+        ["retired", "Retired", 90],
+      ] as const) {
+        database
+          .prepare(
+            "INSERT OR IGNORE INTO product_statuses (id, label, sort_order) VALUES (?, ?, ?)",
+          )
+          .run(id, label, sortOrder);
+      }
+
+      for (const [id, label, sortOrder] of [
+        ["gaming", "Gaming", 10],
+        ["workshop", "Workshop", 20],
+        ["home_organization", "Home Organization", 30],
+        ["decor", "Decor", 40],
+        ["personalized", "Personalized", 50],
+        ["seasonal", "Seasonal", 60],
+        ["custom_repair_parts", "Custom Repair Parts", 70],
+      ] as const) {
+        database
+          .prepare(
+            "INSERT OR IGNORE INTO product_categories (id, label, sort_order) VALUES (?, ?, ?)",
+          )
+          .run(id, label, sortOrder);
+      }
+
+      for (const [id, label, sortOrder] of [
+        ["hive", "Hive", 10],
+        ["original", "Original", 20],
+        ["printables", "Printables", 30],
+        ["makerworld", "MakerWorld", 40],
+        ["thangs", "Thangs", 50],
+        ["stlflix", "STLFlix", 60],
+        ["custom_commission", "Custom Commission", 70],
+      ] as const) {
+        database
+          .prepare("INSERT OR IGNORE INTO product_sources (id, label, sort_order) VALUES (?, ?, ?)")
+          .run(id, label, sortOrder);
+      }
+
+      for (const [
+        id,
+        label,
+        allowsCommercialSale,
+        requiresAttribution,
+        allowsStlRedistribution,
+        warning,
+        sortOrder,
+      ] of [
+        ["commercial_allowed", "Commercial Allowed", 1, 0, 0, null, 10],
+        [
+          "personal_use_only",
+          "Personal Use Only",
+          0,
+          0,
+          0,
+          "Do not list for sale without permission.",
+          20,
+        ],
+        [
+          "attribution_required",
+          "Attribution Required",
+          1,
+          1,
+          0,
+          "Include designer attribution in listings.",
+          30,
+        ],
+        ["hive_community", "Hive Community", 1, 0, 0, "Do not redistribute STL files.", 40],
+        [
+          "hive_plus",
+          "Hive Plus",
+          1,
+          0,
+          0,
+          "Verify current subscription terms before listing.",
+          50,
+        ],
+        ["original_owned", "Original / Owned by Robinson PrintWorks", 1, 0, 1, null, 60],
+        ["unknown_verify", "Unknown / Verify", 0, 0, 0, "Verify license before listing.", 70],
+      ] as const) {
+        database
+          .prepare(
+            `INSERT OR IGNORE INTO product_licenses
+              (id, label, allows_commercial_sale, requires_attribution, allows_stl_redistribution, warning, sort_order)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            id,
+            label,
+            allowsCommercialSale,
+            requiresAttribution,
+            allowsStlRedistribution,
+            warning,
+            sortOrder,
+          );
+      }
+
+      database.exec(`CREATE TABLE IF NOT EXISTS product_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        file_id INTEGER REFERENCES catalog_files(id) ON DELETE SET NULL,
+        role TEXT NOT NULL DEFAULT 'source',
+        label TEXT,
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_product_files_product ON product_files(product_id)",
+      );
+      database.exec("CREATE INDEX IF NOT EXISTS idx_product_files_file ON product_files(file_id)");
+
+      database.exec(`CREATE TABLE IF NOT EXISTS product_photos (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        file_id INTEGER REFERENCES catalog_files(id) ON DELETE SET NULL,
+        path TEXT,
+        role TEXT NOT NULL DEFAULT 'gallery',
+        caption TEXT,
+        display_order INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_product_photos_product ON product_photos(product_id)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_product_photos_file ON product_photos(file_id)",
+      );
+
+      database.exec(`CREATE TABLE IF NOT EXISTS product_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        link_type TEXT NOT NULL,
+        url TEXT NOT NULL,
+        label TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )`);
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_product_links_product ON product_links(product_id)",
+      );
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_product_links_type ON product_links(link_type)",
+      );
+
+      database.exec(`CREATE TABLE IF NOT EXISTS product_jobs (
+        product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+        job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+        relationship TEXT NOT NULL DEFAULT 'produced',
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (product_id, job_id)
+      )`);
+      database.exec("CREATE INDEX IF NOT EXISTS idx_product_jobs_job ON product_jobs(job_id)");
+
+      for (const [columnName, columnDefinition] of [
+        ["category_id", "TEXT REFERENCES product_categories(id)"],
+        ["status_id", "TEXT REFERENCES product_statuses(id)"],
+        ["source_id", "TEXT REFERENCES product_sources(id)"],
+        ["license_id", "TEXT REFERENCES product_licenses(id)"],
+        ["model_url", "TEXT"],
+        ["main_file_id", "INTEGER REFERENCES product_files(id)"],
+        ["main_photo_id", "INTEGER REFERENCES product_photos(id)"],
+        ["etsy_listing_url", "TEXT"],
+        ["default_material", "TEXT"],
+        ["primary_color", "TEXT"],
+        ["accent_color", "TEXT"],
+        ["preferred_printer_id", "INTEGER REFERENCES printers(id)"],
+        ["estimated_print_time_s", "INTEGER"],
+        ["estimated_filament_g", "REAL"],
+        ["target_sale_price", "REAL"],
+        ["notes", "TEXT"],
+        ["is_original_design", "INTEGER NOT NULL DEFAULT 0"],
+        ["restock_priority", "TEXT NOT NULL DEFAULT 'none'"],
+      ] as const) {
+        addColumnIfMissing(database, "products", columnName, columnDefinition);
+      }
+
+      database.exec("UPDATE products SET status_id = 'idea' WHERE status_id IS NULL");
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {
