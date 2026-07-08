@@ -304,7 +304,10 @@ export function listProducts(): ProductSummary[] {
 
 export function createProduct(input: CreateProductInput): ProductSummary {
   const name = normalizeName(input.name);
-  const statusId = normalizeLookup(input.status_id, "status_id", { fallback: "idea" });
+  const statusId = normalizeLookup(input.status_id, "status_id", {
+    required: true,
+    fallback: "idea",
+  });
   const values: Record<string, unknown> = {
     name,
     slug: uniqueSlug(name),

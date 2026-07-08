@@ -138,6 +138,27 @@ describe.sequential("products model", () => {
     ]);
   });
 
+  it("defaults missing product status to idea", () => {
+    const product = productsModule!.createProduct({ name: "Missing Status" });
+
+    expect(product).toMatchObject({
+      status_id: "idea",
+      status_label: "Idea",
+    });
+  });
+
+  it("rejects null product status on create and update", () => {
+    expect(() =>
+      productsModule!.createProduct({ name: "Null Status", status_id: null as unknown as string }),
+    ).toThrow(/status_id is required/i);
+
+    const product = productsModule!.createProduct({ name: "Valid Status", status_id: "idea" });
+
+    expect(() =>
+      productsModule!.updateProduct(product.id, { status_id: null as unknown as string }),
+    ).toThrow(/status_id is required/i);
+  });
+
   it("rejects blank names and unknown lookup ids", () => {
     expect(() => productsModule!.createProduct({ name: "   " })).toThrow(/name/i);
     expect(() =>
