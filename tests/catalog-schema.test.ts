@@ -44,6 +44,31 @@ function sortedLookupIds(tableName: string): string[] {
     .map((row) => (row as { id: string }).id);
 }
 
+function pricingProfileIds(): string[] {
+  return database!
+    .prepare("SELECT id FROM pricing_profiles ORDER BY sort_order")
+    .all()
+    .map((row) => (row as { id: string }).id);
+}
+
+function pricingProfile(id: string): Record<string, unknown> | undefined {
+  return database!.prepare("SELECT * FROM pricing_profiles WHERE id = ?").get(id) as
+    | Record<string, unknown>
+    | undefined;
+}
+
+function pricingProfileRows(): Record<string, unknown>[] {
+  return database!
+    .prepare(
+      `SELECT id, target_margin_pct, platform_fee_pct, failure_buffer_pct, overhead_buffer_pct,
+              default_packaging_cost, default_setup_minutes, default_handling_minutes,
+              minimum_price
+       FROM pricing_profiles
+       ORDER BY sort_order`,
+    )
+    .all() as Record<string, unknown>[];
+}
+
 function createRequiredExistingTables(): void {
   database!.exec(`
     PRAGMA foreign_keys = ON;
@@ -127,8 +152,71 @@ describe.sequential("catalog foundation schema migration", () => {
         "product_photos",
         "product_links",
         "product_jobs",
+        "pricing_profiles",
+        "product_batches",
+        "product_batch_jobs",
       ]),
     );
+
+    expect(pricingProfileIds()).toEqual(["personal", "booth", "etsy", "custom"]);
+    expect(pricingProfileRows()).toEqual([
+      {
+        id: "personal",
+        target_margin_pct: 0,
+        platform_fee_pct: 0,
+        failure_buffer_pct: 0,
+        overhead_buffer_pct: 0,
+        default_packaging_cost: 0,
+        default_setup_minutes: 0,
+        default_handling_minutes: 0,
+        minimum_price: null,
+      },
+      {
+        id: "booth",
+        target_margin_pct: 0.5,
+        platform_fee_pct: 0.035,
+        failure_buffer_pct: 0.08,
+        overhead_buffer_pct: 0.05,
+        default_packaging_cost: 0.75,
+        default_setup_minutes: 10,
+        default_handling_minutes: 3,
+        minimum_price: 5,
+      },
+      {
+        id: "etsy",
+        target_margin_pct: 0.55,
+        platform_fee_pct: 0.13,
+        failure_buffer_pct: 0.08,
+        overhead_buffer_pct: 0.05,
+        default_packaging_cost: 1,
+        default_setup_minutes: 10,
+        default_handling_minutes: 4,
+        minimum_price: 9.99,
+      },
+      {
+        id: "custom",
+        target_margin_pct: 0.55,
+        platform_fee_pct: 0,
+        failure_buffer_pct: 0.12,
+        overhead_buffer_pct: 0.05,
+        default_packaging_cost: 1,
+        default_setup_minutes: 15,
+        default_handling_minutes: 5,
+        minimum_price: 20,
+      },
+    ]);
+    expect(pricingProfile("personal")).toMatchObject({
+      target_margin_pct: 0,
+      platform_fee_pct: 0,
+    });
+    expect(pricingProfile("booth")).toMatchObject({
+      target_margin_pct: 0.5,
+      platform_fee_pct: 0.035,
+    });
+    expect(pricingProfile("etsy")).toMatchObject({
+      target_margin_pct: 0.55,
+      platform_fee_pct: 0.13,
+    });
 
     expect(sortedLookupIds("product_statuses")).toEqual([
       "idea",
@@ -205,6 +293,12 @@ describe.sequential("catalog foundation schema migration", () => {
         "notes",
         "is_original_design",
         "restock_priority",
+        "booth_price",
+        "etsy_price",
+        "packaging_cost",
+        "handling_minutes",
+        "target_margin_pct",
+        "pricing_notes",
       ]),
     );
 
@@ -475,8 +569,23 @@ describe.sequential("catalog foundation fresh db schema", () => {
         "product_photos",
         "product_links",
         "product_jobs",
+        "pricing_profiles",
+        "product_batches",
+        "product_batch_jobs",
       ]),
     );
+
+    const profileIds = imported.db
+      .prepare("SELECT id FROM pricing_profiles ORDER BY sort_order")
+      .all()
+      .map((row: { id: string }) => row.id);
+    expect(profileIds).toEqual(["personal", "booth", "etsy", "custom"]);
+    expect(
+      imported.db
+        .prepare("SELECT target_margin_pct FROM pricing_profiles WHERE id = ?")
+        .pluck()
+        .get("booth"),
+    ).toBe(0.5);
 
     const productColumns = imported.db
       .prepare("PRAGMA table_info(products)")
@@ -503,6 +612,12 @@ describe.sequential("catalog foundation fresh db schema", () => {
         "notes",
         "is_original_design",
         "restock_priority",
+        "booth_price",
+        "etsy_price",
+        "packaging_cost",
+        "handling_minutes",
+        "target_margin_pct",
+        "pricing_notes",
       ]),
     );
   });

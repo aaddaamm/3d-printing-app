@@ -240,6 +240,21 @@ for (const sql of [
     warning TEXT,
     sort_order INTEGER NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS pricing_profiles (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    target_margin_pct REAL NOT NULL,
+    platform_fee_pct REAL NOT NULL DEFAULT 0,
+    failure_buffer_pct REAL NOT NULL DEFAULT 0,
+    overhead_buffer_pct REAL NOT NULL DEFAULT 0,
+    default_packaging_cost REAL NOT NULL DEFAULT 0,
+    default_setup_minutes REAL NOT NULL DEFAULT 0,
+    default_handling_minutes REAL NOT NULL DEFAULT 0,
+    minimum_price REAL,
+    rounding_mode TEXT NOT NULL DEFAULT 'friendly_99',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL
+  )`,
   `CREATE TABLE IF NOT EXISTS products (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -265,6 +280,12 @@ for (const sql of [
     estimated_print_time_s INTEGER,
     estimated_filament_g REAL,
     target_sale_price REAL,
+    booth_price REAL,
+    etsy_price REAL,
+    packaging_cost REAL,
+    handling_minutes REAL,
+    target_margin_pct REAL,
+    pricing_notes TEXT,
     notes TEXT,
     is_original_design INTEGER NOT NULL DEFAULT 0,
     restock_priority TEXT NOT NULL DEFAULT 'none',
@@ -349,6 +370,34 @@ for (const sql of [
     PRIMARY KEY (product_id, job_id)
   )`,
   `CREATE INDEX IF NOT EXISTS idx_product_jobs_job ON product_jobs(job_id)`,
+  `CREATE TABLE IF NOT EXISTS product_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    pricing_profile_id TEXT NOT NULL REFERENCES pricing_profiles(id),
+    planned_quantity INTEGER NOT NULL DEFAULT 1,
+    completed_quantity INTEGER NOT NULL DEFAULT 0,
+    failed_quantity INTEGER NOT NULL DEFAULT 0,
+    material_type TEXT,
+    primary_color TEXT,
+    printer_id INTEGER REFERENCES printers(id),
+    total_filament_g REAL,
+    total_print_time_s INTEGER,
+    setup_minutes REAL,
+    handling_minutes_per_unit REAL,
+    packaging_cost_per_unit REAL,
+    target_margin_pct REAL,
+    platform_fee_pct REAL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
+  `CREATE TABLE IF NOT EXISTS product_batch_jobs (
+    batch_id INTEGER NOT NULL REFERENCES product_batches(id) ON DELETE CASCADE,
+    job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    relationship TEXT NOT NULL DEFAULT 'production',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (batch_id, job_id)
+  )`,
   `CREATE TABLE IF NOT EXISTS file_history (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     file_id INTEGER NOT NULL REFERENCES catalog_files(id) ON DELETE CASCADE,
@@ -465,6 +514,44 @@ for (const [
     requiresAttribution,
     allowsStlRedistribution,
     warning,
+    sortOrder,
+  );
+}
+
+for (const [
+  id,
+  label,
+  targetMarginPct,
+  platformFeePct,
+  failureBufferPct,
+  overheadBufferPct,
+  defaultPackagingCost,
+  defaultSetupMinutes,
+  defaultHandlingMinutes,
+  minimumPrice,
+  sortOrder,
+] of [
+  ["personal", "Personal", 0, 0, 0, 0, 0, 0, 0, null, 10],
+  ["booth", "Booth", 0.5, 0.035, 0.08, 0.05, 0.75, 10, 3, 5, 20],
+  ["etsy", "Etsy", 0.55, 0.13, 0.08, 0.05, 1, 10, 4, 9.99, 30],
+  ["custom", "Custom", 0.55, 0, 0.12, 0.05, 1, 15, 5, 20, 40],
+] as const) {
+  db.prepare(
+    `INSERT OR IGNORE INTO pricing_profiles
+      (id, label, target_margin_pct, platform_fee_pct, failure_buffer_pct, overhead_buffer_pct,
+       default_packaging_cost, default_setup_minutes, default_handling_minutes, minimum_price, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    label,
+    targetMarginPct,
+    platformFeePct,
+    failureBufferPct,
+    overheadBufferPct,
+    defaultPackagingCost,
+    defaultSetupMinutes,
+    defaultHandlingMinutes,
+    minimumPrice,
     sortOrder,
   );
 }

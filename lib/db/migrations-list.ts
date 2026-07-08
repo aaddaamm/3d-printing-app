@@ -19,6 +19,75 @@ type StarterProductSeed = {
   isOriginalDesign: 0 | 1;
 };
 
+type PricingProfileSeed = {
+  id: string;
+  label: string;
+  targetMarginPct: number;
+  platformFeePct: number;
+  failureBufferPct: number;
+  overheadBufferPct: number;
+  defaultPackagingCost: number;
+  defaultSetupMinutes: number;
+  defaultHandlingMinutes: number;
+  minimumPrice: number | null;
+  sortOrder: number;
+};
+
+const PRICING_PROFILE_SEEDS: PricingProfileSeed[] = [
+  {
+    id: "personal",
+    label: "Personal",
+    targetMarginPct: 0,
+    platformFeePct: 0,
+    failureBufferPct: 0,
+    overheadBufferPct: 0,
+    defaultPackagingCost: 0,
+    defaultSetupMinutes: 0,
+    defaultHandlingMinutes: 0,
+    minimumPrice: null,
+    sortOrder: 10,
+  },
+  {
+    id: "booth",
+    label: "Booth",
+    targetMarginPct: 0.5,
+    platformFeePct: 0.035,
+    failureBufferPct: 0.08,
+    overheadBufferPct: 0.05,
+    defaultPackagingCost: 0.75,
+    defaultSetupMinutes: 10,
+    defaultHandlingMinutes: 3,
+    minimumPrice: 5,
+    sortOrder: 20,
+  },
+  {
+    id: "etsy",
+    label: "Etsy",
+    targetMarginPct: 0.55,
+    platformFeePct: 0.13,
+    failureBufferPct: 0.08,
+    overheadBufferPct: 0.05,
+    defaultPackagingCost: 1,
+    defaultSetupMinutes: 10,
+    defaultHandlingMinutes: 4,
+    minimumPrice: 9.99,
+    sortOrder: 30,
+  },
+  {
+    id: "custom",
+    label: "Custom",
+    targetMarginPct: 0.55,
+    platformFeePct: 0,
+    failureBufferPct: 0.12,
+    overheadBufferPct: 0.05,
+    defaultPackagingCost: 1,
+    defaultSetupMinutes: 15,
+    defaultHandlingMinutes: 5,
+    minimumPrice: 20,
+    sortOrder: 40,
+  },
+];
+
 const STARTER_PRODUCT_SEEDS: StarterProductSeed[] = [
   {
     name: "Controller Stand",
@@ -61,6 +130,113 @@ const STARTER_PRODUCT_SEEDS: StarterProductSeed[] = [
     isOriginalDesign: 1,
   },
 ];
+
+function seedPricingProfiles(database: Database.Database): void {
+  const insertProfile = database.prepare<{
+    id: string;
+    label: string;
+    targetMarginPct: number;
+    platformFeePct: number;
+    failureBufferPct: number;
+    overheadBufferPct: number;
+    defaultPackagingCost: number;
+    defaultSetupMinutes: number;
+    defaultHandlingMinutes: number;
+    minimumPrice: number | null;
+    sortOrder: number;
+  }>(
+    `INSERT OR IGNORE INTO pricing_profiles (
+      id,
+      label,
+      target_margin_pct,
+      platform_fee_pct,
+      failure_buffer_pct,
+      overhead_buffer_pct,
+      default_packaging_cost,
+      default_setup_minutes,
+      default_handling_minutes,
+      minimum_price,
+      sort_order
+    ) VALUES (
+      @id,
+      @label,
+      @targetMarginPct,
+      @platformFeePct,
+      @failureBufferPct,
+      @overheadBufferPct,
+      @defaultPackagingCost,
+      @defaultSetupMinutes,
+      @defaultHandlingMinutes,
+      @minimumPrice,
+      @sortOrder
+    )`,
+  );
+
+  for (const profile of PRICING_PROFILE_SEEDS) {
+    insertProfile.run(profile);
+  }
+}
+
+function createPricingBatchSchema(database: Database.Database): void {
+  database.exec(`CREATE TABLE IF NOT EXISTS pricing_profiles (
+    id TEXT PRIMARY KEY,
+    label TEXT NOT NULL,
+    target_margin_pct REAL NOT NULL,
+    platform_fee_pct REAL NOT NULL DEFAULT 0,
+    failure_buffer_pct REAL NOT NULL DEFAULT 0,
+    overhead_buffer_pct REAL NOT NULL DEFAULT 0,
+    default_packaging_cost REAL NOT NULL DEFAULT 0,
+    default_setup_minutes REAL NOT NULL DEFAULT 0,
+    default_handling_minutes REAL NOT NULL DEFAULT 0,
+    minimum_price REAL,
+    rounding_mode TEXT NOT NULL DEFAULT 'friendly_99',
+    is_active INTEGER NOT NULL DEFAULT 1,
+    sort_order INTEGER NOT NULL
+  )`);
+
+  for (const [columnName, columnDefinition] of [
+    ["booth_price", "REAL"],
+    ["etsy_price", "REAL"],
+    ["packaging_cost", "REAL"],
+    ["handling_minutes", "REAL"],
+    ["target_margin_pct", "REAL"],
+    ["pricing_notes", "TEXT"],
+  ] as const) {
+    addColumnIfMissing(database, "products", columnName, columnDefinition);
+  }
+
+  database.exec(`CREATE TABLE IF NOT EXISTS product_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+    pricing_profile_id TEXT NOT NULL REFERENCES pricing_profiles(id),
+    planned_quantity INTEGER NOT NULL DEFAULT 1,
+    completed_quantity INTEGER NOT NULL DEFAULT 0,
+    failed_quantity INTEGER NOT NULL DEFAULT 0,
+    material_type TEXT,
+    primary_color TEXT,
+    printer_id INTEGER REFERENCES printers(id),
+    total_filament_g REAL,
+    total_print_time_s INTEGER,
+    setup_minutes REAL,
+    handling_minutes_per_unit REAL,
+    packaging_cost_per_unit REAL,
+    target_margin_pct REAL,
+    platform_fee_pct REAL,
+    notes TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`);
+
+  database.exec(`CREATE TABLE IF NOT EXISTS product_batch_jobs (
+    batch_id INTEGER NOT NULL REFERENCES product_batches(id) ON DELETE CASCADE,
+    job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+    relationship TEXT NOT NULL DEFAULT 'production',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (batch_id, job_id)
+  )`);
+
+  seedPricingProfiles(database);
+}
 
 function seedStarterProducts(database: Database.Database): void {
   const insertProduct = database.prepare<{
@@ -697,6 +873,13 @@ const DB_MIGRATIONS: Migration[] = [
     description: "seed starter product ideas",
     up(database) {
       seedStarterProducts(database);
+    },
+  },
+  {
+    id: 16,
+    description: "add pricing profiles and product batch schema",
+    up(database) {
+      createPricingBatchSchema(database);
     },
   },
 ];
