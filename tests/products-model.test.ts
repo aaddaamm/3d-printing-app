@@ -138,6 +138,59 @@ describe.sequential("products model", () => {
     ]);
   });
 
+  it("returns editable detail fields and preserves them on partial update", () => {
+    const printerId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO printers (provider, provider_printer_id, name)
+           VALUES (?, ?, ?)
+           RETURNING id`,
+        )
+        .pluck()
+        .get("bambu", "printer-1", "A1 Mini"),
+    );
+    const product = productsModule!.createProduct({
+      name: "Detailed Product",
+      model_url: "https://example.com/model",
+      etsy_listing_url: "https://etsy.com/listing/123",
+      default_material: "PLA",
+      primary_color: "#ffffff",
+      accent_color: "#222222",
+      preferred_printer_id: printerId,
+      estimated_print_time_s: 5400,
+      estimated_filament_g: 42.5,
+      notes: "Use a brim.",
+    });
+
+    expect(product).toMatchObject({
+      model_url: "https://example.com/model",
+      etsy_listing_url: "https://etsy.com/listing/123",
+      default_material: "PLA",
+      primary_color: "#ffffff",
+      accent_color: "#222222",
+      preferred_printer_id: printerId,
+      estimated_print_time_s: 5400,
+      estimated_filament_g: 42.5,
+      notes: "Use a brim.",
+    });
+    expect(productsModule!.listProducts()).toContainEqual(expect.objectContaining(product));
+
+    const updated = productsModule!.updateProduct(product.id, { status_id: "active" });
+
+    expect(updated).toMatchObject({
+      status_id: "active",
+      model_url: "https://example.com/model",
+      etsy_listing_url: "https://etsy.com/listing/123",
+      default_material: "PLA",
+      primary_color: "#ffffff",
+      accent_color: "#222222",
+      preferred_printer_id: printerId,
+      estimated_print_time_s: 5400,
+      estimated_filament_g: 42.5,
+      notes: "Use a brim.",
+    });
+  });
+
   it("defaults missing product status to idea", () => {
     const product = productsModule!.createProduct({ name: "Missing Status" });
 

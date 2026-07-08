@@ -21,6 +21,15 @@ export type ProductSummary = {
   main_photo_path: string | null;
   target_sale_price: number | null;
   restock_priority: string;
+  model_url: string | null;
+  etsy_listing_url: string | null;
+  default_material: string | null;
+  primary_color: string | null;
+  accent_color: string | null;
+  preferred_printer_id: number | null;
+  estimated_print_time_s: number | null;
+  estimated_filament_g: number | null;
+  notes: string | null;
   can_sell_level: SellabilityLevel;
   can_sell_label: string;
   ready_to_list: boolean;

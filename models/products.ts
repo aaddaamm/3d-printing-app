@@ -15,6 +15,15 @@ export interface ProductSummary {
   main_photo_path: string | null;
   target_sale_price: number | null;
   restock_priority: string;
+  model_url: string | null;
+  etsy_listing_url: string | null;
+  default_material: string | null;
+  primary_color: string | null;
+  accent_color: string | null;
+  preferred_printer_id: number | null;
+  estimated_print_time_s: number | null;
+  estimated_filament_g: number | null;
+  notes: string | null;
   can_sell_level: SellabilityLevel;
   can_sell_label: string;
   ready_to_list: boolean;
@@ -99,6 +108,14 @@ const PRODUCT_SELECT = `
     p.target_sale_price,
     COALESCE(p.restock_priority, 'none') AS restock_priority,
     p.model_url,
+    p.etsy_listing_url,
+    p.default_material,
+    p.primary_color,
+    p.accent_color,
+    p.preferred_printer_id,
+    p.estimated_print_time_s,
+    p.estimated_filament_g,
+    p.notes,
     p.main_file_id,
     p.main_photo_id
   FROM products p
@@ -156,6 +173,15 @@ function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
     main_photo_path: row.main_photo_path,
     target_sale_price: row.target_sale_price,
     restock_priority: row.restock_priority,
+    model_url: row.model_url,
+    etsy_listing_url: row.etsy_listing_url,
+    default_material: row.default_material,
+    primary_color: row.primary_color,
+    accent_color: row.accent_color,
+    preferred_printer_id: row.preferred_printer_id,
+    estimated_print_time_s: row.estimated_print_time_s,
+    estimated_filament_g: row.estimated_filament_g,
+    notes: row.notes,
     can_sell_level: sellability.level,
     can_sell_label: sellability.label,
     ready_to_list: readyToList({

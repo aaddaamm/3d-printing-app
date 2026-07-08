@@ -42,6 +42,15 @@ const sampleProduct = {
   main_photo_path: null,
   target_sale_price: 20,
   restock_priority: "none",
+  model_url: "https://example.com/controller-stand",
+  etsy_listing_url: "https://etsy.com/listing/123",
+  default_material: "PLA",
+  primary_color: "#ffffff",
+  accent_color: "#222222",
+  preferred_printer_id: 3,
+  estimated_print_time_s: 5400,
+  estimated_filament_g: 42.5,
+  notes: "Use a brim.",
   can_sell_level: "green",
   can_sell_label: "Commercial use allowed",
   ready_to_list: false,
@@ -73,7 +82,7 @@ describe("product routes", () => {
     expect(await res.json()).toEqual({ products: [sampleProduct] });
   });
 
-  it("gets a product by id", async () => {
+  it("gets a product by id with editable detail fields", async () => {
     const res = await apiApp().request("/api/products/1");
 
     expect(res.status).toBe(200);

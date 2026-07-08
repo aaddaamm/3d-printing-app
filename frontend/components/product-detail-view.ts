@@ -29,12 +29,20 @@ type DetailFormState = {
   restockPriority: string;
   modelUrl: string;
   etsyListingUrl: string;
+  defaultMaterial: string;
+  primaryColor: string;
+  accentColor: string;
+  preferredPrinterId: string;
   estimatedPrintTimeHours: string;
   estimatedFilamentG: string;
   notes: string;
 };
 
-function initialForm(product: ProductSummary): DetailFormState {
+function hoursFromSeconds(value: number | null): string {
+  return value === null ? "" : String(value / 3600);
+}
+
+export function initialProductDetailForm(product: ProductSummary): DetailFormState {
   return {
     name: product.name,
     categoryId: product.category_id ?? "",
@@ -43,11 +51,17 @@ function initialForm(product: ProductSummary): DetailFormState {
     licenseId: product.license_id ?? "",
     targetSalePrice: product.target_sale_price === null ? "" : String(product.target_sale_price),
     restockPriority: product.restock_priority,
-    modelUrl: "",
-    etsyListingUrl: "",
-    estimatedPrintTimeHours: "",
-    estimatedFilamentG: "",
-    notes: "",
+    modelUrl: product.model_url ?? "",
+    etsyListingUrl: product.etsy_listing_url ?? "",
+    defaultMaterial: product.default_material ?? "",
+    primaryColor: product.primary_color ?? "",
+    accentColor: product.accent_color ?? "",
+    preferredPrinterId:
+      product.preferred_printer_id === null ? "" : String(product.preferred_printer_id),
+    estimatedPrintTimeHours: hoursFromSeconds(product.estimated_print_time_s),
+    estimatedFilamentG:
+      product.estimated_filament_g === null ? "" : String(product.estimated_filament_g),
+    notes: product.notes ?? "",
   };
 }
 
@@ -61,6 +75,13 @@ function numberOrNull(value: string): number | null {
 function secondsFromHours(value: string): number | null {
   const hours = numberOrNull(value);
   return hours === null ? null : Math.round(hours * 3600);
+}
+
+function positiveIntegerOrNull(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function optionList(
@@ -82,6 +103,7 @@ function DetailPhoto({ product }: { product: ProductSummary }) {
 }
 
 function DetailFacts({ product }: { product: ProductSummary }) {
+  const colors = [product.primary_color, product.accent_color].filter(Boolean).join(" / ");
   return html`<div class="product-detail-facts">
     <div><span>Category</span><strong>${product.category_label || "Uncategorized"}</strong></div>
     <div><span>Status</span><strong>${product.status_label}</strong></div>
@@ -96,6 +118,16 @@ function DetailFacts({ product }: { product: ProductSummary }) {
       >
     </div>
     <div><span>Restock</span><strong>${product.restock_priority}</strong></div>
+    <div><span>Material</span><strong>${product.default_material || "Not set"}</strong></div>
+    <div><span>Colors</span><strong>${colors || "Not set"}</strong></div>
+    <div>
+      <span>Printer</span
+      ><strong
+        >${product.preferred_printer_id === null
+          ? "Not set"
+          : `#${product.preferred_printer_id}`}</strong
+      >
+    </div>
   </div>`;
 }
 
@@ -117,7 +149,7 @@ export function ProductDetailView({
       .then((item) => {
         if (cancelled) return;
         setProduct(item);
-        setForm(initialForm(item));
+        setForm(initialProductDetailForm(item));
       })
       .catch((error: unknown) => {
         toast(error instanceof Error ? error.message : "Failed to load product.", "error");
@@ -146,24 +178,23 @@ export function ProductDetailView({
       license_id: form.licenseId || null,
       target_sale_price: numberOrNull(form.targetSalePrice),
       restock_priority: form.restockPriority,
+      model_url: form.modelUrl.trim() || null,
+      etsy_listing_url: form.etsyListingUrl.trim() || null,
+      default_material: form.defaultMaterial.trim() || null,
+      primary_color: form.primaryColor.trim() || null,
+      accent_color: form.accentColor.trim() || null,
+      preferred_printer_id: positiveIntegerOrNull(form.preferredPrinterId),
+      estimated_print_time_s: secondsFromHours(form.estimatedPrintTimeHours),
+      estimated_filament_g: numberOrNull(form.estimatedFilamentG),
+      notes: form.notes.trim() || null,
     };
-
-    if (form.modelUrl.trim()) payload.model_url = form.modelUrl.trim();
-    if (form.etsyListingUrl.trim()) payload.etsy_listing_url = form.etsyListingUrl.trim();
-    if (form.estimatedPrintTimeHours.trim()) {
-      payload.estimated_print_time_s = secondsFromHours(form.estimatedPrintTimeHours);
-    }
-    if (form.estimatedFilamentG.trim()) {
-      payload.estimated_filament_g = numberOrNull(form.estimatedFilamentG);
-    }
-    if (form.notes.trim()) payload.notes = form.notes.trim();
 
     setSaving(true);
     try {
       const updated = await updateProduct(product.id, payload);
       if (!updated) return;
       setProduct(updated);
-      setForm(initialForm(updated));
+      setForm(initialProductDetailForm(updated));
       toast("Product updated.", "success");
     } finally {
       setSaving(false);
@@ -285,8 +316,8 @@ export function ProductDetailView({
         <section class="admin-section">
           <h3 class="admin-section-title">Listing, files, and production notes</h3>
           <p class="admin-section-desc">
-            Summary fields load from the product API today; optional fields below can be saved when
-            adding model URLs, listing URLs, estimates, and notes.
+            Optional listing and production fields are loaded from product detail and saved with the
+            rest of the product record.
           </p>
           <div class="product-form-grid">
             <label class="form-label">
@@ -307,6 +338,47 @@ export function ProductDetailView({
                 placeholder="https://…"
                 onInput=${(event: Event) =>
                   setField("etsyListingUrl", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Default material
+              <input
+                class="form-input"
+                value=${form.defaultMaterial}
+                placeholder="PLA"
+                onInput=${(event: Event) =>
+                  setField("defaultMaterial", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Primary color
+              <input
+                class="form-input"
+                value=${form.primaryColor}
+                placeholder="#ffffff or White"
+                onInput=${(event: Event) =>
+                  setField("primaryColor", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Accent color
+              <input
+                class="form-input"
+                value=${form.accentColor}
+                placeholder="#000000 or Black"
+                onInput=${(event: Event) =>
+                  setField("accentColor", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Preferred printer ID
+              <input
+                class="form-input"
+                inputmode="numeric"
+                value=${form.preferredPrinterId}
+                placeholder="1"
+                onInput=${(event: Event) =>
+                  setField("preferredPrinterId", (event.target as HTMLInputElement).value)}
               />
             </label>
             <label class="form-label">
