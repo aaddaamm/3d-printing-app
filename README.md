@@ -164,6 +164,25 @@ Main UI views:
 - Product Detail: sellability, notes, URLs, estimates, and editable product fields.
 - Print Next: active/selling-well products with restock priority.
 
+## Pricing profiles and batch runs
+
+PrintWorks separates print-session costs from product pricing decisions:
+
+- **Personal**: internal cost only. No labor minimum, margin, or platform fee is required.
+- **Booth**: in-person selling price for fairs/booths. Includes batch setup labor, per-unit handling, packaging, card/payment fee, failure buffer, overhead, and target margin.
+- **Etsy**: online listing price. Uses the same unit-cost basis as booth pricing but adds Etsy/platform fees and a higher default minimum price.
+- **Custom**: placeholder profile for future custom requests. It is available for batch estimates, but the app does not yet include a full quote/deposit/revision workflow.
+
+A batch run represents one production run for a product. It tracks planned/completed/failed quantities, material/color, printer, total filament, total print time, setup minutes, per-unit handling minutes, packaging cost, and notes. Batch pricing uses completed quantity as the sellable unit count, so failed prints raise the cost per sellable item instead of being ignored.
+
+Batch unit cost is calculated from:
+
+```txt
+material + machine time + setup labor + per-unit handling labor + packaging + buffers
+```
+
+Suggested sale price then applies the selected pricing profile's target margin and platform fee. Product detail pages can store booth/Etsy target prices and default packaging/handling assumptions, while batch pages show the actual unit cost and suggested price for a real production run.
+
 ## Local API server and UI
 
 This is the preferred operating mode for now. Run the API/UI on your Mac or another always-on machine on the same LAN as your printers.
@@ -222,6 +241,17 @@ gate in the local-first mode.
 | `GET`   | `/api/products/print-next` | Products queued for restock    |
 | `GET`   | `/api/products/:id`        | Product detail/summary fields  |
 | `PATCH` | `/api/products/:id`        | Update product workflow fields |
+
+### Batches
+
+| Method   | Path                           | Description                     |
+| -------- | ------------------------------ | ------------------------------- |
+| `GET`    | `/api/batches`                 | List production batches         |
+| `POST`   | `/api/batches`                 | Create a batch                  |
+| `GET`    | `/api/batches/:id`             | Batch detail and price summary  |
+| `PATCH`  | `/api/batches/:id`             | Update batch quantities/costs   |
+| `POST`   | `/api/batches/:id/jobs`        | Link a print job to a batch     |
+| `DELETE` | `/api/batches/:id/jobs/:jobId` | Remove a print job from a batch |
 
 ### Tasks
 
