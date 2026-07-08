@@ -101,6 +101,7 @@ export type BatchSummary = {
   unit_cost: number | null;
   suggested_price: number | null;
   estimated_margin_pct: number | null;
+  fixed_fee_per_order: number | null;
   notes: string | null;
 };
 

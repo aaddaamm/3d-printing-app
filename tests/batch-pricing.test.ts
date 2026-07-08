@@ -14,6 +14,7 @@ const baseInput: BatchPricingInput = {
   packagingCostPerUnit: 0.75,
   targetMarginPct: 0.5,
   platformFeePct: 0.035,
+  fixedFeePerOrder: 0,
   failureBufferPct: 0.08,
   overheadBufferPct: 0.05,
   minimumPrice: 5,
@@ -66,6 +67,40 @@ describe("calcBatchPricing", () => {
       ...baseInput,
       targetMarginPct: 0,
       platformFeePct: 0,
+      failureBufferPct: 0,
+      overheadBufferPct: 0,
+      minimumPrice: null,
+    });
+
+    expect(personal.suggestedPrice).toBeCloseTo(personal.unitCost, 2);
+  });
+
+  it("adds fixed per-order fees before applying margin and platform fee", () => {
+    const withoutFixedFee = calcBatchPricing({
+      ...baseInput,
+      targetMarginPct: 0.55,
+      platformFeePct: 0.13,
+      fixedFeePerOrder: 0,
+      minimumPrice: null,
+    });
+    const withFixedFee = calcBatchPricing({
+      ...baseInput,
+      targetMarginPct: 0.55,
+      platformFeePct: 0.13,
+      fixedFeePerOrder: 0.45,
+      minimumPrice: null,
+    });
+
+    expect(withFixedFee.suggestedPrice).toBeGreaterThan(withoutFixedFee.suggestedPrice);
+    expect(withFixedFee.estimatedMarginPct).toBeGreaterThanOrEqual(0.55);
+  });
+
+  it("ignores fixed per-order fees for personal pricing with no margin or fee", () => {
+    const personal = calcBatchPricing({
+      ...baseInput,
+      targetMarginPct: 0,
+      platformFeePct: 0,
+      fixedFeePerOrder: 0.45,
       failureBufferPct: 0,
       overheadBufferPct: 0,
       minimumPrice: null,

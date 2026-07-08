@@ -11,6 +11,7 @@ export interface BatchPricingInput {
   packagingCostPerUnit: number;
   targetMarginPct: number;
   platformFeePct: number;
+  fixedFeePerOrder: number;
   failureBufferPct: number;
   overheadBufferPct: number;
   minimumPrice: number | null;
@@ -57,6 +58,7 @@ export function calcBatchPricing(input: BatchPricingInput): BatchPricingBreakdow
     suggestedPrice,
     round2(unitCost),
     input.platformFeePct,
+    input.fixedFeePerOrder,
   );
 
   return {
@@ -81,7 +83,8 @@ function calcSuggestedPrice(input: BatchPricingInput, unitCost: number): number 
     return roundedUnitCost;
   }
 
-  const rawPrice = unitCost / (1 - input.targetMarginPct - input.platformFeePct);
+  const rawPrice =
+    (unitCost + input.fixedFeePerOrder) / (1 - input.targetMarginPct - input.platformFeePct);
   const minimumPrice = input.minimumPrice ?? 0;
   return roundUpToFriendly99(Math.max(rawPrice, minimumPrice));
 }
@@ -90,10 +93,13 @@ function calcEstimatedMarginPct(
   suggestedPrice: number,
   unitCost: number,
   platformFeePct: number,
+  fixedFeePerOrder: number,
 ): number {
   if (suggestedPrice === 0) return 0;
 
-  return round4((suggestedPrice * (1 - platformFeePct) - unitCost) / suggestedPrice);
+  return round4(
+    (suggestedPrice * (1 - platformFeePct) - fixedFeePerOrder - unitCost) / suggestedPrice,
+  );
 }
 
 function roundUpToFriendly99(value: number): number {

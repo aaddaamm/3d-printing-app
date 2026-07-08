@@ -22,6 +22,7 @@ export interface BatchSummary {
   unit_cost: number | null;
   suggested_price: number | null;
   estimated_margin_pct: number | null;
+  fixed_fee_per_order: number | null;
   notes: string | null;
 }
 
@@ -67,6 +68,7 @@ interface BatchRow {
   pricing_profile_label: string;
   profile_target_margin_pct: number;
   profile_platform_fee_pct: number;
+  profile_fixed_fee_per_order: number;
   profile_failure_buffer_pct: number;
   profile_overhead_buffer_pct: number;
   profile_default_packaging_cost: number;
@@ -107,6 +109,7 @@ const BATCH_SELECT = `
     pp.label AS pricing_profile_label,
     pp.target_margin_pct AS profile_target_margin_pct,
     pp.platform_fee_pct AS profile_platform_fee_pct,
+    pp.fixed_fee_per_order AS profile_fixed_fee_per_order,
     pp.failure_buffer_pct AS profile_failure_buffer_pct,
     pp.overhead_buffer_pct AS profile_overhead_buffer_pct,
     pp.default_packaging_cost AS profile_default_packaging_cost,
@@ -414,6 +417,7 @@ function summaryFromRow(row: BatchRow): BatchSummary {
           row.product_target_margin_pct ??
           row.profile_target_margin_pct,
         platformFeePct: row.batch_platform_fee_pct ?? row.profile_platform_fee_pct,
+        fixedFeePerOrder: row.profile_fixed_fee_per_order,
         failureBufferPct: row.profile_failure_buffer_pct,
         overheadBufferPct: row.profile_overhead_buffer_pct,
         minimumPrice: row.profile_minimum_price,
@@ -449,6 +453,7 @@ function summaryFromRow(row: BatchRow): BatchSummary {
     unit_cost: unitCost,
     suggested_price: suggestedPrice,
     estimated_margin_pct: estimatedMarginPct,
+    fixed_fee_per_order: row.profile_fixed_fee_per_order,
     notes: row.notes,
   };
 }

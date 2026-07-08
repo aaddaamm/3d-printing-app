@@ -164,6 +164,7 @@ describe.sequential("batches model", () => {
     const booth = batchesModule!.createBatch({ ...common, pricing_profile_id: "booth" });
     const etsy = batchesModule!.createBatch({ ...common, pricing_profile_id: "etsy" });
 
+    expect(etsy.fixed_fee_per_order).toBe(0.45);
     expect(etsy.suggested_price).toBeGreaterThan(booth.suggested_price!);
   });
 

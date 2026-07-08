@@ -60,9 +60,9 @@ function pricingProfile(id: string): Record<string, unknown> | undefined {
 function pricingProfileRows(): Record<string, unknown>[] {
   return database!
     .prepare(
-      `SELECT id, target_margin_pct, platform_fee_pct, failure_buffer_pct, overhead_buffer_pct,
-              default_packaging_cost, default_setup_minutes, default_handling_minutes,
-              minimum_price
+      `SELECT id, target_margin_pct, platform_fee_pct, fixed_fee_per_order,
+              failure_buffer_pct, overhead_buffer_pct, default_packaging_cost,
+              default_setup_minutes, default_handling_minutes, minimum_price
        FROM pricing_profiles
        ORDER BY sort_order`,
     )
@@ -164,6 +164,7 @@ describe.sequential("catalog foundation schema migration", () => {
         id: "personal",
         target_margin_pct: 0,
         platform_fee_pct: 0,
+        fixed_fee_per_order: 0,
         failure_buffer_pct: 0,
         overhead_buffer_pct: 0,
         default_packaging_cost: 0,
@@ -175,6 +176,7 @@ describe.sequential("catalog foundation schema migration", () => {
         id: "booth",
         target_margin_pct: 0.5,
         platform_fee_pct: 0.035,
+        fixed_fee_per_order: 0,
         failure_buffer_pct: 0.08,
         overhead_buffer_pct: 0.05,
         default_packaging_cost: 0.75,
@@ -186,6 +188,7 @@ describe.sequential("catalog foundation schema migration", () => {
         id: "etsy",
         target_margin_pct: 0.55,
         platform_fee_pct: 0.13,
+        fixed_fee_per_order: 0.45,
         failure_buffer_pct: 0.08,
         overhead_buffer_pct: 0.05,
         default_packaging_cost: 1,
@@ -197,6 +200,7 @@ describe.sequential("catalog foundation schema migration", () => {
         id: "custom",
         target_margin_pct: 0.55,
         platform_fee_pct: 0,
+        fixed_fee_per_order: 0,
         failure_buffer_pct: 0.12,
         overhead_buffer_pct: 0.05,
         default_packaging_cost: 1,
@@ -216,6 +220,7 @@ describe.sequential("catalog foundation schema migration", () => {
     expect(pricingProfile("etsy")).toMatchObject({
       target_margin_pct: 0.55,
       platform_fee_pct: 0.13,
+      fixed_fee_per_order: 0.45,
     });
 
     expect(sortedLookupIds("product_statuses")).toEqual([

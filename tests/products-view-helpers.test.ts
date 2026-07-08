@@ -67,6 +67,7 @@ function batch(overrides: Partial<BatchSummary>): BatchSummary {
     unit_cost: 2.5,
     suggested_price: 5.99,
     estimated_margin_pct: 0.5,
+    fixed_fee_per_order: 0,
     notes: "Booth restock",
     ...overrides,
   };

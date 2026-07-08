@@ -24,6 +24,7 @@ type PricingProfileSeed = {
   label: string;
   targetMarginPct: number;
   platformFeePct: number;
+  fixedFeePerOrder: number;
   failureBufferPct: number;
   overheadBufferPct: number;
   defaultPackagingCost: number;
@@ -39,6 +40,7 @@ const PRICING_PROFILE_SEEDS: PricingProfileSeed[] = [
     label: "Personal",
     targetMarginPct: 0,
     platformFeePct: 0,
+    fixedFeePerOrder: 0,
     failureBufferPct: 0,
     overheadBufferPct: 0,
     defaultPackagingCost: 0,
@@ -52,6 +54,7 @@ const PRICING_PROFILE_SEEDS: PricingProfileSeed[] = [
     label: "Booth",
     targetMarginPct: 0.5,
     platformFeePct: 0.035,
+    fixedFeePerOrder: 0,
     failureBufferPct: 0.08,
     overheadBufferPct: 0.05,
     defaultPackagingCost: 0.75,
@@ -65,6 +68,7 @@ const PRICING_PROFILE_SEEDS: PricingProfileSeed[] = [
     label: "Etsy",
     targetMarginPct: 0.55,
     platformFeePct: 0.13,
+    fixedFeePerOrder: 0.45,
     failureBufferPct: 0.08,
     overheadBufferPct: 0.05,
     defaultPackagingCost: 1,
@@ -78,6 +82,7 @@ const PRICING_PROFILE_SEEDS: PricingProfileSeed[] = [
     label: "Custom",
     targetMarginPct: 0.55,
     platformFeePct: 0,
+    fixedFeePerOrder: 0,
     failureBufferPct: 0.12,
     overheadBufferPct: 0.05,
     defaultPackagingCost: 1,
@@ -137,6 +142,7 @@ function seedPricingProfiles(database: Database.Database): void {
     label: string;
     targetMarginPct: number;
     platformFeePct: number;
+    fixedFeePerOrder: number;
     failureBufferPct: number;
     overheadBufferPct: number;
     defaultPackagingCost: number;
@@ -150,6 +156,7 @@ function seedPricingProfiles(database: Database.Database): void {
       label,
       target_margin_pct,
       platform_fee_pct,
+      fixed_fee_per_order,
       failure_buffer_pct,
       overhead_buffer_pct,
       default_packaging_cost,
@@ -162,6 +169,7 @@ function seedPricingProfiles(database: Database.Database): void {
       @label,
       @targetMarginPct,
       @platformFeePct,
+      @fixedFeePerOrder,
       @failureBufferPct,
       @overheadBufferPct,
       @defaultPackagingCost,
@@ -183,6 +191,7 @@ function createPricingBatchSchema(database: Database.Database): void {
     label TEXT NOT NULL,
     target_margin_pct REAL NOT NULL,
     platform_fee_pct REAL NOT NULL DEFAULT 0,
+    fixed_fee_per_order REAL NOT NULL DEFAULT 0,
     failure_buffer_pct REAL NOT NULL DEFAULT 0,
     overhead_buffer_pct REAL NOT NULL DEFAULT 0,
     default_packaging_cost REAL NOT NULL DEFAULT 0,
@@ -193,6 +202,12 @@ function createPricingBatchSchema(database: Database.Database): void {
     is_active INTEGER NOT NULL DEFAULT 1,
     sort_order INTEGER NOT NULL
   )`);
+  addColumnIfMissing(
+    database,
+    "pricing_profiles",
+    "fixed_fee_per_order",
+    "REAL NOT NULL DEFAULT 0",
+  );
 
   for (const [columnName, columnDefinition] of [
     ["booth_price", "REAL"],
@@ -880,6 +895,21 @@ const DB_MIGRATIONS: Migration[] = [
     description: "add pricing profiles and product batch schema",
     up(database) {
       createPricingBatchSchema(database);
+    },
+  },
+  {
+    id: 17,
+    description: "add fixed per-order pricing profile fee",
+    up(database) {
+      addColumnIfMissing(
+        database,
+        "pricing_profiles",
+        "fixed_fee_per_order",
+        "REAL NOT NULL DEFAULT 0",
+      );
+      database
+        .prepare("UPDATE pricing_profiles SET fixed_fee_per_order = ? WHERE id = ?")
+        .run(0.45, "etsy");
     },
   },
 ];

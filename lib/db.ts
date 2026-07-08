@@ -1,6 +1,7 @@
 import Database from "better-sqlite3";
 import { LABOR_CONFIG_TABLE_SQL, seedLaborConfig } from "./db/labor-config.js";
 import { runDatabaseMigrations } from "./db/migrations-list.js";
+import { addColumnIfMissing } from "./migrations.js";
 import { seedRateTables } from "./db/rate-seeds.js";
 import { createProjectStatements } from "./db/project-statements.js";
 import { createRateStatements } from "./db/rate-statements.js";
@@ -245,6 +246,7 @@ for (const sql of [
     label TEXT NOT NULL,
     target_margin_pct REAL NOT NULL,
     platform_fee_pct REAL NOT NULL DEFAULT 0,
+    fixed_fee_per_order REAL NOT NULL DEFAULT 0,
     failure_buffer_pct REAL NOT NULL DEFAULT 0,
     overhead_buffer_pct REAL NOT NULL DEFAULT 0,
     default_packaging_cost REAL NOT NULL DEFAULT 0,
@@ -518,11 +520,14 @@ for (const [
   );
 }
 
+addColumnIfMissing(db, "pricing_profiles", "fixed_fee_per_order", "REAL NOT NULL DEFAULT 0");
+
 for (const [
   id,
   label,
   targetMarginPct,
   platformFeePct,
+  fixedFeePerOrder,
   failureBufferPct,
   overheadBufferPct,
   defaultPackagingCost,
@@ -531,21 +536,23 @@ for (const [
   minimumPrice,
   sortOrder,
 ] of [
-  ["personal", "Personal", 0, 0, 0, 0, 0, 0, 0, null, 10],
-  ["booth", "Booth", 0.5, 0.035, 0.08, 0.05, 0.75, 10, 3, 5, 20],
-  ["etsy", "Etsy", 0.55, 0.13, 0.08, 0.05, 1, 10, 4, 9.99, 30],
-  ["custom", "Custom", 0.55, 0, 0.12, 0.05, 1, 15, 5, 20, 40],
+  ["personal", "Personal", 0, 0, 0, 0, 0, 0, 0, 0, null, 10],
+  ["booth", "Booth", 0.5, 0.035, 0, 0.08, 0.05, 0.75, 10, 3, 5, 20],
+  ["etsy", "Etsy", 0.55, 0.13, 0.45, 0.08, 0.05, 1, 10, 4, 9.99, 30],
+  ["custom", "Custom", 0.55, 0, 0, 0.12, 0.05, 1, 15, 5, 20, 40],
 ] as const) {
   db.prepare(
     `INSERT OR IGNORE INTO pricing_profiles
-      (id, label, target_margin_pct, platform_fee_pct, failure_buffer_pct, overhead_buffer_pct,
-       default_packaging_cost, default_setup_minutes, default_handling_minutes, minimum_price, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      (id, label, target_margin_pct, platform_fee_pct, fixed_fee_per_order,
+       failure_buffer_pct, overhead_buffer_pct, default_packaging_cost, default_setup_minutes,
+       default_handling_minutes, minimum_price, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     id,
     label,
     targetMarginPct,
     platformFeePct,
+    fixedFeePerOrder,
     failureBufferPct,
     overheadBufferPct,
     defaultPackagingCost,

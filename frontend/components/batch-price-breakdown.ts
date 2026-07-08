@@ -38,6 +38,7 @@ export function BatchPriceBreakdown({ batch }: { batch: BatchSummary }) {
   return html`<div class="batch-price-breakdown" aria-label="Batch price breakdown">
     <${PriceMetric} label="Unit cost" value=${formatBatchMoney(batch.unit_cost)} />
     <${PriceMetric} label="Suggested" value=${formatBatchMoney(batch.suggested_price)} />
+    <${PriceMetric} label="Fixed fee" value=${formatBatchMoney(batch.fixed_fee_per_order)} />
     <${PriceMetric} label="Margin" value=${formatBatchMargin(batch.estimated_margin_pct)} />
     <${PriceMetric}
       label="Material"
