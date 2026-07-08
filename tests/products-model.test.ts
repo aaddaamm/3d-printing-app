@@ -159,6 +159,12 @@ describe.sequential("products model", () => {
       preferred_printer_id: printerId,
       estimated_print_time_s: 5400,
       estimated_filament_g: 42.5,
+      booth_price: 12,
+      etsy_price: 15.99,
+      packaging_cost: 0.75,
+      handling_minutes: 3,
+      target_margin_pct: 0.5,
+      pricing_notes: "Round to market-friendly prices.",
       notes: "Use a brim.",
     });
 
@@ -171,11 +177,21 @@ describe.sequential("products model", () => {
       preferred_printer_id: printerId,
       estimated_print_time_s: 5400,
       estimated_filament_g: 42.5,
+      booth_price: 12,
+      etsy_price: 15.99,
+      packaging_cost: 0.75,
+      handling_minutes: 3,
+      target_margin_pct: 0.5,
+      pricing_notes: "Round to market-friendly prices.",
       notes: "Use a brim.",
     });
     expect(productsModule!.listProducts()).toContainEqual(expect.objectContaining(product));
 
-    const updated = productsModule!.updateProduct(product.id, { status_id: "active" });
+    const updated = productsModule!.updateProduct(product.id, {
+      status_id: "active",
+      booth_price: 13,
+      pricing_notes: "Updated notes.",
+    });
 
     expect(updated).toMatchObject({
       status_id: "active",
@@ -187,6 +203,12 @@ describe.sequential("products model", () => {
       preferred_printer_id: printerId,
       estimated_print_time_s: 5400,
       estimated_filament_g: 42.5,
+      booth_price: 13,
+      etsy_price: 15.99,
+      packaging_cost: 0.75,
+      handling_minutes: 3,
+      target_margin_pct: 0.5,
+      pricing_notes: "Updated notes.",
       notes: "Use a brim.",
     });
   });
@@ -212,10 +234,13 @@ describe.sequential("products model", () => {
     ).toThrow(/status_id is required/i);
   });
 
-  it("rejects blank names and unknown lookup ids", () => {
+  it("rejects blank names, unknown lookup ids, and negative pricing defaults", () => {
     expect(() => productsModule!.createProduct({ name: "   " })).toThrow(/name/i);
     expect(() =>
       productsModule!.createProduct({ name: "Bad Category", category_id: "missing" }),
     ).toThrow(/category_id/i);
+    expect(() =>
+      productsModule!.createProduct({ name: "Bad Price", packaging_cost: -0.01 }),
+    ).toThrow(/packaging_cost/i);
   });
 });

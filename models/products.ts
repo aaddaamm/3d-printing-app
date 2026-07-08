@@ -23,6 +23,12 @@ export interface ProductSummary {
   preferred_printer_id: number | null;
   estimated_print_time_s: number | null;
   estimated_filament_g: number | null;
+  booth_price: number | null;
+  etsy_price: number | null;
+  packaging_cost: number | null;
+  handling_minutes: number | null;
+  target_margin_pct: number | null;
+  pricing_notes: string | null;
   notes: string | null;
   can_sell_level: SellabilityLevel;
   can_sell_label: string;
@@ -47,6 +53,12 @@ export interface CreateProductInput {
   estimated_print_time_s?: number | null;
   estimated_filament_g?: number | null;
   target_sale_price?: number | null;
+  booth_price?: number | null;
+  etsy_price?: number | null;
+  packaging_cost?: number | null;
+  handling_minutes?: number | null;
+  target_margin_pct?: number | null;
+  pricing_notes?: string | null;
   notes?: string | null;
   is_original_design?: boolean | number;
   restock_priority?: string | null;
@@ -88,6 +100,12 @@ type ProductColumn =
   | "estimated_print_time_s"
   | "estimated_filament_g"
   | "target_sale_price"
+  | "booth_price"
+  | "etsy_price"
+  | "packaging_cost"
+  | "handling_minutes"
+  | "target_margin_pct"
+  | "pricing_notes"
   | "notes"
   | "is_original_design"
   | "restock_priority";
@@ -115,6 +133,12 @@ const PRODUCT_SELECT = `
     p.preferred_printer_id,
     p.estimated_print_time_s,
     p.estimated_filament_g,
+    p.booth_price,
+    p.etsy_price,
+    p.packaging_cost,
+    p.handling_minutes,
+    p.target_margin_pct,
+    p.pricing_notes,
     p.notes,
     p.main_file_id,
     p.main_photo_id
@@ -141,11 +165,20 @@ const OPTIONAL_TEXT_FIELDS = [
   "default_material",
   "primary_color",
   "accent_color",
+  "pricing_notes",
   "notes",
 ] as const;
 const OPTIONAL_LOOKUP_FIELDS = ["category_id", "source_id", "license_id"] as const;
 const INTEGER_FIELDS = ["main_file_id", "main_photo_id", "preferred_printer_id"] as const;
-const NON_NEGATIVE_NUMBER_FIELDS = ["estimated_filament_g", "target_sale_price"] as const;
+const NON_NEGATIVE_NUMBER_FIELDS = [
+  "estimated_filament_g",
+  "target_sale_price",
+  "booth_price",
+  "etsy_price",
+  "packaging_cost",
+  "handling_minutes",
+  "target_margin_pct",
+] as const;
 const RESTOCK_PRIORITIES = new Set(["none", "normal", "high", "urgent"]);
 
 function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
@@ -181,6 +214,12 @@ function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
     preferred_printer_id: row.preferred_printer_id,
     estimated_print_time_s: row.estimated_print_time_s,
     estimated_filament_g: row.estimated_filament_g,
+    booth_price: row.booth_price,
+    etsy_price: row.etsy_price,
+    packaging_cost: row.packaging_cost,
+    handling_minutes: row.handling_minutes,
+    target_margin_pct: row.target_margin_pct,
+    pricing_notes: row.pricing_notes,
     notes: row.notes,
     can_sell_level: sellability.level,
     can_sell_label: sellability.label,
@@ -366,12 +405,14 @@ export function createProduct(input: CreateProductInput): ProductSummary {
         name, slug, description, status, category_id, status_id, source_id, license_id,
         model_url, main_file_id, main_photo_id, etsy_listing_url, default_material,
         primary_color, accent_color, preferred_printer_id, estimated_print_time_s,
-        estimated_filament_g, target_sale_price, notes, is_original_design, restock_priority
+        estimated_filament_g, target_sale_price, booth_price, etsy_price, packaging_cost,
+        handling_minutes, target_margin_pct, pricing_notes, notes, is_original_design, restock_priority
       ) VALUES (
         @name, @slug, @description, @status, @category_id, @status_id, @source_id, @license_id,
         @model_url, @main_file_id, @main_photo_id, @etsy_listing_url, @default_material,
         @primary_color, @accent_color, @preferred_printer_id, @estimated_print_time_s,
-        @estimated_filament_g, @target_sale_price, @notes, @is_original_design, @restock_priority
+        @estimated_filament_g, @target_sale_price, @booth_price, @etsy_price, @packaging_cost,
+        @handling_minutes, @target_margin_pct, @pricing_notes, @notes, @is_original_design, @restock_priority
       )`,
     )
     .run(values);

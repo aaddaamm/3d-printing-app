@@ -50,6 +50,12 @@ const sampleProduct = {
   preferred_printer_id: 3,
   estimated_print_time_s: 5400,
   estimated_filament_g: 42.5,
+  booth_price: 12,
+  etsy_price: 15.99,
+  packaging_cost: 0.75,
+  handling_minutes: 3,
+  target_margin_pct: 0.5,
+  pricing_notes: "Round to market-friendly prices.",
   notes: "Use a brim.",
   can_sell_level: "green",
   can_sell_label: "Commercial use allowed",
@@ -128,15 +134,19 @@ describe("product routes", () => {
     expect(await res.json()).toEqual({ error: "Unknown license_id: missing" });
   });
 
-  it("patches product status", async () => {
+  it("patches product status and pricing defaults", async () => {
     const res = await apiApp().request("/api/products/1", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status_id: "active" }),
+      body: JSON.stringify({ status_id: "active", booth_price: 13, packaging_cost: 0.8 }),
     });
 
     expect(res.status).toBe(200);
-    expect(mockUpdateProduct).toHaveBeenCalledWith(1, { status_id: "active" });
+    expect(mockUpdateProduct).toHaveBeenCalledWith(1, {
+      status_id: "active",
+      booth_price: 13,
+      packaging_cost: 0.8,
+    });
     expect(await res.json()).toEqual({
       product: { ...sampleProduct, status_id: "active", status_label: "Active" },
     });
