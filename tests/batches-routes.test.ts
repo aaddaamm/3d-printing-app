@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockAddBatchJob,
+  mockAddProjectJobsToBatch,
   mockCreateBatch,
   mockDeleteBatchJob,
   mockGetBatch,
@@ -13,6 +14,7 @@ const {
   class BatchValidationError extends Error {}
   return {
     mockAddBatchJob: vi.fn(),
+    mockAddProjectJobsToBatch: vi.fn(),
     mockCreateBatch: vi.fn(),
     mockDeleteBatchJob: vi.fn(),
     mockGetBatch: vi.fn(),
@@ -25,6 +27,7 @@ const {
 vi.mock("../models/batches.js", () => ({
   BatchValidationError: MockBatchValidationError,
   addBatchJob: mockAddBatchJob,
+  addProjectJobsToBatch: mockAddProjectJobsToBatch,
   createBatch: mockCreateBatch,
   deleteBatchJob: mockDeleteBatchJob,
   getBatch: mockGetBatch,
@@ -67,6 +70,7 @@ describe("batch routes", () => {
     mockCreateBatch.mockReturnValue(sampleBatch);
     mockUpdateBatch.mockReturnValue({ ...sampleBatch, completed_quantity: 6 });
     mockAddBatchJob.mockReturnValue(sampleBatch);
+    mockAddProjectJobsToBatch.mockReturnValue({ ...sampleBatch, total_filament_g: 240 });
     mockDeleteBatchJob.mockReturnValue(sampleBatch);
   });
 
@@ -118,6 +122,14 @@ describe("batch routes", () => {
     const deleteRes = await apiApp().request("/api/batches/1/jobs/9", { method: "DELETE" });
     expect(deleteRes.status).toBe(200);
     expect(mockDeleteBatchJob).toHaveBeenCalledWith(1, 9);
+  });
+
+  it("links all jobs from a project", async () => {
+    const res = await apiApp().request("/api/batches/1/projects/4", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(mockAddProjectJobsToBatch).toHaveBeenCalledWith(1, 4);
+    expect(await res.json()).toEqual({ batch: { ...sampleBatch, total_filament_g: 240 } });
   });
 
   it("returns 400 for unknown product and pricing profile ids", async () => {

@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   mockCreateProduct,
+  mockCreateProductFromJob,
+  mockCreateProductFromProject,
   mockListProducts,
   mockListProductsToPrintNext,
   mockUpdateProduct,
@@ -11,6 +13,8 @@ const {
   class ProductValidationError extends Error {}
   return {
     mockCreateProduct: vi.fn(),
+    mockCreateProductFromJob: vi.fn(),
+    mockCreateProductFromProject: vi.fn(),
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockUpdateProduct: vi.fn(),
@@ -21,6 +25,8 @@ const {
 vi.mock("../models/products.js", () => ({
   ProductValidationError: MockProductValidationError,
   createProduct: mockCreateProduct,
+  createProductFromJob: mockCreateProductFromJob,
+  createProductFromProject: mockCreateProductFromProject,
   listProducts: mockListProducts,
   listProductsToPrintNext: mockListProductsToPrintNext,
   updateProduct: mockUpdateProduct,
@@ -74,6 +80,8 @@ describe("product routes", () => {
     mockListProducts.mockReturnValue([sampleProduct]);
     mockListProductsToPrintNext.mockReturnValue([{ ...sampleProduct, restock_priority: "high" }]);
     mockCreateProduct.mockReturnValue(sampleProduct);
+    mockCreateProductFromJob.mockReturnValue({ ...sampleProduct, name: "Dragon Egg" });
+    mockCreateProductFromProject.mockReturnValue({ ...sampleProduct, name: "Cubee Dragons" });
     mockUpdateProduct.mockReturnValue({
       ...sampleProduct,
       status_id: "active",
@@ -102,6 +110,22 @@ describe("product routes", () => {
     expect(await res.json()).toEqual({
       products: [{ ...sampleProduct, restock_priority: "high" }],
     });
+  });
+
+  it("creates a product from a source job", async () => {
+    const res = await apiApp().request("/api/products/from-job/9", { method: "POST" });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateProductFromJob).toHaveBeenCalledWith(9);
+    expect(await res.json()).toEqual({ product: { ...sampleProduct, name: "Dragon Egg" } });
+  });
+
+  it("creates a product from a source project", async () => {
+    const res = await apiApp().request("/api/products/from-project/4", { method: "POST" });
+
+    expect(res.status).toBe(201);
+    expect(mockCreateProductFromProject).toHaveBeenCalledWith(4);
+    expect(await res.json()).toEqual({ product: { ...sampleProduct, name: "Cubee Dragons" } });
   });
 
   it("rejects invalid status ids", async () => {

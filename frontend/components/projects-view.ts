@@ -21,7 +21,8 @@ import {
   type Job,
   type Project,
 } from "./projects-view-helpers.js";
-import { patchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import { createProductFromProject, patchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import { toast } from "./toast.js";
 import { useProjectPrice } from "../hooks/use-project-price.js";
 
 const html = (
@@ -81,6 +82,11 @@ function ProjectDetail({
 
   const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
 
+  const createProduct = useCallback(async () => {
+    const product = await createProductFromProject(project.id);
+    if (product) toast(`Created product: ${product.name}`, "success");
+  }, [project.id]);
+
   const saveProject = useCallback(async () => {
     const data = await patchJsonOrToast<{ project?: Project }>(
       `/projects/${project.id}`,
@@ -107,6 +113,7 @@ function ProjectDetail({
         <button class="btn-secondary" onClick=${() => setEditing((value) => !value)}>
           ${editing ? "Cancel edit" : "Edit project"}
         </button>
+        <button class="btn-secondary" onClick=${createProduct}>Create product</button>
         <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
       </div>
       ${editing &&

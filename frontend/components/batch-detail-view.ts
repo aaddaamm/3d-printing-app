@@ -4,12 +4,15 @@ import htm from "htm";
 
 import {
   PRICING_PROFILE_OPTIONS,
+  addProjectJobsToBatch,
   fetchBatch,
   fetchProducts,
+  fetchProjects,
   updateBatch,
   type BatchInput,
   type BatchSummary,
   type ProductSummary,
+  type ProjectSummary,
 } from "../lib/api.js";
 import { BatchPriceBreakdown } from "./batch-price-breakdown.js";
 import { toast } from "./toast.js";
@@ -99,17 +102,21 @@ export function BatchDetailView({
 }) {
   const [batch, setBatch] = useState<BatchSummary | null>(null);
   const [products, setProducts] = useState<ProductSummary[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [projectId, setProjectId] = useState("");
   const [form, setForm] = useState<BatchDetailFormState | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [linkingProject, setLinkingProject] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchBatch(batchId), fetchProducts()])
-      .then(([batchItem, productItems]) => {
+    Promise.all([fetchBatch(batchId), fetchProducts(), fetchProjects()])
+      .then(([batchItem, productItems, projectItems]) => {
         if (cancelled) return;
         setBatch(batchItem);
         setProducts(productItems);
+        setProjects(projectItems);
         setForm(initialBatchDetailForm(batchItem));
       })
       .catch((error: unknown) => {
@@ -134,6 +141,23 @@ export function BatchDetailView({
     nonNegativeIntegerOrNull(form.completedQuantity) !== null &&
     nonNegativeIntegerOrNull(form.failedQuantity) !== null,
   );
+
+  const linkProjectJobs = async () => {
+    if (!batch) return;
+    const parsedProjectId = positiveIntegerOrNull(projectId);
+    if (!parsedProjectId) return;
+
+    setLinkingProject(true);
+    try {
+      const updated = await addProjectJobsToBatch(batch.id, parsedProjectId);
+      if (!updated) return;
+      setBatch(updated);
+      setForm(initialBatchDetailForm(updated));
+      toast("Project jobs added to batch.", "success");
+    } finally {
+      setLinkingProject(false);
+    }
+  };
 
   const save = async (event: Event) => {
     event.preventDefault();
@@ -270,6 +294,33 @@ export function BatchDetailView({
 
         <section class="admin-section">
           <h3 class="admin-section-title">Costs and production totals</h3>
+          <div class="batch-link-panel">
+            <div>
+              <strong>Use existing project jobs</strong>
+              <p>Link every job from a project to this batch. Leave total grams/time blank to use linked job totals.</p>
+            </div>
+            <select
+              class="form-input"
+              value=${projectId}
+              onChange=${(event: Event) => setProjectId((event.target as HTMLSelectElement).value)}
+            >
+              <option value="">Select project…</option>
+              ${projects.map(
+                (project) =>
+                  html`<option key=${project.id} value=${String(project.id)}>
+                    ${project.name}${project.job_count ? ` (${project.job_count} jobs)` : ""}
+                  </option>`,
+              )}
+            </select>
+            <button
+              class="btn-secondary"
+              type="button"
+              disabled=${linkingProject || !positiveIntegerOrNull(projectId)}
+              onClick=${linkProjectJobs}
+            >
+              ${linkingProject ? "Adding…" : "Add project jobs"}
+            </button>
+          </div>
           <div class="product-form-grid">
             <${FormField} label="Material">
               <input

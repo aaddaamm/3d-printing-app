@@ -1538,6 +1538,11 @@ tbody td {
   transform: translateY(-1px);
 }
 
+.btn-compact {
+  padding: 4px 8px;
+  font-size: 0.72rem;
+}
+
 /* Remove-job button in ProjectDetail rows */
 .btn-remove-job {
   background: none;
@@ -2557,6 +2562,24 @@ tbody td {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
   gap: 12px;
+}
+
+.batch-link-panel {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 320px) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid var(--ui-panel-border);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.batch-link-panel p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .product-notes-field {

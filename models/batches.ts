@@ -524,6 +524,35 @@ export function addBatchJob(batchId: number, jobId: number): BatchSummary | null
   return getBatch(batchId);
 }
 
+export function addProjectJobsToBatch(batchId: number, projectId: number): BatchSummary | null {
+  if (!getBatchRow(batchId)) return null;
+  const normalizedProjectId = normalizePositiveInteger(projectId, "project_id");
+  const projectExists = db
+    .prepare<[number], { id: number }>("SELECT id FROM projects WHERE id = ?")
+    .get(normalizedProjectId);
+  if (!projectExists) {
+    throw new BatchValidationError(`Unknown project_id: ${normalizedProjectId}`);
+  }
+
+  const jobIds = db
+    .prepare<[number], { id: number }>("SELECT id FROM jobs WHERE project_id = ? ORDER BY id")
+    .all(normalizedProjectId);
+  if (jobIds.length === 0) {
+    throw new BatchValidationError(`Project ${normalizedProjectId} has no jobs to link`);
+  }
+
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO product_batch_jobs (batch_id, job_id, relationship)
+     VALUES (?, ?, 'production')`,
+  );
+  const insertAll = db.transaction((ids: Array<{ id: number }>) => {
+    for (const { id } of ids) insert.run(batchId, id);
+  });
+  insertAll(jobIds);
+
+  return getBatch(batchId);
+}
+
 export function deleteBatchJob(batchId: number, jobId: number): BatchSummary | null {
   if (!getBatchRow(batchId)) return null;
   const normalizedJobId = normalizePositiveInteger(jobId, "job_id");

@@ -13,6 +13,8 @@ import {
   fmtWeightTotal,
 } from "./helpers.js";
 import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.js";
+import { createProductFromJob } from "../lib/api.js";
+import { toast } from "./toast.js";
 export { PrinterBreakdownView } from "./jobs-printer-breakdown.js";
 import type { DataRange, Job, Summary } from "./jobs-view-types.js";
 import { useLocation } from "./router.js";
@@ -377,6 +379,12 @@ export function TableView({
 }
 
 function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
+  const createProduct = async (event: Event) => {
+    event.stopPropagation();
+    const product = await createProductFromJob(job.id);
+    if (product) toast(`Created product: ${product.name}`, "success");
+  };
+
   return html`
     <div class="card" onClick=${() => onJobClick(job)}>
       <${CoverImg} url=${job.cover_url} className="cover" />
@@ -397,6 +405,9 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
           <${JobRunBadge} printRun=${job.print_run} />
           ${job.customer && html`<span class="customer-pill">${job.customer}</span>`}
           <${FilamentSwatches} colors=${job.filament_colors} />
+          <button class="btn-secondary btn-compact" type="button" onClick=${createProduct}>
+            Create product
+          </button>
         </div>
       </div>
     </div>

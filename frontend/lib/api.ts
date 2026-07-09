@@ -124,8 +124,19 @@ export type BatchInput = Partial<{
   notes: string | null;
 }>;
 
+export type ProjectSummary = {
+  id: number;
+  name: string;
+  customer?: string | null;
+  notes?: string | null;
+  job_count?: number;
+  total_weight_g?: number | null;
+  total_time_s?: number | null;
+};
+
 type ProductsResponse = { products: ProductSummary[] };
 type ProductResponse = { product: ProductSummary };
+type ProjectsResponse = { projects: ProjectSummary[] };
 type BatchesResponse = { batches: BatchSummary[] };
 type BatchResponse = { batch: BatchSummary };
 
@@ -217,6 +228,11 @@ export async function postJsonOrToast<T = JsonRecord>(
   });
 }
 
+export async function fetchProjects(): Promise<ProjectSummary[]> {
+  const data = await fetchJson<ProjectsResponse>("/api/projects", "Failed to load projects.");
+  return data.projects;
+}
+
 export async function fetchProducts(): Promise<ProductSummary[]> {
   const data = await fetchJson<ProductsResponse>("/api/products", "Failed to load products.");
   return data.products;
@@ -240,6 +256,24 @@ export async function createProduct(input: ProductInput): Promise<ProductSummary
     "/api/products",
     input,
     "Failed to create product.",
+  );
+  return data?.product ?? null;
+}
+
+export async function createProductFromJob(jobId: number): Promise<ProductSummary | null> {
+  const data = await postJsonOrToast<ProductResponse>(
+    `/api/products/from-job/${jobId}`,
+    {},
+    "Failed to create product from job.",
+  );
+  return data?.product ?? null;
+}
+
+export async function createProductFromProject(projectId: number): Promise<ProductSummary | null> {
+  const data = await postJsonOrToast<ProductResponse>(
+    `/api/products/from-project/${projectId}`,
+    {},
+    "Failed to create product from project.",
   );
   return data?.product ?? null;
 }
@@ -280,6 +314,18 @@ export async function updateBatch(id: number, input: BatchInput): Promise<BatchS
     `/api/batches/${id}`,
     input,
     "Failed to update batch.",
+  );
+  return data?.batch ?? null;
+}
+
+export async function addProjectJobsToBatch(
+  batchId: number,
+  projectId: number,
+): Promise<BatchSummary | null> {
+  const data = await postJsonOrToast<BatchResponse>(
+    `/api/batches/${batchId}/projects/${projectId}`,
+    {},
+    "Failed to add project jobs to batch.",
   );
   return data?.batch ?? null;
 }

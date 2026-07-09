@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import {
   ProductValidationError,
   createProduct,
+  createProductFromJob,
+  createProductFromProject,
   listProducts,
   listProductsToPrintNext,
   updateProduct,
@@ -57,6 +59,32 @@ products.get("/", (c) => {
 // Must be before /:id to avoid param capture.
 products.get("/print-next", (c) => {
   return c.json({ products: listProductsToPrintNext() });
+});
+
+products.post("/from-job/:jobId", (c) => {
+  const jobId = Number(c.req.param("jobId"));
+  if (!Number.isInteger(jobId) || jobId <= 0) return jsonError(c, "Invalid jobId", 400);
+
+  try {
+    const product = createProductFromJob(jobId);
+    return c.json({ product }, 201);
+  } catch (error: unknown) {
+    return handleProductError(c, error);
+  }
+});
+
+products.post("/from-project/:projectId", (c) => {
+  const projectId = Number(c.req.param("projectId"));
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return jsonError(c, "Invalid projectId", 400);
+  }
+
+  try {
+    const product = createProductFromProject(projectId);
+    return c.json({ product }, 201);
+  } catch (error: unknown) {
+    return handleProductError(c, error);
+  }
 });
 
 products.post("/", async (c) => {

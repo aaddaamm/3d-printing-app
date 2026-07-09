@@ -213,6 +213,91 @@ describe.sequential("products model", () => {
     });
   });
 
+  it("creates a product from a job and links the source job", () => {
+    const printerId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO printers (provider, provider_printer_id, name)
+           VALUES (?, ?, ?)
+           RETURNING id`,
+        )
+        .pluck()
+        .get("bambu", "printer-1", "A1 Mini"),
+    );
+    const jobId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO jobs (
+             session_id,
+             designTitle,
+             total_weight_g,
+             total_time_s,
+             printer_id,
+             deviceModel,
+             status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?)
+           RETURNING id`,
+        )
+        .pluck()
+        .get("session-job-product", "Dragon Egg", 88.5, 5400, printerId, "A1 mini", "finish"),
+    );
+
+    const product = productsModule!.createProductFromJob(jobId);
+
+    expect(product).toMatchObject({
+      name: "Dragon Egg",
+      status_id: "test_print",
+      default_material: null,
+      primary_color: null,
+      preferred_printer_id: printerId,
+      estimated_print_time_s: 5400,
+      estimated_filament_g: 88.5,
+    });
+    expect(
+      dbModule!.db
+        .prepare("SELECT relationship FROM product_jobs WHERE product_id = ? AND job_id = ?")
+        .pluck()
+        .get(product.id, jobId),
+    ).toBe("source_job");
+  });
+
+  it("creates a product from a project and links all project jobs", () => {
+    const projectId = Number(
+      dbModule!.db
+        .prepare(
+          "INSERT INTO projects (name, created_at) VALUES (?, CURRENT_TIMESTAMP) RETURNING id",
+        )
+        .pluck()
+        .get("Cubee Dragons"),
+    );
+    const insertJob = dbModule!.db.prepare(
+      `INSERT INTO jobs (session_id, designTitle, total_weight_g, total_time_s, project_id, status)
+       VALUES (?, ?, ?, ?, ?, 'finish')
+       RETURNING id`,
+    );
+    const firstJobId = Number(
+      insertJob.pluck().get("project-job-1", "Cubee Dragon Left", 40, 1200, projectId),
+    );
+    const secondJobId = Number(
+      insertJob.pluck().get("project-job-2", "Cubee Dragon Right", 60, 1800, projectId),
+    );
+
+    const product = productsModule!.createProductFromProject(projectId);
+
+    expect(product).toMatchObject({
+      name: "Cubee Dragons",
+      status_id: "test_print",
+      estimated_print_time_s: 3000,
+      estimated_filament_g: 100,
+    });
+    expect(
+      dbModule!.db
+        .prepare("SELECT job_id FROM product_jobs WHERE product_id = ? ORDER BY job_id")
+        .pluck()
+        .all(product.id),
+    ).toEqual([firstJobId, secondJobId]);
+  });
+
   it("defaults missing product status to idea", () => {
     const product = productsModule!.createProduct({ name: "Missing Status" });
 

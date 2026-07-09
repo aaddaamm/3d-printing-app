@@ -357,6 +357,60 @@ function getProductSummaryById(id: number): ProductSummary | null {
   return row ? productSummaryFromRow(row) : null;
 }
 
+type ProductSourceJob = {
+  id: number;
+  session_id: string;
+  designTitle: string | null;
+  total_weight_g: number | null;
+  total_time_s: number | null;
+  printer_id: number | null;
+  deviceModel: string | null;
+};
+
+type ProductSourceProject = {
+  id: number;
+  name: string;
+  notes: string | null;
+};
+
+type ProductSourceFilament = {
+  filament_type: string | null;
+  color: string | null;
+  total_weight: number;
+};
+
+function loadPrimaryFilament(sessionId: string): ProductSourceFilament | null {
+  return (
+    db
+      .prepare<[string], ProductSourceFilament>(
+        `SELECT
+           jf.filament_type,
+           jf.color,
+           SUM(jf.weight_g) AS total_weight
+         FROM job_filaments jf
+         JOIN print_tasks pt ON pt.id = jf.task_id
+         WHERE pt.session_id = ?
+         GROUP BY jf.filament_type, jf.color
+         ORDER BY total_weight DESC
+         LIMIT 1`,
+      )
+      .get(sessionId) ?? null
+  );
+}
+
+function linkProductJob(productId: number, jobId: number, relationship: string): void {
+  db.prepare(
+    `INSERT OR IGNORE INTO product_jobs (product_id, job_id, relationship)
+     VALUES (?, ?, ?)`,
+  ).run(productId, jobId, relationship);
+}
+
+function productNameForJob(job: ProductSourceJob): string {
+  const designTitle = job.designTitle?.trim();
+  if (designTitle) return designTitle;
+  return `Job ${job.id}`;
+}
+
 export function listProducts(): ProductSummary[] {
   return db
     .prepare<[], ProductSummaryRow>(
@@ -418,6 +472,69 @@ export function createProduct(input: CreateProductInput): ProductSummary {
     .run(values);
 
   return getProductSummaryById(result.lastInsertRowid as number)!;
+}
+
+export function createProductFromJob(jobId: number): ProductSummary {
+  const job = db
+    .prepare<[number], ProductSourceJob>(
+      `SELECT id, session_id, designTitle, total_weight_g, total_time_s, printer_id, deviceModel
+       FROM jobs
+       WHERE id = ?`,
+    )
+    .get(jobId);
+  if (!job) throw new ProductValidationError(`Unknown job_id: ${jobId}`);
+
+  const primaryFilament = loadPrimaryFilament(job.session_id);
+  const product = createProduct({
+    name: productNameForJob(job),
+    status_id: "test_print",
+    license_id: "unknown_verify",
+    default_material: primaryFilament?.filament_type ?? null,
+    primary_color: primaryFilament?.color ?? null,
+    preferred_printer_id: job.printer_id,
+    estimated_print_time_s: job.total_time_s,
+    estimated_filament_g: job.total_weight_g,
+    notes: `Created from job #${job.id}${job.deviceModel ? ` on ${job.deviceModel}` : ""}.`,
+  });
+  linkProductJob(product.id, job.id, "source_job");
+  return product;
+}
+
+export function createProductFromProject(projectId: number): ProductSummary {
+  const project = db
+    .prepare<[number], ProductSourceProject>("SELECT id, name, notes FROM projects WHERE id = ?")
+    .get(projectId);
+  if (!project) throw new ProductValidationError(`Unknown project_id: ${projectId}`);
+
+  const jobs = db
+    .prepare<[number], ProductSourceJob>(
+      `SELECT id, session_id, designTitle, total_weight_g, total_time_s, printer_id, deviceModel
+       FROM jobs
+       WHERE project_id = ?
+       ORDER BY startTime DESC, id DESC`,
+    )
+    .all(projectId);
+  if (jobs.length === 0) {
+    throw new ProductValidationError(`Project ${projectId} has no jobs to link`);
+  }
+
+  const firstPrinterId = jobs.find((job) => job.printer_id !== null)?.printer_id ?? null;
+  const totalWeightG = jobs.reduce((sum, job) => sum + (job.total_weight_g ?? 0), 0);
+  const totalTimeS = jobs.reduce((sum, job) => sum + (job.total_time_s ?? 0), 0);
+  const product = createProduct({
+    name: project.name,
+    status_id: "test_print",
+    license_id: "unknown_verify",
+    preferred_printer_id: firstPrinterId,
+    estimated_print_time_s: totalTimeS,
+    estimated_filament_g: totalWeightG,
+    notes: project.notes ?? `Created from project #${project.id}.`,
+  });
+
+  for (const job of jobs) {
+    linkProductJob(product.id, job.id, "source_project");
+  }
+  return product;
 }
 
 export function updateProduct(id: number, input: UpdateProductInput): ProductSummary | null {

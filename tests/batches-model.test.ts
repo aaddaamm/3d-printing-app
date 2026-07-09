@@ -151,6 +151,41 @@ describe.sequential("batches model", () => {
     expect(updated.total_print_time_s).toBe(3600);
   });
 
+  it("links every job from a project to a batch", () => {
+    const product = createProduct();
+    const projectId = Number(
+      dbModule!.db
+        .prepare(
+          "INSERT INTO projects (name, created_at) VALUES (?, CURRENT_TIMESTAMP) RETURNING id",
+        )
+        .pluck()
+        .get("Booth Restock"),
+    );
+    const firstJobId = insertJob({ total_weight_g: 25, total_time_s: 1800 });
+    const secondJobId = insertJob({ total_weight_g: 35, total_time_s: 2400 });
+    dbModule!.db
+      .prepare("UPDATE jobs SET project_id = ? WHERE id IN (?, ?)")
+      .run(projectId, firstJobId, secondJobId);
+    const batch = batchesModule!.createBatch({
+      product_id: product.id,
+      pricing_profile_id: "booth",
+      planned_quantity: 2,
+      completed_quantity: 2,
+    });
+
+    const linked = batchesModule!.addProjectJobsToBatch(batch.id, projectId)!;
+
+    expect(linked.total_filament_g).toBe(60);
+    expect(linked.total_print_time_s).toBe(4200);
+    expect(linked.unit_cost).toBeGreaterThan(0);
+    expect(
+      dbModule!.db
+        .prepare("SELECT job_id FROM product_batch_jobs WHERE batch_id = ? ORDER BY job_id")
+        .pluck()
+        .all(batch.id),
+    ).toEqual([firstJobId, secondJobId]);
+  });
+
   it("prices Etsy batches higher than booth batches for the same costs", () => {
     const product = createProduct({ target_margin_pct: null });
     const common = {

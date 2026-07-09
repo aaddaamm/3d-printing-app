@@ -10,6 +10,8 @@ import {
   fmtWeight,
 } from "./helpers.js";
 import { Badge, RowThumb } from "./atoms.js";
+import { createProductFromProject } from "../lib/api.js";
+import { toast } from "./toast.js";
 import type { Job, Project } from "./projects-view-helpers.js";
 import type { ProjectPrice } from "../hooks/use-project-price.js";
 
@@ -32,6 +34,11 @@ function ProjectCard({
 }) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
+  const createProduct = async (event: Event) => {
+    event.stopPropagation();
+    const product = await createProductFromProject(project.id);
+    if (product) toast(`Created product: ${product.name}`, "success");
+  };
   return html`
     <div class="proj-card" onClick=${onClick}>
       ${project.cover_url
@@ -48,6 +55,9 @@ function ProjectCard({
           }}
         >
           Rename
+        </button>
+        <button type="button" class="btn-secondary proj-card-action" onClick=${createProduct}>
+          Create product
         </button>
       </div>
       <div class="proj-card-meta">

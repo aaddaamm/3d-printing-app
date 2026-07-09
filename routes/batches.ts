@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import {
   BatchValidationError,
   addBatchJob,
+  addProjectJobsToBatch,
   createBatch,
   deleteBatchJob,
   getBatch,
@@ -101,6 +102,24 @@ batches.post("/:id/jobs", async (c) => {
       return jsonError(c, "job_id must be a positive integer", 400);
     }
     const batch = addBatchJob(idOrError, jobId);
+    if (!batch) return jsonError(c, "Not found", 404);
+    return c.json({ batch });
+  } catch (error: unknown) {
+    return handleBatchError(c, error);
+  }
+});
+
+batches.post("/:id/projects/:projectId", (c) => {
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+
+  const projectId = Number(c.req.param("projectId"));
+  if (!Number.isInteger(projectId) || projectId <= 0) {
+    return jsonError(c, "Invalid projectId", 400);
+  }
+
+  try {
+    const batch = addProjectJobsToBatch(idOrError, projectId);
     if (!batch) return jsonError(c, "Not found", 404);
     return c.json({ batch });
   } catch (error: unknown) {
