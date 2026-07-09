@@ -39,8 +39,12 @@ type BatchDetailFormState = {
   notes: string;
 };
 
+function isNil(value: unknown): value is null | undefined {
+  return value === null || value === undefined;
+}
+
 function hoursFromSeconds(value: number | null | undefined): string {
-  return value == null ? "" : String(value / 3600);
+  return isNil(value) ? "" : String(value / 3600);
 }
 
 function numberOrNull(value: string): number | null {
@@ -78,13 +82,15 @@ export function initialBatchDetailForm(batch: BatchSummary): BatchDetailFormStat
     failedQuantity: String(batch.failed_quantity),
     materialType: batch.material_type ?? "",
     primaryColor: batch.primary_color ?? "",
-    totalFilamentG: batch.total_filament_g == null ? "" : String(batch.total_filament_g),
+    totalFilamentG: isNil(batch.total_filament_g) ? "" : String(batch.total_filament_g),
     totalPrintTimeHours: hoursFromSeconds(batch.total_print_time_s),
-    setupMinutes: batch.setup_minutes == null ? "" : String(batch.setup_minutes),
-    handlingMinutesPerUnit:
-      batch.handling_minutes_per_unit == null ? "" : String(batch.handling_minutes_per_unit),
-    packagingCostPerUnit:
-      batch.packaging_cost_per_unit == null ? "" : String(batch.packaging_cost_per_unit),
+    setupMinutes: isNil(batch.setup_minutes) ? "" : String(batch.setup_minutes),
+    handlingMinutesPerUnit: isNil(batch.handling_minutes_per_unit)
+      ? ""
+      : String(batch.handling_minutes_per_unit),
+    packagingCostPerUnit: isNil(batch.packaging_cost_per_unit)
+      ? ""
+      : String(batch.packaging_cost_per_unit),
     notes: batch.notes ?? "",
   };
 }

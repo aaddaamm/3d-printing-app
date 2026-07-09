@@ -357,6 +357,12 @@ function getProductSummaryById(id: number): ProductSummary | null {
   return row ? productSummaryFromRow(row) : null;
 }
 
+function requireProductSummaryById(id: number): ProductSummary {
+  const product = getProductSummaryById(id);
+  if (!product) throw new ProductValidationError(`Product not found after insert: ${id}`);
+  return product;
+}
+
 type ProductSourceJob = {
   id: number;
   session_id: string;
@@ -471,7 +477,7 @@ export function createProduct(input: CreateProductInput): ProductSummary {
     )
     .run(values);
 
-  return getProductSummaryById(result.lastInsertRowid as number)!;
+  return requireProductSummaryById(result.lastInsertRowid as number);
 }
 
 export function createProductFromJob(jobId: number): ProductSummary {

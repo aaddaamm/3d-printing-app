@@ -332,6 +332,8 @@ function normalizeUpdateField(column: BatchColumn, value: unknown): unknown {
     case "primary_color":
     case "notes":
       return normalizeNullableText(value, column);
+    default:
+      throw new BatchValidationError(`Unsupported batch field: ${String(column)}`);
   }
 }
 
@@ -340,15 +342,20 @@ function materialRateFor(
   materialRates: ReadonlyMap<string, MaterialRate>,
 ): MaterialRate | null {
   const materialType = row.batch_material_type ?? row.product_default_material;
-  if (materialType && materialRates.has(materialType)) return materialRates.get(materialType)!;
+  if (materialType) {
+    const materialRate = materialRates.get(materialType);
+    if (materialRate) return materialRate;
+  }
   const productDefault = row.product_default_material;
-  if (productDefault && materialRates.has(productDefault))
-    return materialRates.get(productDefault)!;
+  if (productDefault) {
+    const productDefaultRate = materialRates.get(productDefault);
+    if (productDefaultRate) return productDefaultRate;
+  }
   return materialRates.get("PLA") ?? null;
 }
 
 function printerModel(printerId: number | null): string | null {
-  if (printerId == null) return null;
+  if (printerId === null) return null;
   const row = db
     .prepare<[number], { model: string | null }>("SELECT model FROM printers WHERE id = ?")
     .get(printerId);
@@ -361,11 +368,13 @@ function machineRateFor(
   fallbackMachine: MachineRate,
 ): MachineRate {
   const preferredPrinterModel = printerModel(row.preferred_printer_id);
-  if (preferredPrinterModel && machineRates.has(preferredPrinterModel)) {
-    return machineRates.get(preferredPrinterModel)!;
+  if (preferredPrinterModel) {
+    const preferredRate = machineRates.get(preferredPrinterModel);
+    if (preferredRate) return preferredRate;
   }
-  if (row.linked_device_model && machineRates.has(row.linked_device_model)) {
-    return machineRates.get(row.linked_device_model)!;
+  if (row.linked_device_model) {
+    const linkedRate = machineRates.get(row.linked_device_model);
+    if (linkedRate) return linkedRate;
   }
   return fallbackMachine;
 }
@@ -474,6 +483,12 @@ export function getBatch(id: number): BatchSummary | null {
   return row ? summaryFromRow(row) : null;
 }
 
+function requireBatch(id: number): BatchSummary {
+  const batch = getBatch(id);
+  if (!batch) throw new BatchValidationError(`Batch not found after insert: ${id}`);
+  return batch;
+}
+
 export function createBatch(input: CreateBatchInput): BatchSummary {
   const values = normalizeCreateInput(input);
   const result = db
@@ -492,7 +507,7 @@ export function createBatch(input: CreateBatchInput): BatchSummary {
     )
     .run(values);
 
-  return getBatch(result.lastInsertRowid as number)!;
+  return requireBatch(result.lastInsertRowid as number);
 }
 
 export function updateBatch(id: number, input: UpdateBatchInput): BatchSummary | null {

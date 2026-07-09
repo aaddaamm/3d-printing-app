@@ -69,13 +69,15 @@ function ProjectDetail({
 
   const jobsWithStablePrices = useMemo(() => {
     for (const job of jobs) {
-      if (job.final_price != null) stableJobPricesRef.current.set(job.id, job.final_price);
+      if (job.final_price !== null && job.final_price !== undefined) {
+        stableJobPricesRef.current.set(job.id, job.final_price);
+      }
     }
 
     return jobs.map((job) => {
-      if (job.final_price != null) return job;
+      if (job.final_price !== null && job.final_price !== undefined) return job;
       const cachedPrice = stableJobPricesRef.current.get(job.id);
-      if (cachedPrice == null) return job;
+      if (cachedPrice === null || cachedPrice === undefined) return job;
       return { ...job, final_price: cachedPrice };
     });
   }, [jobs]);

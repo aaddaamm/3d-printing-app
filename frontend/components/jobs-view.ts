@@ -284,6 +284,11 @@ function JobRunBadge({ printRun }: { printRun?: number }) {
   return html`<span class="run-badge">Run ${printRun}</span>`;
 }
 
+function sortDirectionLabel(active: boolean, sortDir: "asc" | "desc"): string {
+  if (!active) return "";
+  return sortDir === "asc" ? " ↑" : " ↓";
+}
+
 function JobsSortBar({
   sortCol,
   sortDir,
@@ -312,7 +317,7 @@ function JobsSortBar({
           class=${"jobs-record-sort-btn" + (active ? " active" : "")}
           onClick=${() => onSort(col)}
         >
-          ${label}${active ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+          ${label}${sortDirectionLabel(active, sortDir)}
         </button>
       `;
     })}
@@ -342,7 +347,12 @@ function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) =>
         </span>
         <span>⏱ <strong>${fmtTime(job.total_time_s)}</strong></span>
         <span
-          >💰 <strong>${job.final_price != null ? fmtCurrency(job.final_price) : "—"}</strong></span
+          >💰
+          <strong
+            >${job.final_price !== null && job.final_price !== undefined
+              ? fmtCurrency(job.final_price)
+              : "—"}</strong
+          ></span
         >
         <span>🧱 <strong>${job.plate_count ?? "—"}</strong></span>
         ${job.customer ? html`<span class="customer-pill">${job.customer}</span>` : null}
@@ -398,7 +408,9 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
             >🧵 ${fmtWeight(job.total_weight_g)}
             <${MaterialConfidence} confidence=${job.material_usage_confidence} />
           </span>
-          ${job.final_price != null && html`<span>💰 ${fmtCurrency(job.final_price)}</span>`}
+          ${job.final_price !== null &&
+          job.final_price !== undefined &&
+          html`<span>💰 ${fmtCurrency(job.final_price)}</span>`}
         </div>
         <div class="card-footer">
           <${Badge} status=${job.status} />

@@ -21,6 +21,10 @@ const html = (
   }
 ).bind(h);
 
+function hasValue<T>(value: T | null | undefined): value is T {
+  return value !== null && value !== undefined;
+}
+
 function ProjectCard({
   project,
   totalPrice,
@@ -67,13 +71,13 @@ function ProjectCard({
         <span>
           <strong>${project.job_count}</strong> run${project.job_count !== 1 ? "s" : ""}
         </span>
-        ${project.total_plates != null &&
+        ${hasValue(project.total_plates) &&
         html`<span>
           <strong>${project.total_plates}</strong> plate${project.total_plates !== 1 ? "s" : ""}
         </span>`}
-        ${totalW != null && html`<span>${fmtWeightTotal(totalW)}</span>`}
-        ${totalT != null && html`<span>${fmtTime(totalT)}</span>`}
-        ${totalPrice != null &&
+        ${hasValue(totalW) && html`<span>${fmtWeightTotal(totalW)}</span>`}
+        ${hasValue(totalT) && html`<span>${fmtTime(totalT)}</span>`}
+        ${hasValue(totalPrice) &&
         html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
@@ -141,7 +145,7 @@ export function ProjectJobsTable({
                 <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
                 <td class="td-num">${fmtTime(job.total_time_s)}</td>
                 <td class="td-num">
-                  ${job.final_price != null
+                  ${hasValue(job.final_price)
                     ? html`<strong>${fmtCurrency(job.final_price)}</strong>`
                     : "—"}
                 </td>
