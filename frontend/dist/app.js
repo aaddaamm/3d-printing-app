@@ -258,7 +258,9 @@
         <span>⏱ <strong>${ot(t.total_time_s)}</strong></span>
         <span
           >💰
-          <strong>${t.final_price!==null&&t.final_price!==void 0?A(t.final_price):"—"}</strong></span
+          <strong
+            >${t.final_price!==null&&t.final_price!==void 0?A(t.final_price):"—"}</strong
+          ></span
         >
         <span>🧱 <strong>${t.plate_count??"—"}</strong></span>
         ${t.customer?J`<span class="customer-pill">${t.customer}</span>`:null}

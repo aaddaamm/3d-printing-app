@@ -17,6 +17,7 @@
     "build:ui": "vite build",
     "dev:ui": "vite",
     "build": "npm run build:ui && tsc -p tsconfig.build.json",
+    "smoke": "npx tsx scripts/smoke-test.ts",
     "typecheck": "tsc -p tsconfig.backend.json --noEmit && tsc -p tsconfig.frontend.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

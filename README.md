@@ -55,7 +55,10 @@ npm test             # Vitest suite
 npm run typecheck    # TypeScript check
 npm run lint         # ESLint
 npm run build        # Compile with tsconfig.build.json
+npm run smoke        # Full gates + isolated API/product/batch workflow smoke test
 ```
+
+`npm run smoke` copies the configured SQLite DB to a temporary file, starts the API on a temporary local port, exercises the UI/API/product/batch workflows against that copy, then deletes the temp DB. It does not mutate your real app database.
 
 ## Provider sync
 
