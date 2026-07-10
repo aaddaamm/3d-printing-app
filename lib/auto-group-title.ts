@@ -92,9 +92,24 @@ function shouldCollapseToFirstWord(base: string, firstWord: string): boolean {
   return words.length === 2 && firstWord === firstWord.toLowerCase();
 }
 
+const PART_SUFFIX_WORD_RE =
+  /^(?:body|hood|head|tail|arm|leg|hand|foot|wing|base|lid|cover|stand|shell|part|piece|left|right|top|bottom|front|back)(?:\b|\d)/i;
+
+function stripLocalPartSuffix(base: string): string | null {
+  const words = base.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return null;
+
+  const lastWord = words.at(-1);
+  if (!lastWord || !PART_SUFFIX_WORD_RE.test(lastWord)) return null;
+  return words.slice(0, -1).join(" ");
+}
+
 export function deriveLocalSlicerFamilyTitle(title: string): string | null {
-  const base = stripSlicerSuffix(title);
+  const base = stripSlicerSuffix(title) ?? stripKnownExtension(title).trim();
   if (!base) return null;
+
+  const withoutPartSuffix = stripLocalPartSuffix(base);
+  if (withoutPartSuffix) return withoutPartSuffix;
 
   const firstWord = base.split(/\s+/)[0]?.trim();
   if (!firstWord || firstWord.length < 3) return base;

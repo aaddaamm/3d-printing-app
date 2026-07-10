@@ -296,6 +296,13 @@ describe("deriveBaseTitle", () => {
     expect(deriveBaseTitle("daredevil figure_PLA_1h12m.gcode", bases)).toBe("daredevil");
   });
 
+  it("groups local slicer body and hood variants by family name", () => {
+    const bases = new Set<string>();
+    expect(deriveBaseTitle("Mecha cobra body7X21_PLA_16h39m.gcode", bases)).toBe("Mecha cobra");
+    expect(deriveBaseTitle("Mecha cobra hood1_PLA_17h51m.gcode", bases)).toBe("Mecha cobra");
+    expect(deriveBaseTitle("Mecha cobra hood1", bases)).toBe("Mecha cobra");
+  });
+
   it("preserves descriptive multi-word local slicer names while stripping material suffixes", () => {
     const bases = new Set<string>();
     expect(deriveBaseTitle("Light switch cover V2_PLA_1h18m.gcode", bases)).toBe(
