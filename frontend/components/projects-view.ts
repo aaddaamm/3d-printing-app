@@ -12,6 +12,7 @@ import { RenameProjectModal } from "./project-rename-modal.js";
 import { AddJobsModal, NewProjectModal } from "./projects-view-modals.js";
 import {
   filterProjects,
+  getProjectPlateCoverage,
   projectCountLabel,
   showAutoGroupToast,
   sumJobPlates,
@@ -43,6 +44,41 @@ type ProjectPlateRow = JobPlateSummary & {
   jobTitle?: string | null;
 };
 
+function formatPlateIndexList(indexes: number[]): string {
+  return indexes.length ? indexes.join(", ") : "none";
+}
+
+function ProjectPlateCoverageSummary({ plates }: { plates: ProjectPlateRow[] }) {
+  if (plates.length === 0) return null;
+  const coverage = getProjectPlateCoverage(plates);
+  const observedRange =
+    coverage.observedStart == null || coverage.observedEnd == null
+      ? "unknown"
+      : `${coverage.observedStart}–${coverage.observedEnd}`;
+
+  return html`<section class="admin-section project-plate-coverage">
+    <h3 class="admin-section-title">Plate coverage</h3>
+    <div class="totals-bar">
+      <span>Printed plates: <strong>${coverage.printedCount}</strong></span>
+      <span>Unique plate numbers: <strong>${coverage.uniquePlateCount}</strong></span>
+      <span>Observed range: <strong>${observedRange}</strong></span>
+      <span
+        >Missing in range:
+        <strong>${formatPlateIndexList(coverage.missingPlateIndexes)}</strong></span
+      >
+      <span
+        >Reprinted: <strong>${formatPlateIndexList(coverage.duplicatePlateIndexes)}</strong></span
+      >
+      ${coverage.unknownPlateIndexCount > 0 &&
+      html`<span>Unknown plate #: <strong>${coverage.unknownPlateIndexCount}</strong></span>`}
+    </div>
+    <p class="helper-text">
+      This shows what PrintWorks has seen in print history. It can detect gaps within observed plate
+      numbers, but it cannot prove a model is complete unless the expected plate count is known.
+    </p>
+  </section>`;
+}
+
 function ProjectPlatesTable({ plates, loading }: { plates: ProjectPlateRow[]; loading: boolean }) {
   if (loading) return html`<div class="empty">Loading project plates…</div>`;
   if (plates.length === 0) return null;
@@ -63,16 +99,19 @@ function ProjectPlatesTable({ plates, loading }: { plates: ProjectPlateRow[]; lo
         </thead>
         <tbody>
           ${plates.map(
-            (plate) => html`<tr key=${plate.id}>
-              <td class="td-title">
-                <span class="row-title">${plate.title || `Plate ${plate.plateIndex ?? "—"}`}</span>
-              </td>
-              <td>${plate.jobTitle || `Job #${plate.jobId}`}</td>
-              <td>${plate.status || "—"}</td>
-              <td title=${plate.startTime || ""}>${fmtDateShort(plate.startTime)}</td>
-              <td class="td-num"><strong>${fmtWeight(plate.weight)}</strong></td>
-              <td class="td-num">${fmtTime(plate.costTime)}</td>
-            </tr>`,
+            (plate) =>
+              html`<tr key=${plate.id}>
+                <td class="td-title">
+                  <span class="row-title"
+                    >${plate.title || `Plate ${plate.plateIndex ?? "—"}`}</span
+                  >
+                </td>
+                <td>${plate.jobTitle || `Job #${plate.jobId}`}</td>
+                <td>${plate.status || "—"}</td>
+                <td title=${plate.startTime || ""}>${fmtDateShort(plate.startTime)}</td>
+                <td class="td-num"><strong>${fmtWeight(plate.weight)}</strong></td>
+                <td class="td-num">${fmtTime(plate.costTime)}</td>
+              </tr>`,
           )}
         </tbody>
       </table>
@@ -258,6 +297,7 @@ function ProjectDetail({
         onRemoveJob=${onRemoveJob}
         onMoveToNewProject=${setMoveJob}
       />
+      <${ProjectPlateCoverageSummary} plates=${projectPlates} />
       <${ProjectPlatesTable} plates=${projectPlates} loading=${platesLoading} />
       ${showAddJobs &&
       html`<${AddJobsModal}

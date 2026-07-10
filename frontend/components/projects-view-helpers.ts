@@ -26,6 +26,21 @@ export type Job = {
   final_price?: number | null;
 };
 
+export type PlateCoverageInput = {
+  plateIndex: number | null;
+};
+
+export type ProjectPlateCoverage = {
+  printedCount: number;
+  uniquePlateCount: number;
+  observedStart: number | null;
+  observedEnd: number | null;
+  duplicatePlateIndexes: number[];
+  missingPlateIndexes: number[];
+  unknownPlateIndexCount: number;
+  isContiguous: boolean;
+};
+
 export function filterProjects(projects: Project[], q: string): Project[] {
   if (!q) return projects;
   const lc = q.toLowerCase();
@@ -52,6 +67,42 @@ export function updateProjectInList(projects: Project[], updated: Project): Proj
   return projects.map((project) =>
     project.id === updated.id ? { ...project, ...updated } : project,
   );
+}
+
+export function getProjectPlateCoverage(plates: PlateCoverageInput[]): ProjectPlateCoverage {
+  const counts = new Map<number, number>();
+  let unknownPlateIndexCount = 0;
+
+  for (const plate of plates) {
+    if (plate.plateIndex == null) {
+      unknownPlateIndexCount += 1;
+      continue;
+    }
+    counts.set(plate.plateIndex, (counts.get(plate.plateIndex) ?? 0) + 1);
+  }
+
+  const observedIndexes = [...counts.keys()].sort((a, b) => a - b);
+  const observedStart = observedIndexes[0] ?? null;
+  const observedEnd = observedIndexes.at(-1) ?? null;
+  const duplicatePlateIndexes = observedIndexes.filter((index) => (counts.get(index) ?? 0) > 1);
+  const missingPlateIndexes: number[] = [];
+
+  if (observedStart != null && observedEnd != null) {
+    for (let index = observedStart; index <= observedEnd; index += 1) {
+      if (!counts.has(index)) missingPlateIndexes.push(index);
+    }
+  }
+
+  return {
+    printedCount: plates.length,
+    uniquePlateCount: observedIndexes.length,
+    observedStart,
+    observedEnd,
+    duplicatePlateIndexes,
+    missingPlateIndexes,
+    unknownPlateIndexCount,
+    isContiguous: missingPlateIndexes.length === 0,
+  };
 }
 
 export function showAutoGroupToast(projectsCreated: number, jobsAssigned: number): void {
