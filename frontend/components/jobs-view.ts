@@ -14,6 +14,7 @@ import {
 } from "./helpers.js";
 import { Badge, RowThumb, CoverImg, FilamentSwatches } from "./atoms.js";
 import { createProductFromJob } from "../lib/api.js";
+import { copyTextToClipboard, formatJobForClipboard } from "../lib/copy-format.js";
 import { toast } from "./toast.js";
 export { PrinterBreakdownView } from "./jobs-printer-breakdown.js";
 import type { DataRange, Job, Summary } from "./jobs-view-types.js";
@@ -324,6 +325,16 @@ function JobsSortBar({
   </div>`;
 }
 
+async function copyJobDetails(job: Job, event: Event): Promise<void> {
+  event.stopPropagation();
+  try {
+    await copyTextToClipboard(formatJobForClipboard(job));
+    toast("Print details copied.", "success");
+  } catch (error: unknown) {
+    toast(error instanceof Error ? error.message : "Failed to copy print details.", "error");
+  }
+}
+
 function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
   return html`
     <article class="jobs-record-row" onClick=${() => onJobClick(job)}>
@@ -356,6 +367,13 @@ function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) =>
         >
         <span>🧱 <strong>${job.plate_count ?? "—"}</strong></span>
         ${job.customer ? html`<span class="customer-pill">${job.customer}</span>` : null}
+        <button
+          class="btn-secondary btn-compact"
+          type="button"
+          onClick=${(event: Event) => copyJobDetails(job, event)}
+        >
+          Copy
+        </button>
       </div>
     </article>
   `;
@@ -417,6 +435,13 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
           <${JobRunBadge} printRun=${job.print_run} />
           ${job.customer && html`<span class="customer-pill">${job.customer}</span>`}
           <${FilamentSwatches} colors=${job.filament_colors} />
+          <button
+            class="btn-secondary btn-compact"
+            type="button"
+            onClick=${(event: Event) => copyJobDetails(job, event)}
+          >
+            Copy
+          </button>
           <button class="btn-secondary btn-compact" type="button" onClick=${createProduct}>
             Create product
           </button>

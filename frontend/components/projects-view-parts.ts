@@ -11,6 +11,7 @@ import {
 } from "./helpers.js";
 import { Badge, RowThumb } from "./atoms.js";
 import { createProductFromProject } from "../lib/api.js";
+import { copyTextToClipboard, formatProjectForClipboard } from "../lib/copy-format.js";
 import { toast } from "./toast.js";
 import type { Job, Project } from "./projects-view-helpers.js";
 import type { ProjectPrice } from "../hooks/use-project-price.js";
@@ -43,6 +44,15 @@ function ProjectCard({
     const product = await createProductFromProject(project.id);
     if (product) toast(`Created product: ${product.name}`, "success");
   };
+  const copyProject = async (event: Event) => {
+    event.stopPropagation();
+    try {
+      await copyTextToClipboard(formatProjectForClipboard(project));
+      toast("Project details copied.", "success");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "Failed to copy project details.", "error");
+    }
+  };
   return html`
     <div class="proj-card" onClick=${onClick}>
       ${project.cover_url
@@ -61,6 +71,9 @@ function ProjectCard({
           }}
         >
           Rename
+        </button>
+        <button type="button" class="btn-secondary proj-card-action" onClick=${copyProject}>
+          Copy
         </button>
         <button type="button" class="btn-secondary proj-card-action" onClick=${createProduct}>
           Create product

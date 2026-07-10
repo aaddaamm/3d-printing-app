@@ -22,6 +22,7 @@ import {
   type Project,
 } from "./projects-view-helpers.js";
 import { createProductFromProject, patchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import { copyTextToClipboard, formatProjectForClipboard } from "../lib/copy-format.js";
 import { toast } from "./toast.js";
 import { useProjectPrice } from "../hooks/use-project-price.js";
 
@@ -89,6 +90,15 @@ function ProjectDetail({
     if (product) toast(`Created product: ${product.name}`, "success");
   }, [project.id]);
 
+  const copyProject = useCallback(async () => {
+    try {
+      await copyTextToClipboard(formatProjectForClipboard(project, jobsWithStablePrices));
+      toast("Project details copied.", "success");
+    } catch (error: unknown) {
+      toast(error instanceof Error ? error.message : "Failed to copy project details.", "error");
+    }
+  }, [jobsWithStablePrices, project]);
+
   const saveProject = useCallback(async () => {
     const data = await patchJsonOrToast<{ project?: Project }>(
       `/projects/${project.id}`,
@@ -115,6 +125,7 @@ function ProjectDetail({
         <button class="btn-secondary" onClick=${() => setEditing((value) => !value)}>
           ${editing ? "Cancel edit" : "Edit project"}
         </button>
+        <button class="btn-secondary" onClick=${copyProject}>Copy details</button>
         <button class="btn-secondary" onClick=${createProduct}>Create product</button>
         <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
       </div>
