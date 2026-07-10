@@ -50,6 +50,8 @@ function ProjectCard({
         : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`}
       <div class="proj-card-title-row">
         <div class="proj-card-name">${project.name}</div>
+      </div>
+      <div class="proj-card-actions">
         <button
           type="button"
           class="btn-secondary proj-card-action"

@@ -476,6 +476,8 @@
       ${t.cover_url?U`<img class="proj-card-cover" src=${t.cover_url} alt="" />`:U`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`}
       <div class="proj-card-title-row">
         <div class="proj-card-name">${t.name}</div>
+      </div>
+      <div class="proj-card-actions">
         <button
           type="button"
           class="btn-secondary proj-card-action"

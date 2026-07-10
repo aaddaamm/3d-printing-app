@@ -1348,14 +1348,19 @@ tbody td {
   font-size: 2rem;
 }
 .proj-card-title-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 8px;
+  min-width: 0;
 }
 .proj-card-name {
   font-size: 1rem;
   font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.proj-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
 }
 .proj-card-action {
   flex: 0 0 auto;
