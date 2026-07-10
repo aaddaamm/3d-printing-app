@@ -134,6 +134,22 @@ export type ProjectSummary = {
   total_time_s?: number | null;
 };
 
+export type JobPlateSummary = {
+  id: string;
+  plateIndex: number | null;
+  title: string | null;
+  status: string | null;
+  weight: number | null;
+  costTime: number | null;
+  startTime: string | null;
+  endTime: string | null;
+};
+
+export type JobDetailResponse = {
+  job: { id: number };
+  plates: JobPlateSummary[];
+};
+
 type ProductsResponse = { products: ProductSummary[] };
 type ProductResponse = { product: ProductSummary };
 type ProjectsResponse = { projects: ProjectSummary[] };
@@ -231,6 +247,10 @@ export async function postJsonOrToast<T = JsonRecord>(
 export async function fetchProjects(): Promise<ProjectSummary[]> {
   const data = await fetchJson<ProjectsResponse>("/api/projects", "Failed to load projects.");
   return data.projects;
+}
+
+export async function fetchJobDetails(jobId: number): Promise<JobDetailResponse> {
+  return fetchJson<JobDetailResponse>(`/jobs/${jobId}`, "Failed to load job details.");
 }
 
 export async function fetchProducts(): Promise<ProductSummary[]> {

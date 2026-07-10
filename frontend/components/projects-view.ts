@@ -1,10 +1,10 @@
 // ── Projects view ─────────────────────────────────────────────────────────────
 
 import { h } from "preact";
-import { useState, useMemo, useCallback, useRef } from "preact/hooks";
+import { useState, useMemo, useCallback, useEffect, useRef } from "preact/hooks";
 import htm from "htm";
 
-import { fmtTime, fmtWeightTotal } from "./helpers.js";
+import { fmtDateShort, fmtTime, fmtWeight, fmtWeightTotal } from "./helpers.js";
 import { useLocation } from "./router.js";
 import { ProjectJobsTable, ProjectPriceSummary, ProjectsBody } from "./projects-view-parts.js";
 import { MoveJobToNewProjectModal } from "./project-move-job-modal.js";
@@ -21,7 +21,13 @@ import {
   type Job,
   type Project,
 } from "./projects-view-helpers.js";
-import { createProductFromProject, patchJsonOrToast, postJsonOrToast } from "../lib/api.js";
+import {
+  createProductFromProject,
+  fetchJobDetails,
+  patchJsonOrToast,
+  postJsonOrToast,
+  type JobPlateSummary,
+} from "../lib/api.js";
 import { copyTextToClipboard, formatProjectForClipboard } from "../lib/copy-format.js";
 import { toast } from "./toast.js";
 import { useProjectPrice } from "../hooks/use-project-price.js";
@@ -31,6 +37,48 @@ const html = (
     bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
+
+type ProjectPlateRow = JobPlateSummary & {
+  jobId: number;
+  jobTitle?: string | null;
+};
+
+function ProjectPlatesTable({ plates, loading }: { plates: ProjectPlateRow[]; loading: boolean }) {
+  if (loading) return html`<div class="empty">Loading project plates…</div>`;
+  if (plates.length === 0) return null;
+
+  return html`<section class="admin-section project-plates-section">
+    <h3 class="admin-section-title">Plates</h3>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Plate</th>
+            <th>Print</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th class="td-num">Filament</th>
+            <th class="td-num">Time</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${plates.map(
+            (plate) => html`<tr key=${plate.id}>
+              <td class="td-title">
+                <span class="row-title">${plate.title || `Plate ${plate.plateIndex ?? "—"}`}</span>
+              </td>
+              <td>${plate.jobTitle || `Job #${plate.jobId}`}</td>
+              <td>${plate.status || "—"}</td>
+              <td title=${plate.startTime || ""}>${fmtDateShort(plate.startTime)}</td>
+              <td class="td-num"><strong>${fmtWeight(plate.weight)}</strong></td>
+              <td class="td-num">${fmtTime(plate.costTime)}</td>
+            </tr>`,
+          )}
+        </tbody>
+      </table>
+    </div>
+  </section>`;
+}
 
 function ProjectDetail({
   project,
@@ -61,6 +109,8 @@ function ProjectDetail({
   const [editName, setEditName] = useState(project.name ?? "");
   const [editCustomer, setEditCustomer] = useState(project.customer ?? "");
   const [editNotes, setEditNotes] = useState(project.notes ?? "");
+  const [projectPlates, setProjectPlates] = useState<ProjectPlateRow[]>([]);
+  const [platesLoading, setPlatesLoading] = useState(false);
   const effectiveJobCount = project.job_count ?? jobs.length;
   const price = useProjectPrice(project.id, effectiveJobCount);
   const totW = sumJobWeight(jobs);
@@ -81,6 +131,43 @@ function ProjectDetail({
       if (cachedPrice === null || cachedPrice === undefined) return job;
       return { ...job, final_price: cachedPrice };
     });
+  }, [jobs]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadProjectPlates = async () => {
+      if (jobs.length === 0) {
+        setProjectPlates([]);
+        return;
+      }
+
+      setPlatesLoading(true);
+      try {
+        const details = await Promise.all(jobs.map((job) => fetchJobDetails(job.id)));
+        if (cancelled) return;
+        setProjectPlates(
+          details.flatMap((detail) => {
+            const sourceJob = jobs.find((job) => job.id === detail.job.id);
+            return detail.plates.map((plate) => ({
+              ...plate,
+              jobId: detail.job.id,
+              jobTitle: sourceJob?.designTitle ?? null,
+            }));
+          }),
+        );
+      } catch (error: unknown) {
+        if (!cancelled) {
+          toast(error instanceof Error ? error.message : "Failed to load project plates.", "error");
+        }
+      } finally {
+        if (!cancelled) setPlatesLoading(false);
+      }
+    };
+
+    void loadProjectPlates();
+    return () => {
+      cancelled = true;
+    };
   }, [jobs]);
 
   const handleAdd = useCallback((jobId: number) => onAddJob(jobId), [onAddJob]);
@@ -171,6 +258,7 @@ function ProjectDetail({
         onRemoveJob=${onRemoveJob}
         onMoveToNewProject=${setMoveJob}
       />
+      <${ProjectPlatesTable} plates=${projectPlates} loading=${platesLoading} />
       ${showAddJobs &&
       html`<${AddJobsModal}
         unassignedJobs=${unassignedJobs}
