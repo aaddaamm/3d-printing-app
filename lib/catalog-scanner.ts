@@ -91,6 +91,17 @@ export function shouldSkipCatalogDirectory(dirname: string): boolean {
   return SKIPPED_CATALOG_DIRECTORIES.has(dirname);
 }
 
+function isPathInsideRoot(root: string, candidate: string): boolean {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
+}
+
+function resolveCatalogChildPath(root: string, parent: string, childName: string): string | null {
+  const candidate = path.resolve(parent, childName);
+  return isPathInsideRoot(root, candidate) ? candidate : null;
+}
+
 export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscoveryResult {
   const root = path.resolve(rootPath);
   const discovered: DiscoveredCatalogFile[] = [];
@@ -107,7 +118,11 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
     }
 
     for (const entry of entries) {
-      const entryPath = path.join(directory, entry.name);
+      const entryPath = resolveCatalogChildPath(root, directory, entry.name);
+      if (!entryPath) {
+        skipped++;
+        continue;
+      }
       if (entry.isSymbolicLink()) {
         skipped++;
         continue;

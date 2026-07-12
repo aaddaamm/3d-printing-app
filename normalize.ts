@@ -114,7 +114,7 @@ function getAmsMapping(payload: TaskPayload): Record<string, unknown>[] {
   if (!Array.isArray(amsMappingRaw)) return [];
 
   return amsMappingRaw.filter(
-    (slot): slot is Record<string, unknown> => !!slot && typeof slot === "object",
+    (slot): slot is Record<string, unknown> => Boolean(slot) && typeof slot === "object",
   );
 }
 
@@ -229,6 +229,8 @@ function backfillTasksAndBuildSessions(
   return sessionAccumulators;
 }
 
+const compareIsoStrings = (a: string, b: string): number => a.localeCompare(b);
+
 function upsertJobs(sessionAccumulators: Map<string, SessionAccumulator>): number {
   let jobsDone = 0;
 
@@ -247,8 +249,12 @@ function upsertJobs(sessionAccumulators: Map<string, SessionAccumulator>): numbe
         modelId: acc.modelId,
         deviceId: acc.deviceId,
         deviceModel: acc.deviceModel,
-        startTime: acc.startTimes.length ? ([...acc.startTimes].sort()[0] ?? null) : null,
-        endTime: acc.endTimes.length ? ([...acc.endTimes].sort().at(-1) ?? null) : null,
+        startTime: acc.startTimes.length
+          ? ([...acc.startTimes].sort(compareIsoStrings)[0] ?? null)
+          : null,
+        endTime: acc.endTimes.length
+          ? ([...acc.endTimes].sort(compareIsoStrings).at(-1) ?? null)
+          : null,
         total_weight_g: Math.round(acc.total_weight_g * 100) / 100,
         total_time_s: acc.total_time_s,
         plate_count: acc.plate_count,

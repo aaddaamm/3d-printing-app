@@ -21,7 +21,12 @@ type UiDataResponse = {
 };
 
 const SOURCE_DB = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
-const GATES = ["npm run typecheck", "npm run lint", "npm test", "npm run build"];
+const GATES: Array<{ command: string; args: string[]; label: string }> = [
+  { command: "npm", args: ["run", "typecheck"], label: "npm run typecheck" },
+  { command: "npm", args: ["run", "lint"], label: "npm run lint" },
+  { command: "npm", args: ["test"], label: "npm test" },
+  { command: "npm", args: ["run", "build"], label: "npm run build" },
+];
 
 function logStep(message: string): void {
   console.log(`\n▶ ${message}`);
@@ -35,17 +40,17 @@ function warn(message: string): void {
   console.log(`  ⚠ ${message}`);
 }
 
-function runGate(command: string): void {
-  logStep(command);
-  const result = spawnSync(command, {
-    shell: true,
+function runGate(gate: { command: string; args: string[]; label: string }): void {
+  logStep(gate.label);
+  const result = spawnSync(gate.command, gate.args, {
+    shell: false,
     stdio: "inherit",
     env: process.env,
   });
   if (result.status !== 0) {
-    throw new Error(`${command} failed with exit code ${result.status ?? "unknown"}`);
+    throw new Error(`${gate.label} failed with exit code ${result.status ?? "unknown"}`);
   }
-  pass(command);
+  pass(gate.label);
 }
 
 function randomPort(): number {

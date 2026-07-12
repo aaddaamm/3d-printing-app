@@ -42,6 +42,19 @@ const fileCache = new Map<string, string>();
 const SAFE_ASSET_FILE_RE = /^[\w.-]+$/;
 const SAFE_FONT_FILE_RE = /^[\w,.-]+\.(woff2|ttf)$/;
 
+function assertInsideDirectory(root: string, candidate: string): string {
+  const resolvedRoot = path.resolve(root);
+  const resolvedCandidate = path.resolve(candidate);
+  if (resolvedCandidate !== resolvedRoot && !resolvedCandidate.startsWith(resolvedRoot + path.sep)) {
+    throw new Error(`Refusing to serve file outside ${resolvedRoot}: ${resolvedCandidate}`);
+  }
+  return resolvedCandidate;
+}
+
+function resolveStaticFile(root: string, file: string): string {
+  return assertInsideDirectory(root, path.join(root, file));
+}
+
 function readTextFile(filePath: string): string {
   if (!isProd) return readFileSync(filePath, "utf8");
 
@@ -99,7 +112,7 @@ function serveAssetFile(c: Context): Response {
   const file = c.req.param("file");
   if (!file || !SAFE_ASSET_FILE_RE.test(file)) return notFound(c);
 
-  const filePath = path.join(DIST_ASSETS_PATH, file);
+  const filePath = resolveStaticFile(DIST_ASSETS_PATH, file);
   if (file.endsWith(".css")) return serveOptionalTextFile(c, filePath, "text/css");
   if (file.endsWith(".js")) return serveOptionalTextFile(c, filePath, "application/javascript");
   if (!existsSync(filePath)) return notFound(c);
@@ -109,7 +122,7 @@ function serveAssetFile(c: Context): Response {
 function serveChunkFile(c: Context): Response {
   const file = c.req.param("file");
   if (!file || !SAFE_ASSET_FILE_RE.test(file)) return notFound(c);
-  const filePath = path.join(DIST_CHUNKS_PATH, file);
+  const filePath = resolveStaticFile(DIST_CHUNKS_PATH, file);
   return serveOptionalTextFile(c, filePath, "application/javascript");
 }
 

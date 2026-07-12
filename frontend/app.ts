@@ -134,11 +134,14 @@ function useJobsViewState({
   loc,
 }: UseJobsViewStateArgs) {
   const devices = useMemo(
-    () => [...new Set(jobs.map((j) => j.deviceModel).filter((d): d is string => !!d))].sort(),
+    () =>
+      [...new Set(jobs.map((j) => j.deviceModel).filter((d): d is string => Boolean(d)))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
     [jobs],
   );
 
-  const isFiltered = !!(q || statusFilter || deviceFilter);
+  const isFiltered = Boolean(q || statusFilter || deviceFilter);
   const filtered = useMemo(
     () => filterDashboardJobs(jobs, q, statusFilter, deviceFilter),
     [jobs, q, statusFilter, deviceFilter],

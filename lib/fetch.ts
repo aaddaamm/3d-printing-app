@@ -82,6 +82,14 @@ export async function fetchWithRetry(
   throw new Error("fetchWithRetry: exhausted retries");
 }
 
+function buildBambuTasksUrl(baseUrl: string): URL {
+  try {
+    return new URL("/v1/user-service/my/tasks", baseUrl);
+  } catch (error: unknown) {
+    throw new Error(`Invalid Bambu API base URL: ${baseUrl}`, { cause: error });
+  }
+}
+
 export async function fetchTasks({
   baseUrl,
   token,
@@ -89,7 +97,7 @@ export async function fetchTasks({
   offset = 0,
   deviceId,
 }: FetchTasksParams): Promise<BambuApiResponse> {
-  const url = new URL(`${baseUrl}/v1/user-service/my/tasks`);
+  const url = buildBambuTasksUrl(baseUrl);
   url.searchParams.set("limit", String(limit));
   if (offset > 0) url.searchParams.set("offset", String(offset));
   if (deviceId) url.searchParams.set("deviceId", deviceId);

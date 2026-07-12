@@ -1,14 +1,37 @@
 import { db } from "./db.js";
 
+type PriceCacheTable = "job_price_cache" | "project_price_cache";
+type PriceCacheIdColumn = "job_id" | "project_id";
+
+const PRICE_CACHE_TABLES: Record<PriceCacheTable, PriceCacheTable> = {
+  job_price_cache: "job_price_cache",
+  project_price_cache: "project_price_cache",
+};
+
+const PRICE_CACHE_ID_COLUMNS: Record<PriceCacheIdColumn, PriceCacheIdColumn> = {
+  job_id: "job_id",
+  project_id: "project_id",
+};
+
+function safePriceCacheTable(table: PriceCacheTable): PriceCacheTable {
+  return PRICE_CACHE_TABLES[table];
+}
+
+function safePriceCacheIdColumn(column: PriceCacheIdColumn): PriceCacheIdColumn {
+  return PRICE_CACHE_ID_COLUMNS[column];
+}
+
 interface ReadPriceCacheOptions {
-  cacheTable: "job_price_cache" | "project_price_cache";
-  idColumn: "job_id" | "project_id";
+  cacheTable: PriceCacheTable;
+  idColumn: PriceCacheIdColumn;
   targetCountSql: string;
   hasActiveSql?: string;
 }
 
 export function readPriceCache(options: ReadPriceCacheOptions): Record<number, number> | null {
-  const { cacheTable, idColumn, targetCountSql, hasActiveSql } = options;
+  const { targetCountSql, hasActiveSql } = options;
+  const cacheTable = safePriceCacheTable(options.cacheTable);
+  const idColumn = safePriceCacheIdColumn(options.idColumn);
 
   try {
     if (hasActiveSql) {
@@ -44,7 +67,8 @@ export function writePriceCache(
   options: WritePriceCacheOptions,
   prices: Record<number, number>,
 ): void {
-  const { cacheTable, idColumn } = options;
+  const cacheTable = safePriceCacheTable(options.cacheTable);
+  const idColumn = safePriceCacheIdColumn(options.idColumn);
 
   try {
     const now = new Date().toISOString();

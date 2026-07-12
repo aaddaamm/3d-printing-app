@@ -53,7 +53,7 @@ export function sqliteVersionAtLeast(version: string, minimum: string): boolean 
 }
 
 export function tableExists(db: Database.Database, tableName: string): boolean {
-  return !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(tableName);
+  return Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?").get(tableName));
 }
 
 export function columnExists(

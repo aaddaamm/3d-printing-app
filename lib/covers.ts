@@ -22,24 +22,23 @@ function sanitizeTaskId(taskId: string): string {
   return taskId;
 }
 
+function assertInsideCoversDir(candidate: string): string {
+  const root = ensureCoversDir();
+  const resolved = path.resolve(candidate);
+  if (resolved !== root && !resolved.startsWith(root + path.sep)) {
+    throw new Error(`Refusing path outside covers dir: ${resolved}`);
+  }
+  return resolved;
+}
+
 export function localCoverPath(taskId: string): string {
   const safeTaskId = sanitizeTaskId(taskId);
-  const root = ensureCoversDir();
-  const candidate = path.resolve(root, safeTaskId + ".png");
-  if (!candidate.startsWith(root + path.sep)) {
-    throw new Error(`Refusing path outside covers dir: ${candidate}`);
-  }
-  return candidate;
+  return assertInsideCoversDir(path.join(ensureCoversDir(), safeTaskId + ".png"));
 }
 
 export function localCoverExists(taskId: string): boolean {
   if (!isSafeTaskId(taskId)) return false;
-  const coverPath = localCoverPath(taskId);
-  const root = ensureCoversDir();
-  if (!coverPath.startsWith(root + path.sep)) {
-    throw new Error(`Refusing path outside covers dir: ${coverPath}`);
-  }
-  return fs.existsSync(coverPath);
+  return fs.existsSync(localCoverPath(taskId));
 }
 
 /**

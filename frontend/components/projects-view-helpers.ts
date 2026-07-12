@@ -74,7 +74,7 @@ export function getProjectPlateCoverage(plates: PlateCoverageInput[]): ProjectPl
   let unknownPlateIndexCount = 0;
 
   for (const plate of plates) {
-    if (plate.plateIndex == null) {
+    if (plate.plateIndex === null) {
       unknownPlateIndexCount += 1;
       continue;
     }
@@ -87,7 +87,7 @@ export function getProjectPlateCoverage(plates: PlateCoverageInput[]): ProjectPl
   const duplicatePlateIndexes = observedIndexes.filter((index) => (counts.get(index) ?? 0) > 1);
   const missingPlateIndexes: number[] = [];
 
-  if (observedStart != null && observedEnd != null) {
+  if (observedStart !== null && observedEnd !== null) {
     for (let index = observedStart; index <= observedEnd; index += 1) {
       if (!counts.has(index)) missingPlateIndexes.push(index);
     }

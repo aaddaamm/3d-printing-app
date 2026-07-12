@@ -10,21 +10,21 @@ const html = (
 ).bind(h);
 
 export function formatBatchMoney(value: number | null | undefined): string {
-  return value == null ? "—" : `$${value.toFixed(2)}`;
+  return value === null || value === undefined ? "—" : `$${value.toFixed(2)}`;
 }
 
 export function formatBatchMargin(value: number | null | undefined): string {
-  return value == null ? "—" : `${Math.round(value * 100)}%`;
+  return value === null || value === undefined ? "—" : `${Math.round(value * 100)}%`;
 }
 
 export function formatBatchTime(seconds: number | null | undefined): string {
-  if (seconds == null) return "—";
+  if (seconds === null || seconds === undefined) return "—";
   if (seconds < 3600) return `${Math.round(seconds / 60)} min`;
   return `${(seconds / 3600).toFixed(1)} h`;
 }
 
 export function batchMarginClass(value: number | null | undefined): string {
-  if (value == null) return "batch-margin batch-margin--unknown";
+  if (value === null || value === undefined) return "batch-margin batch-margin--unknown";
   if (value >= 0.45) return "batch-margin batch-margin--good";
   if (value >= 0.25) return "batch-margin batch-margin--ok";
   return "batch-margin batch-margin--low";
@@ -42,7 +42,9 @@ export function BatchPriceBreakdown({ batch }: { batch: BatchSummary }) {
     <${PriceMetric} label="Margin" value=${formatBatchMargin(batch.estimated_margin_pct)} />
     <${PriceMetric}
       label="Material"
-      value=${batch.total_filament_g == null ? "—" : `${batch.total_filament_g.toFixed(1)} g`}
+      value=${batch.total_filament_g === null || batch.total_filament_g === undefined
+        ? "—"
+        : `${batch.total_filament_g.toFixed(1)} g`}
     />
     <${PriceMetric} label="Print time" value=${formatBatchTime(batch.total_print_time_s)} />
   </div>`;

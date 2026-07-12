@@ -52,7 +52,7 @@ function ProjectPlateCoverageSummary({ plates }: { plates: ProjectPlateRow[] }) 
   if (plates.length === 0) return null;
   const coverage = getProjectPlateCoverage(plates);
   const observedRange =
-    coverage.observedStart == null || coverage.observedEnd == null
+    coverage.observedStart === null || coverage.observedEnd === null
       ? "unknown"
       : `${coverage.observedStart}–${coverage.observedEnd}`;
 
