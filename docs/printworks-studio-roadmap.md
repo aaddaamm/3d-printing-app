@@ -1,5 +1,9 @@
 # PrintWorks Studio Roadmap
 
+> This is a product-direction document, not a description of the current release. The README
+> and `AGENTS.md` describe implemented behavior. In particular, the current scanner supports a
+> narrower file set, uses path-based identity, and does not yet reconcile moves or manage files.
+
 PrintWorks Studio is the long-term evolution of this application from a 3D print pricing/history tool into the central operating system for Robinson PrintWorks.
 
 Pricing remains important, but it becomes one module in a larger local-first business system for cataloging printable products, tracking files and licensing, managing production, inventory, sales, and analytics.

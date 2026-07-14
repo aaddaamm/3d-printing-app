@@ -123,7 +123,7 @@ Cover image URLs from Bambu are short-lived. Sync downloads them to `covers/{tas
 
 ## Catalog file scanner
 
-The catalog scanner is index-first: it records local file paths and metadata in SQLite without copying, moving, or attaching files to products automatically. In the local UI, use the Catalog tab to manage scan roots and run a synchronous scan.
+The catalog scanner is index-first: it records local file paths and metadata in SQLite without copying or moving files. In the local UI, use the Catalog tab to manage scan roots, run a synchronous scan, triage newly discovered files, browse indexed files, view embedded 3MF previews, and review exact-content duplicate groups.
 
 ```bash
 npm run catalog -- roots add /path/to/models Models
@@ -132,7 +132,17 @@ npm run catalog -- scan
 npm run catalog -- roots remove 1
 ```
 
-The first scanner slice indexes common 3D/source/G-code files (`.3mf`, `.stl`, `.step`, `.stp`, `.obj`, `.f3d`, `.blend`, `.gcode`) and skips archives by default. Scan output is a concise counts summary.
+The scanner indexes common 3D/source/G-code files (`.3mf`, `.stl`, `.step`, `.stp`, `.obj`, `.f3d`, `.blend`, `.gcode`) and skips archives, images, PDFs, symlinks, and unsupported files. New or changed files are SHA-256 hashed; embedded PNG/JPEG previews are cached from 3MF archives when available. Scan output is a concise counts summary.
+
+Current boundaries:
+
+- File identity is path-based. Moving or renaming a file creates a new indexed path and leaves the old record marked missing; matching hashes are reported as duplicates but do not reconcile moves.
+- Scans run in the API request/CLI process and hash files sequentially; there is no background queue or filesystem watcher.
+- Deactivating a root preserves its records, but there is no reactivation action yet.
+- Newly discovered files enter the inbox. Adoption explicitly links the original file to a new or existing product without moving it; ignored files remain indexed but leave the inbox.
+- Files that predate the inbox migration are marked `indexed` rather than flooding the inbox.
+- Managed copy/move operations are not implemented yet; all current adoptions are references to files in place.
+- Only configure roots that are reliably readable. An unavailable root can currently produce failed discovery and missing-file transitions.
 
 ## Product Pipeline
 
@@ -256,6 +266,22 @@ gate in the local-first mode.
 | `POST`   | `/api/batches/:id/jobs`        | Link a print job to a batch     |
 | `DELETE` | `/api/batches/:id/jobs/:jobId` | Remove a print job from a batch |
 
+### Catalog
+
+| Method   | Path                      | Description                                      |
+| -------- | ------------------------- | ------------------------------------------------ |
+| `GET`    | `/catalog/files`          | List indexed catalog-file summaries              |
+| `GET`    | `/catalog/inbox`          | List present files awaiting review                |
+| `GET`    | `/catalog/duplicates`     | Group exact-content matches by SHA-256 hash       |
+| `GET`    | `/catalog/previews/:file` | Serve a cached embedded 3MF preview               |
+| `POST`   | `/catalog/files/:id/adopt`| Link a file to a new or existing product          |
+| `POST`   | `/catalog/files/:id/ignore`| Remove a discovery from the inbox                |
+| `POST`   | `/catalog/files/:id/inbox`| Return an indexed file to the review inbox        |
+| `GET`    | `/catalog/roots`          | List active and inactive scan roots               |
+| `POST`   | `/catalog/roots`          | Add an existing server-local directory            |
+| `DELETE` | `/catalog/roots/:id`      | Deactivate a root without deleting indexed files  |
+| `POST`   | `/catalog/scan`           | Synchronously scan every active root              |
+
 ### Tasks
 
 `print_tasks` are raw imported provider history records after light normalization. Bambu records are usually per-plate; Moonraker records are completed history jobs.
@@ -344,6 +370,10 @@ Projects group related jobs. Auto-grouping creates projects by MakerWorld `desig
 - **jobs**: one row per detected session. Bambu keeps plate grouping; generic providers default to one history record per job. Business fields live here: `customer`, `notes`, `price_override`, `status_override`, `extra_labor_minutes`, `project_id`.
 - **job_filaments**: material usage per task when the provider/slicer exposes usable weight data.
 - **projects**: manually-created or auto-grouped collections of jobs.
+- **scan_roots**, **catalog_files**, **file_history**: allowed local directories, indexed file metadata/hashes, review state, and scan/adoption history.
+- **products**: sellable-design workflow records that may reference catalog files and production defaults.
+- **production_batches**, **batch_jobs**: production runs and their linked print jobs.
+- **pricing_profiles**: channel-specific margin, fee, labor, packaging, and minimum-price assumptions.
 - **machine_rates**, **material_rates**, **labor_config**: pricing inputs.
 - **sync_log**: sync run history.
 - **schema_migrations**: applied numbered migrations.
