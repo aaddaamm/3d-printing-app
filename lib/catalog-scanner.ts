@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import {
-  createCatalogStatements,
-  type CatalogStatements,
-} from "./db/catalog-statements.js";
+import { extract3mfPreview, previewContentType, writeCatalogPreview } from "./catalog-preview.js";
+import { createCatalogStatements, type CatalogStatements } from "./db/catalog-statements.js";
 import type { CatalogFile, ScanRoot } from "./types.js";
 
 export { createCatalogStatements, type CatalogStatements };
@@ -94,7 +92,9 @@ export function shouldSkipCatalogDirectory(dirname: string): boolean {
 function isPathInsideRoot(root: string, candidate: string): boolean {
   const resolvedRoot = path.resolve(root);
   const resolvedCandidate = path.resolve(candidate);
-  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep);
+  return (
+    resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep)
+  );
 }
 
 function resolveCatalogChildPath(root: string, parent: string, childName: string): string | null {
@@ -184,7 +184,9 @@ export function fileNeedsContentHash(
   discovered: DiscoveredCatalogFileFingerprint,
 ): boolean {
   if (!existing?.content_hash) return true;
-  return existing.size_bytes !== discovered.sizeBytes || existing.modified_at !== discovered.modifiedAt;
+  return (
+    existing.size_bytes !== discovered.sizeBytes || existing.modified_at !== discovered.modifiedAt
+  );
 }
 
 export function addScanRoot(statements: CatalogStatements, input: AddScanRootInput): ScanRoot {
@@ -243,13 +245,49 @@ function insertHistory(
   });
 }
 
-async function updatePresentCatalogFile(
+function writePreviewMetadata(
+  statements: CatalogStatements,
+  discovered: DiscoveredCatalogFile,
+  file: CatalogFile,
+  contentHash: string,
+  now: string,
+): void {
+  if (discovered.extension !== "3mf") return;
+
+  try {
+    const preview = extract3mfPreview(discovered.path);
+    const contentType = preview ? previewContentType(preview) : null;
+    const metadataJson =
+      preview && contentType
+        ? JSON.stringify({ preview: { contentType, hash: contentHash } })
+        : null;
+
+    if (preview && contentType) writeCatalogPreview(contentHash, preview, contentType);
+    statements.updateCatalogFileMetadata.run({
+      id: file.id,
+      metadata_json: metadataJson,
+      updated_at: now,
+    });
+  } catch {
+    try {
+      statements.updateCatalogFileMetadata.run({
+        id: file.id,
+        metadata_json: null,
+        updated_at: now,
+      });
+    } catch {
+      // Preview extraction and caching are best-effort; scan results should not depend on them.
+    }
+  }
+}
+
+function updatePresentCatalogFile(
   statements: CatalogStatements,
   existing: CatalogFile,
   discovered: DiscoveredCatalogFile,
   contentHash: string,
   now: string,
-): Promise<CatalogFile> {
+): CatalogFile {
   statements.updateCatalogFilePresent.run({
     id: existing.id,
     path: discovered.path,
@@ -307,11 +345,13 @@ export async function scanCatalogRoot(
           created_at_fs: discovered.createdAtFs,
           content_hash: contentHash,
           hash_algorithm: HASH_ALGORITHM,
+          review_status: "inbox",
         });
         const inserted = statements.getCatalogFileByNormalizedPath.get(discovered.normalizedPath)!;
         if (!inserted.id && result.lastInsertRowid) {
           throw new Error(`Failed to insert catalog file: ${discovered.path}`);
         }
+        writePreviewMetadata(statements, discovered, inserted, contentHash, now);
         insertHistory(statements, inserted, "discovered", discovered.path, contentHash);
         summary.added++;
         continue;
@@ -320,13 +360,14 @@ export async function scanCatalogRoot(
       const wasMissing = existing.scan_status === "missing";
       if (fileNeedsContentHash(existing, discovered) || wasMissing) {
         const contentHash = await hashFile(discovered.path);
-        const updated = await updatePresentCatalogFile(
+        const updated = updatePresentCatalogFile(
           statements,
           existing,
           discovered,
           contentHash,
           now,
         );
+        writePreviewMetadata(statements, discovered, updated, contentHash, now);
         insertHistory(
           statements,
           updated,
@@ -342,7 +383,7 @@ export async function scanCatalogRoot(
       if (!existing.content_hash) {
         throw new Error(`Catalog file is missing content hash: ${existing.path}`);
       }
-      await updatePresentCatalogFile(statements, existing, discovered, existing.content_hash, now);
+      updatePresentCatalogFile(statements, existing, discovered, existing.content_hash, now);
       summary.unchanged++;
     } catch {
       summary.failed++;

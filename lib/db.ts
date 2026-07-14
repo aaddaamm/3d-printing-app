@@ -203,6 +203,8 @@ for (const sql of [
     original_source_path TEXT,
     original_source_root_id INTEGER REFERENCES scan_roots(id),
     scan_status TEXT NOT NULL DEFAULT 'present',
+    review_status TEXT NOT NULL DEFAULT 'indexed',
+    reviewed_at TEXT,
     missing_since TEXT,
     metadata_json TEXT,
     first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,

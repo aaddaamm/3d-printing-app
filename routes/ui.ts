@@ -45,7 +45,10 @@ const SAFE_FONT_FILE_RE = /^[\w,.-]+\.(woff2|ttf)$/;
 function assertInsideDirectory(root: string, candidate: string): string {
   const resolvedRoot = path.resolve(root);
   const resolvedCandidate = path.resolve(candidate);
-  if (resolvedCandidate !== resolvedRoot && !resolvedCandidate.startsWith(resolvedRoot + path.sep)) {
+  if (
+    resolvedCandidate !== resolvedRoot &&
+    !resolvedCandidate.startsWith(resolvedRoot + path.sep)
+  ) {
     throw new Error(`Refusing to serve file outside ${resolvedRoot}: ${resolvedCandidate}`);
   }
   return resolvedCandidate;

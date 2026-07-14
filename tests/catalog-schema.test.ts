@@ -382,6 +382,7 @@ describe.sequential("catalog foundation schema migration", () => {
         "idx_catalog_files_content_hash",
         "idx_catalog_files_extension",
         "idx_catalog_files_scan_status",
+        "idx_catalog_files_review_status",
         "idx_catalog_files_storage_role",
         "idx_catalog_files_managed_blob",
         "idx_catalog_files_filename",

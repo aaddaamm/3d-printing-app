@@ -169,6 +169,8 @@ export interface CatalogFile {
   original_source_path: string | null;
   original_source_root_id: number | null;
   scan_status: string;
+  review_status: string;
+  reviewed_at: string | null;
   missing_since: string | null;
   metadata_json: string | null;
   first_seen_at: string;

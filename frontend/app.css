@@ -1986,6 +1986,185 @@ tbody td {
   align-items: flex-start;
 }
 
+.catalog-section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.catalog-file-count {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.catalog-file-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 14px;
+}
+
+.catalog-file-card {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(17, 21, 34, 0.72);
+}
+
+.catalog-file-card.is-missing {
+  opacity: 0.58;
+}
+
+.catalog-file-preview {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 4 / 3;
+  background: rgba(7, 10, 18, 0.78);
+}
+
+.catalog-file-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.catalog-file-placeholder {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  letter-spacing: 0.08em;
+}
+
+.catalog-file-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+}
+
+.catalog-file-name {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.86rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-file-folder {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.catalog-file-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.catalog-file-meta span:not(:last-child)::after {
+  content: "·";
+  margin-left: 6px;
+}
+
+.catalog-file-link {
+  color: var(--accent);
+  font-size: 11px;
+}
+
+.catalog-inbox-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.catalog-inbox-card {
+  display: grid;
+  grid-template-columns: minmax(140px, 190px) 1fr;
+  gap: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(111, 211, 166, 0.28);
+  border-radius: var(--radius);
+  background: rgba(17, 21, 34, 0.82);
+}
+
+.catalog-inbox-preview {
+  aspect-ratio: auto;
+  min-height: 170px;
+}
+
+.catalog-inbox-body {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.3fr) minmax(170px, 1fr) minmax(170px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  padding: 14px 14px 14px 0;
+}
+
+.catalog-inbox-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.catalog-duplicate-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.catalog-duplicate-card {
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(17, 21, 34, 0.72);
+  padding: 14px;
+}
+
+.catalog-duplicate-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+
+.catalog-duplicate-list {
+  display: grid;
+  gap: 8px;
+}
+
+.catalog-duplicate-row {
+  display: flex;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.catalog-duplicate-card-header > *,
+.catalog-duplicate-row > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.catalog-duplicate-row.is-keeper {
+  border-color: rgba(111, 211, 166, 0.45);
+  background: rgba(111, 211, 166, 0.08);
+}
+
 .catalog-summary {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
@@ -2037,13 +2216,29 @@ tbody td {
 }
 
 @media (max-width: 760px) {
+  .catalog-inbox-card,
+  .catalog-inbox-body,
+  .catalog-duplicate-card-header,
+  .catalog-duplicate-row,
   .catalog-header-row,
   .catalog-root-card,
-  .catalog-root-form {
+  .catalog-root-form,
+  .catalog-section-heading {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
+
+  .catalog-inbox-card {
+    display: flex;
+  }
+
+  .catalog-inbox-body {
+    display: grid;
+    padding: 14px;
+    width: 100%;
+  }
 }
+
 .admin-card {
   background: var(--card);
   border: 1px solid var(--border);

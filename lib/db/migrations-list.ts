@@ -912,6 +912,22 @@ const DB_MIGRATIONS: Migration[] = [
         .run(0.45, "etsy");
     },
   },
+  {
+    id: 18,
+    description: "add hybrid catalog review states",
+    up(database) {
+      addColumnIfMissing(
+        database,
+        "catalog_files",
+        "review_status",
+        "TEXT NOT NULL DEFAULT 'indexed'",
+      );
+      addColumnIfMissing(database, "catalog_files", "reviewed_at", "TEXT");
+      database.exec(
+        "CREATE INDEX IF NOT EXISTS idx_catalog_files_review_status ON catalog_files(review_status)",
+      );
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

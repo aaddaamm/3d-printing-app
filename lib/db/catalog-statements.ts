@@ -27,6 +27,7 @@ export interface CatalogStatements {
     created_at_fs: string;
     content_hash: string;
     hash_algorithm: string;
+    review_status: string;
   }>;
   updateCatalogFilePresent: Database.Statement<{
     id: number;
@@ -45,6 +46,11 @@ export interface CatalogStatements {
   markCatalogFileMissing: Database.Statement<{
     id: number;
     missing_since: string;
+    updated_at: string;
+  }>;
+  updateCatalogFileMetadata: Database.Statement<{
+    id: number;
+    metadata_json: string | null;
     updated_at: string;
   }>;
   insertFileHistory: Database.Statement<{
@@ -98,6 +104,7 @@ export function createCatalogStatements(db: Database.Database): CatalogStatement
         created_at_fs,
         content_hash,
         hash_algorithm,
+        review_status,
         scan_status,
         original_source_path,
         original_source_root_id
@@ -112,6 +119,7 @@ export function createCatalogStatements(db: Database.Database): CatalogStatement
         @created_at_fs,
         @content_hash,
         @hash_algorithm,
+        @review_status,
         'present',
         @path,
         @root_id
@@ -138,6 +146,12 @@ export function createCatalogStatements(db: Database.Database): CatalogStatement
       UPDATE catalog_files
       SET scan_status = 'missing',
         missing_since = @missing_since,
+        updated_at = @updated_at
+      WHERE id = @id
+    `),
+    updateCatalogFileMetadata: db.prepare(`
+      UPDATE catalog_files
+      SET metadata_json = @metadata_json,
         updated_at = @updated_at
       WHERE id = @id
     `),

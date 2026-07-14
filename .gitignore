@@ -8,6 +8,7 @@ coverage/
 *.sqlite-wal
 *.sqlite-shm
 covers/
+catalog-previews/
 *.numbers
 .env
 .env.*

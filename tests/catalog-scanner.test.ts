@@ -2,6 +2,7 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import zlib from "node:zlib";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   addScanRoot,
@@ -19,6 +20,73 @@ import {
 
 let database: Database.Database;
 let tempDir = "";
+
+const TEST_PNG_BYTES = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3]);
+
+function crc32(buffer: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++) crc = crc & 1 ? (crc >>> 1) ^ 0xedb88320 : crc >>> 1;
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function parseJsonObject(value: string | null): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+    return {};
+  } catch {
+    return {};
+  }
+}
+
+function zip(entries: { name: string; content: Buffer; deflate?: boolean }[]): Buffer {
+  const chunks: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const name = Buffer.from(entry.name);
+    const compressed = entry.deflate ? zlib.deflateRawSync(entry.content) : entry.content;
+    const method = entry.deflate ? 8 : 0;
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt32LE(crc32(entry.content), 14);
+    local.writeUInt32LE(compressed.length, 18);
+    local.writeUInt32LE(entry.content.length, 22);
+    local.writeUInt16LE(name.length, 26);
+    chunks.push(local, name, compressed);
+
+    const header = Buffer.alloc(46);
+    header.writeUInt32LE(0x02014b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(20, 6);
+    header.writeUInt16LE(method, 10);
+    header.writeUInt32LE(crc32(entry.content), 16);
+    header.writeUInt32LE(compressed.length, 20);
+    header.writeUInt32LE(entry.content.length, 24);
+    header.writeUInt16LE(name.length, 28);
+    header.writeUInt32LE(offset, 42);
+    central.push(header, name);
+    offset += local.length + name.length + compressed.length;
+  }
+
+  const centralBuffer = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(centralBuffer.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...chunks, centralBuffer, end]);
+}
 
 function createCatalogRootSchema(db: Database.Database): void {
   db.exec(`
@@ -67,6 +135,8 @@ function createCatalogRootSchema(db: Database.Database): void {
       original_source_path TEXT,
       original_source_root_id INTEGER REFERENCES scan_roots(id),
       scan_status TEXT NOT NULL DEFAULT 'present',
+      review_status TEXT NOT NULL DEFAULT 'indexed',
+      reviewed_at TEXT,
       missing_since TEXT,
       metadata_json TEXT,
       first_seen_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -320,9 +390,76 @@ describe("catalog scan execution", () => {
       failed: 0,
     });
     expect(
-      database.prepare("SELECT filename, extension, scan_status FROM catalog_files").all(),
-    ).toEqual([{ filename: "dragon.stl", extension: "stl", scan_status: "present" }]);
+      database
+        .prepare("SELECT filename, extension, scan_status, review_status FROM catalog_files")
+        .all(),
+    ).toEqual([
+      {
+        filename: "dragon.stl",
+        extension: "stl",
+        scan_status: "present",
+        review_status: "inbox",
+      },
+    ]);
     expect(historyEvents()).toEqual(["discovered"]);
+  });
+
+  it("stores preview metadata for 3MF files with embedded thumbnails", async () => {
+    const statements = createCatalogStatements(database);
+    const filePath = path.join(tempDir, "dragon.3mf");
+    fs.writeFileSync(
+      filePath,
+      zip([
+        { name: "3D/3dmodel.model", content: Buffer.from("model") },
+        { name: "Metadata/plate_1.png", content: TEST_PNG_BYTES, deflate: true },
+      ]),
+    );
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+
+    const summary = await scanCatalogRoot(statements, root);
+    const row = database
+      .prepare("SELECT metadata_json FROM catalog_files WHERE filename = 'dragon.3mf'")
+      .get() as { metadata_json: string | null };
+
+    expect(summary).toMatchObject({ scanned: 1, added: 1, failed: 0 });
+    expect(parseJsonObject(row.metadata_json)).toEqual({
+      preview: {
+        contentType: "image/png",
+        hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    });
+  });
+
+  it("clears stale preview metadata when a changed 3MF has no embedded preview", async () => {
+    const statements = createCatalogStatements(database);
+    const filePath = path.join(tempDir, "dragon.3mf");
+    fs.writeFileSync(
+      filePath,
+      zip([
+        { name: "3D/3dmodel.model", content: Buffer.from("model") },
+        { name: "Metadata/plate_1.png", content: TEST_PNG_BYTES, deflate: true },
+      ]),
+    );
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+    await scanCatalogRoot(statements, root);
+
+    fs.writeFileSync(
+      filePath,
+      zip([{ name: "3D/3dmodel.model", content: Buffer.from("model without preview") }]),
+    );
+    fs.utimesSync(
+      filePath,
+      new Date("2026-07-07T00:00:00.000Z"),
+      new Date("2026-07-07T00:00:00.000Z"),
+    );
+
+    const summary = await scanCatalogRoot(statements, root);
+    const row = database
+      .prepare("SELECT metadata_json FROM catalog_files WHERE filename = 'dragon.3mf'")
+      .get() as { metadata_json: string | null };
+
+    expect(summary).toMatchObject({ scanned: 1, added: 0, changed: 1, failed: 0 });
+    expect(row.metadata_json).toBeNull();
   });
 
   it("does not duplicate rows or history on unchanged scans", async () => {
@@ -346,7 +483,11 @@ describe("catalog scan execution", () => {
     await scanCatalogRoot(statements, root);
 
     fs.writeFileSync(filePath, "dragon v2");
-    fs.utimesSync(filePath, new Date("2026-07-06T00:00:00.000Z"), new Date("2026-07-06T00:00:00.000Z"));
+    fs.utimesSync(
+      filePath,
+      new Date("2026-07-06T00:00:00.000Z"),
+      new Date("2026-07-06T00:00:00.000Z"),
+    );
     const summary = await scanCatalogRoot(statements, root);
 
     expect(summary).toMatchObject({ added: 0, changed: 1, unchanged: 0, missing: 0 });
