@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { BambuProviderRegistryEntry } from "../config.js";
+import type { BambuProviderRegistryEntry } from "../config-types.js";
 
 export type BambuTokenResolution = {
   token: string;

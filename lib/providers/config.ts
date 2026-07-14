@@ -1,46 +1,20 @@
 import fs from "node:fs";
 import path from "node:path";
 import { API_PAGE_LIMIT } from "../constants.js";
+import type { PrintworksConfig, ProviderRegistryEntry } from "./config-types.js";
 export {
   resolveBambuToken,
   resolveBambuTokenWithSource,
   type BambuTokenResolution,
 } from "./bambu/token.js";
-
-export type ProviderType = "bambu" | "moonraker";
-
-export type BaseProviderConfig = {
-  id: string;
-  type: ProviderType;
-  name?: string | undefined;
-  syncIntervalHours?: number | undefined;
-};
-
-export type MoonrakerProviderRegistryEntry = BaseProviderConfig & {
-  type: "moonraker";
-  baseUrl: string;
-  apiKeyEnv?: string | undefined;
-  printerId?: string | undefined;
-  printerName?: string | undefined;
-  printerModel?: string | undefined;
-  model?: string | undefined;
-  limit?: number | undefined;
-};
-
-export type BambuProviderRegistryEntry = BaseProviderConfig & {
-  type: "bambu";
-  baseUrl?: string | undefined;
-  tokenEnv?: string | undefined;
-  tokenPath?: string | undefined;
-  deviceId?: string | undefined;
-  limit?: number | undefined;
-};
-
-export type ProviderRegistryEntry = MoonrakerProviderRegistryEntry | BambuProviderRegistryEntry;
-
-export type PrintworksConfig = {
-  providers: ProviderRegistryEntry[];
-};
+export type {
+  BaseProviderConfig,
+  BambuProviderRegistryEntry,
+  MoonrakerProviderRegistryEntry,
+  PrintworksConfig,
+  ProviderRegistryEntry,
+  ProviderType,
+} from "./config-types.js";
 
 export class PrintworksConfigError extends Error {
   constructor(message: string) {
@@ -156,7 +130,7 @@ function optionalString(
   label: string,
 ): string | undefined {
   const raw = value[key];
-  if (raw == null) return undefined;
+  if (raw === null || raw === undefined) return undefined;
   if (typeof raw !== "string") throw new PrintworksConfigError(`${label}.${key} must be a string`);
   const trimmed = raw.trim();
   return trimmed.length > 0 ? trimmed : undefined;
@@ -176,8 +150,15 @@ function optionalPositiveNumber(
   label: string,
 ): number | undefined {
   const raw = value[key];
-  if (raw == null) return undefined;
-  const num = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : Number.NaN;
+  if (raw === null || raw === undefined) return undefined;
+
+  let num = Number.NaN;
+  if (typeof raw === "number") {
+    num = raw;
+  } else if (typeof raw === "string") {
+    num = Number(raw);
+  }
+
   if (!Number.isFinite(num) || num <= 0) {
     throw new PrintworksConfigError(`${label}.${key} must be a positive number`);
   }
