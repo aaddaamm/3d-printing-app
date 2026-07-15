@@ -140,6 +140,7 @@ Current boundaries:
 - Scans run in the API request/CLI process and hash files sequentially; there is no background queue or filesystem watcher. The API rejects overlapping scan requests.
 - Deactivating a root preserves its records, but there is no reactivation action yet.
 - Newly discovered files enter the inbox. Adoption explicitly links the original file to a new or existing product without moving it; ignored files remain indexed but leave the inbox.
+- Review transitions are enforced: only inbox files can be ignored, only ignored files can return to the inbox, and product-linked files cannot enter either triage state.
 - Files that predate the inbox migration are marked `indexed` rather than flooding the inbox.
 - The file gallery loads 48 records at a time and supports filename/folder search plus scan-state and review-state filters.
 - Exact-duplicate analysis is loaded on demand and paginated at 25 groups per request.

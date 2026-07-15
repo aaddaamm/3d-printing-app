@@ -80,6 +80,7 @@ export interface CatalogFileAdoption {
 }
 
 export class CatalogValidationError extends Error {}
+export class CatalogConflictError extends Error {}
 export class CatalogScanInProgressError extends Error {}
 
 let catalogScanInProgress = false;
@@ -218,6 +219,17 @@ function recordCatalogReview(
   );
 }
 
+function catalogFileHasProductLinks(fileId: number): boolean {
+  return Boolean(
+    db
+      .prepare<
+        [number],
+        { linked: number }
+      >("SELECT 1 AS linked FROM product_files WHERE file_id = ? LIMIT 1")
+      .get(fileId),
+  );
+}
+
 export function listCatalogScanRoots(): ScanRoot[] {
   return listScanRoots(catalogStatements);
 }
@@ -349,6 +361,12 @@ export function adoptCatalogFile(id: number, input: AdoptCatalogFileInput): Cata
 export function ignoreCatalogFile(id: number): CatalogFileSummary {
   return db.transaction(() => {
     const file = requireCatalogFileRow(id);
+    if (file.review_status !== "inbox") {
+      throw new CatalogConflictError("Only inbox files can be ignored");
+    }
+    if (catalogFileHasProductLinks(file.id)) {
+      throw new CatalogConflictError("Linked catalog files cannot be ignored");
+    }
     const now = new Date().toISOString();
     db.prepare(
       `UPDATE catalog_files
@@ -363,6 +381,12 @@ export function ignoreCatalogFile(id: number): CatalogFileSummary {
 export function returnCatalogFileToInbox(id: number): CatalogFileSummary {
   return db.transaction(() => {
     const file = requireCatalogFileRow(id);
+    if (file.review_status !== "ignored") {
+      throw new CatalogConflictError("Only ignored files can be returned to the inbox");
+    }
+    if (catalogFileHasProductLinks(file.id)) {
+      throw new CatalogConflictError("Linked catalog files cannot be returned to the inbox");
+    }
     const now = new Date().toISOString();
     db.prepare(
       `UPDATE catalog_files

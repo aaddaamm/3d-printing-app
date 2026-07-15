@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import {
+  CatalogConflictError,
   CatalogValidationError,
   CatalogScanInProgressError,
   addCatalogScanRoot,
@@ -97,6 +98,7 @@ catalog.post("/files/:id/ignore", (c) => {
   try {
     return c.json({ file: ignoreCatalogFile(id) });
   } catch (error: unknown) {
+    if (error instanceof CatalogConflictError) return jsonError(c, error.message, 409);
     if (error instanceof CatalogValidationError) return jsonError(c, error.message, 404);
     throw error;
   }
@@ -108,6 +110,7 @@ catalog.post("/files/:id/inbox", (c) => {
   try {
     return c.json({ file: returnCatalogFileToInbox(id) });
   } catch (error: unknown) {
+    if (error instanceof CatalogConflictError) return jsonError(c, error.message, 409);
     if (error instanceof CatalogValidationError) return jsonError(c, error.message, 404);
     throw error;
   }

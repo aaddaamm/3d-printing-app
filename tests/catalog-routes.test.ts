@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
+  MockCatalogConflictError,
   MockCatalogScanInProgressError,
   mockAddCatalogScanRoot,
   mockAdoptCatalogFile,
@@ -14,6 +15,7 @@ const {
   mockReturnCatalogFileToInbox,
   mockRunCatalogScan,
 } = vi.hoisted(() => ({
+  MockCatalogConflictError: class CatalogConflictError extends Error {},
   MockCatalogScanInProgressError: class CatalogScanInProgressError extends Error {},
   mockAddCatalogScanRoot: vi.fn(),
   mockAdoptCatalogFile: vi.fn(),
@@ -29,6 +31,7 @@ const {
 }));
 
 vi.mock("../models/catalog.js", () => ({
+  CatalogConflictError: MockCatalogConflictError,
   CatalogScanInProgressError: MockCatalogScanInProgressError,
   CatalogValidationError: class CatalogValidationError extends Error {},
   addCatalogScanRoot: mockAddCatalogScanRoot,
@@ -218,6 +221,25 @@ describe("catalog routes", () => {
     expect(restored.status).toBe(200);
     expect(mockIgnoreCatalogFile).toHaveBeenCalledWith(10);
     expect(mockReturnCatalogFileToInbox).toHaveBeenCalledWith(10);
+  });
+
+  it("returns conflicts for invalid catalog review transitions", async () => {
+    mockIgnoreCatalogFile.mockImplementationOnce(() => {
+      throw new MockCatalogConflictError("Only inbox files can be ignored");
+    });
+    mockReturnCatalogFileToInbox.mockImplementationOnce(() => {
+      throw new MockCatalogConflictError("Linked catalog files cannot be returned to the inbox");
+    });
+
+    const ignored = await catalog.request("/files/10/ignore", { method: "POST" });
+    const inbox = await catalog.request("/files/10/inbox", { method: "POST" });
+
+    expect(ignored.status).toBe(409);
+    expect(inbox.status).toBe(409);
+    expect(await jsonBody(ignored)).toEqual({ error: "Only inbox files can be ignored" });
+    expect(await jsonBody(inbox)).toEqual({
+      error: "Linked catalog files cannot be returned to the inbox",
+    });
   });
 
   it("lists exact duplicate catalog groups", async () => {

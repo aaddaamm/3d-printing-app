@@ -136,4 +136,34 @@ describe.sequential("catalog inbox adoption", () => {
     expect(catalogModule!.returnCatalogFileToInbox(fileId).review_status).toBe("inbox");
     expect(catalogModule!.listCatalogInboxFiles()).toHaveLength(1);
   });
+
+  it("rejects invalid review-state transitions", () => {
+    const fileId = insertCatalogFile();
+
+    catalogModule!.ignoreCatalogFile(fileId);
+    expect(() => catalogModule!.ignoreCatalogFile(fileId)).toThrow(
+      "Only inbox files can be ignored",
+    );
+    catalogModule!.returnCatalogFileToInbox(fileId);
+    expect(() => catalogModule!.returnCatalogFileToInbox(fileId)).toThrow(
+      "Only ignored files can be returned to the inbox",
+    );
+  });
+
+  it("does not allow product-linked files back into triage states", () => {
+    const fileId = insertCatalogFile();
+    const product = productsModule!.createProduct({ name: "Dragon", status_id: "idea" });
+    catalogModule!.adoptCatalogFile(fileId, { productId: product.id });
+
+    expect(() => catalogModule!.ignoreCatalogFile(fileId)).toThrow(
+      "Only inbox files can be ignored",
+    );
+
+    dbModule!.db
+      .prepare("UPDATE catalog_files SET review_status = 'ignored' WHERE id = ?")
+      .run(fileId);
+    expect(() => catalogModule!.returnCatalogFileToInbox(fileId)).toThrow(
+      "Linked catalog files cannot be returned to the inbox",
+    );
+  });
 });

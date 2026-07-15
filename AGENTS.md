@@ -175,6 +175,8 @@ unless you increase `BAMBU_LIMIT` to capture them before expiry.
   Projects, and Printers still require it. Navigation back to a dependent route starts the bootstrap.
 - Current review states are `indexed`, `inbox`, `referenced`, and `ignored`. Managed storage is
   represented separately by `managed_blob_id` and is not yet exposed as a copy/move workflow.
+- Review transitions are enforced: `inbox -> ignored` and `ignored -> inbox` are the only ignore/
+  return transitions, and files with `product_files` links cannot enter either triage state.
 - A deactivated scan root remains in the database and currently cannot be reactivated from
   the CLI or UI.
 - An unavailable/unreadable root produces an incomplete scan with path-level errors. Missing-file
