@@ -53,7 +53,14 @@ async function jsonBody(res: Response): Promise<unknown> {
 describe("catalog routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
-    mockListCatalogDuplicateGroups.mockReturnValue([]);
+    mockListCatalogDuplicateGroups.mockReturnValue({
+      groups: [],
+      page: 1,
+      pageSize: 25,
+      total: 0,
+      totalPages: 1,
+      extraCopies: 0,
+    });
     mockListCatalogFiles.mockReturnValue({
       files: [],
       page: 1,
@@ -214,26 +221,48 @@ describe("catalog routes", () => {
   });
 
   it("lists exact duplicate catalog groups", async () => {
-    mockListCatalogDuplicateGroups.mockReturnValue([
-      {
-        content_hash: "b".repeat(64),
-        size_bytes: 100,
-        suggested_keep_id: 2,
-        suggestion:
-          "Keep the copy in 3d_prints and review duplicates in Downloads, Desktop, 3d_prints.",
-        files: [
-          { id: 2, filename: "dragon.3mf", folder: "/Users/adam/3d_prints" },
-          { id: 1, filename: "dragon.3mf", folder: "/Users/adam/Downloads" },
-        ],
-      },
-    ]);
+    mockListCatalogDuplicateGroups.mockReturnValue({
+      groups: [
+        {
+          content_hash: "b".repeat(64),
+          size_bytes: 100,
+          suggested_keep_id: 2,
+          suggestion:
+            "Keep the copy in 3d_prints and review duplicates in Downloads, Desktop, 3d_prints.",
+          files: [
+            { id: 2, filename: "dragon.3mf", folder: "/Users/adam/3d_prints" },
+            { id: 1, filename: "dragon.3mf", folder: "/Users/adam/Downloads" },
+          ],
+        },
+      ],
+      page: 2,
+      pageSize: 10,
+      total: 12,
+      totalPages: 2,
+      extraCopies: 20,
+    });
 
-    const res = await catalog.request("/duplicates");
+    const res = await catalog.request("/duplicates?page=2&pageSize=10");
 
     expect(res.status).toBe(200);
+    expect(mockListCatalogDuplicateGroups).toHaveBeenCalledWith(2, 10);
     expect(await jsonBody(res)).toEqual({
       groups: [expect.objectContaining({ suggested_keep_id: 2, files: expect.any(Array) })],
+      page: 2,
+      pageSize: 10,
+      total: 12,
+      totalPages: 2,
+      extraCopies: 20,
     });
+  });
+
+  it("rejects invalid duplicate pagination", async () => {
+    const badPage = await catalog.request("/duplicates?page=0");
+    const badPageSize = await catalog.request("/duplicates?pageSize=51");
+
+    expect(badPage.status).toBe(400);
+    expect(badPageSize.status).toBe(400);
+    expect(mockListCatalogDuplicateGroups).not.toHaveBeenCalled();
   });
 
   it("serves cached catalog previews", async () => {

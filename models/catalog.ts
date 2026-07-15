@@ -53,6 +53,15 @@ export interface CatalogFilePage {
   totalPages: number;
 }
 
+export interface CatalogDuplicatePage {
+  groups: CatalogDuplicateGroup[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  extraCopies: number;
+}
+
 interface CatalogFileListRow extends CatalogFile {
   linked_product_id: number | null;
   linked_product_name: string | null;
@@ -365,14 +374,52 @@ export function returnCatalogFileToInbox(id: number): CatalogFileSummary {
   })();
 }
 
-export function listCatalogDuplicateGroups(): CatalogDuplicateGroup[] {
-  const files = db
-    .prepare<
-      [],
-      CatalogFile
-    >("SELECT * FROM catalog_files WHERE content_hash IS NOT NULL ORDER BY content_hash ASC, path ASC")
-    .all();
-  return groupCatalogDuplicates(files);
+export function listCatalogDuplicateGroups(page = 1, pageSize = 25): CatalogDuplicatePage {
+  const requestedPage = Math.max(1, Math.trunc(page));
+  const boundedPageSize = Math.min(50, Math.max(1, Math.trunc(pageSize)));
+  const duplicateHashQuery = `SELECT content_hash, COUNT(*) AS file_count
+    FROM catalog_files
+    WHERE content_hash IS NOT NULL AND scan_status <> 'missing'
+    GROUP BY content_hash
+    HAVING COUNT(*) > 1`;
+  const totals = db
+    .prepare<[], { total: number; extra_copies: number }>(
+      `SELECT COUNT(*) AS total, COALESCE(SUM(file_count - 1), 0) AS extra_copies
+       FROM (${duplicateHashQuery}) duplicate_hashes`,
+    )
+    .get() ?? { total: 0, extra_copies: 0 };
+  const totalPages = Math.max(1, Math.ceil(totals.total / boundedPageSize));
+  const boundedPage = Math.min(requestedPage, totalPages);
+  const hashes = db
+    .prepare<[number, number], { content_hash: string }>(
+      `${duplicateHashQuery}
+       ORDER BY file_count DESC, content_hash ASC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(boundedPageSize, (boundedPage - 1) * boundedPageSize)
+    .map((row) => row.content_hash);
+
+  let groups: CatalogDuplicateGroup[] = [];
+  if (hashes.length > 0) {
+    const placeholders = hashes.map(() => "?").join(", ");
+    const files = db
+      .prepare(
+        `SELECT * FROM catalog_files
+         WHERE scan_status <> 'missing' AND content_hash IN (${placeholders})
+         ORDER BY content_hash ASC, path ASC`,
+      )
+      .all(...hashes) as CatalogFile[];
+    groups = groupCatalogDuplicates(files);
+  }
+
+  return {
+    groups,
+    page: boundedPage,
+    pageSize: boundedPageSize,
+    total: totals.total,
+    totalPages,
+    extraCopies: totals.extra_copies,
+  };
 }
 
 export function readCatalogPreview(file: string): CatalogPreviewContent | null {

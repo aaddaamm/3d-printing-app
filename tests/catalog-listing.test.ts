@@ -26,6 +26,7 @@ function insertFile(
     scanStatus?: "present" | "missing";
     reviewStatus?: "indexed" | "inbox" | "referenced" | "ignored";
     updatedAt?: string;
+    contentHash?: string | null;
   } = {},
 ): void {
   const folder = options.folder ?? "/models";
@@ -33,8 +34,9 @@ function insertFile(
   dbModule!.db
     .prepare(
       `INSERT INTO catalog_files (
-        root_id, path, normalized_path, filename, extension, scan_status, review_status, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        root_id, path, normalized_path, filename, extension, scan_status, review_status, updated_at,
+        content_hash, hash_algorithm
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       rootId,
@@ -45,6 +47,8 @@ function insertFile(
       options.scanStatus ?? "present",
       options.reviewStatus ?? "indexed",
       options.updatedAt ?? "2026-07-14T00:00:00.000Z",
+      options.contentHash ?? null,
+      options.contentHash ? "sha256" : null,
     );
 }
 
@@ -119,5 +123,34 @@ describe.sequential("catalog file listing", () => {
 
     expect(result).toMatchObject({ page: 2, total: 3, totalPages: 2 });
     expect(result.files).toHaveLength(1);
+  });
+
+  it("paginates duplicate groups by copy count and excludes missing copies", () => {
+    const fourCopyHash = "a".repeat(64);
+    const threeCopyHash = "b".repeat(64);
+    const twoCopyHash = "c".repeat(64);
+    for (let index = 1; index <= 4; index++) {
+      insertFile(`four-${index}.stl`, { contentHash: fourCopyHash });
+    }
+    for (let index = 1; index <= 3; index++) {
+      insertFile(`three-${index}.stl`, { contentHash: threeCopyHash });
+    }
+    for (let index = 1; index <= 2; index++) {
+      insertFile(`two-${index}.stl`, { contentHash: twoCopyHash });
+    }
+    insertFile("missing-copy.stl", { contentHash: twoCopyHash, scanStatus: "missing" });
+
+    const firstPage = catalogModule!.listCatalogDuplicateGroups(1, 2);
+    const secondPage = catalogModule!.listCatalogDuplicateGroups(2, 2);
+
+    expect(firstPage).toMatchObject({
+      page: 1,
+      pageSize: 2,
+      total: 3,
+      totalPages: 2,
+      extraCopies: 6,
+    });
+    expect(firstPage.groups.map((group) => group.files.length)).toEqual([4, 3]);
+    expect(secondPage.groups.map((group) => group.files.length)).toEqual([2]);
   });
 });

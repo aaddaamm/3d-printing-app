@@ -142,6 +142,7 @@ Current boundaries:
 - Newly discovered files enter the inbox. Adoption explicitly links the original file to a new or existing product without moving it; ignored files remain indexed but leave the inbox.
 - Files that predate the inbox migration are marked `indexed` rather than flooding the inbox.
 - The file gallery loads 48 records at a time and supports filename/folder search plus scan-state and review-state filters.
+- Exact-duplicate analysis is loaded on demand and paginated at 25 groups per request.
 - Managed copy/move operations are not implemented yet; all current adoptions are references to files in place.
 - An unreadable root or subtree is reported as an incomplete scan with path-level errors. Missing-file detection is skipped for that root until a complete traversal succeeds.
 

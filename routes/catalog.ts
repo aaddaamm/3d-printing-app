@@ -114,7 +114,13 @@ catalog.post("/files/:id/inbox", (c) => {
 });
 
 catalog.get("/duplicates", (c) => {
-  return c.json({ groups: listCatalogDuplicateGroups() });
+  const page = positiveInteger(c.req.query("page"), 1);
+  const pageSize = positiveInteger(c.req.query("pageSize"), 25);
+  if (page === null) return jsonError(c, "page must be a positive integer", 400);
+  if (pageSize === null || pageSize > 50) {
+    return jsonError(c, "pageSize must be an integer between 1 and 50", 400);
+  }
+  return c.json(listCatalogDuplicateGroups(page, pageSize));
 });
 
 catalog.get("/previews/:file", (c) => {

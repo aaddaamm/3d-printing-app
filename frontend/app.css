@@ -2136,6 +2136,10 @@ tbody td {
   gap: 12px;
 }
 
+.catalog-duplicate-prompt p {
+  margin-bottom: 12px;
+}
+
 .catalog-duplicate-card {
   min-width: 0;
   width: 100%;

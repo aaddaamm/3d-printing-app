@@ -72,7 +72,14 @@ type CatalogDuplicateGroup = {
   suggestion: string;
 };
 
-type DuplicatesResponse = { groups: CatalogDuplicateGroup[] };
+type DuplicatesResponse = {
+  groups: CatalogDuplicateGroup[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  extraCopies: number;
+};
 type FilesResponse = {
   files: CatalogFileSummary[];
   page: number;
@@ -300,6 +307,12 @@ function ScanSummary({ summary }: { summary: CatalogScanSummary | null }) {
 
 export function CatalogView() {
   const [duplicateGroups, setDuplicateGroups] = useState<CatalogDuplicateGroup[]>([]);
+  const [duplicatesLoaded, setDuplicatesLoaded] = useState(false);
+  const [duplicatesLoading, setDuplicatesLoading] = useState(false);
+  const [duplicatePage, setDuplicatePage] = useState(1);
+  const [duplicateTotal, setDuplicateTotal] = useState(0);
+  const [duplicateTotalPages, setDuplicateTotalPages] = useState(1);
+  const [duplicateExtraCopies, setDuplicateExtraCopies] = useState(0);
   const [files, setFiles] = useState<CatalogFileSummary[]>([]);
   const [inboxFiles, setInboxFiles] = useState<CatalogFileSummary[]>([]);
   const [products, setProducts] = useState<ProductSummary[]>([]);
@@ -320,12 +333,21 @@ export function CatalogView() {
   const [fileReviewStatus, setFileReviewStatus] = useState("");
   const fileRequestId = useRef(0);
 
-  const loadDuplicates = async () => {
+  const loadDuplicates = async (page = duplicatePage) => {
+    setDuplicatesLoaded(true);
+    setDuplicatesLoading(true);
     const data = await fetchJsonOrToast<DuplicatesResponse>(
-      "/catalog/duplicates",
+      `/catalog/duplicates?page=${page}&pageSize=25`,
       "Failed to load duplicates.",
     );
-    if (data) setDuplicateGroups(data.groups);
+    if (data) {
+      setDuplicateGroups(data.groups);
+      setDuplicatePage(data.page);
+      setDuplicateTotal(data.total);
+      setDuplicateTotalPages(data.totalPages);
+      setDuplicateExtraCopies(data.extraCopies);
+    }
+    setDuplicatesLoading(false);
   };
 
   const loadFiles = async () => {
@@ -370,7 +392,7 @@ export function CatalogView() {
   };
 
   const loadCatalog = async () => {
-    await Promise.all([loadRoots(), loadInbox(), loadProducts(), loadDuplicates()]);
+    await Promise.all([loadRoots(), loadInbox(), loadProducts()]);
     setLoading(false);
   };
 
@@ -426,6 +448,12 @@ export function CatalogView() {
       );
       if (!data) return;
       setSummary(data.summary);
+      setDuplicatesLoaded(false);
+      setDuplicateGroups([]);
+      setDuplicatePage(1);
+      setDuplicateTotal(0);
+      setDuplicateTotalPages(1);
+      setDuplicateExtraCopies(0);
       toast(
         data.summary.incompleteRoots > 0
           ? "Catalog scan completed with unreadable folders; missing-file detection was skipped."
@@ -482,18 +510,46 @@ export function CatalogView() {
   else if (files.length === 0)
     fileGallery = html`<div class="empty">No catalog files scanned yet.</div>`;
 
-  const duplicateCopies = duplicateGroups.reduce(
-    (total, group) => total + group.files.length - 1,
-    0,
-  );
-  let duplicatePanel = html`<div class="catalog-duplicate-grid">
-    ${duplicateGroups.map(
-      (group) => html`<${DuplicateGroupCard} key=${group.content_hash} group=${group} />`,
-    )}
+  let duplicatePanel = html`<div class="empty catalog-duplicate-prompt">
+    <p>Duplicate analysis is loaded only when you need it.</p>
+    <button class="btn-secondary" type="button" onClick=${() => loadDuplicates(1)}>
+      Analyze duplicates
+    </button>
   </div>`;
-  if (loading) duplicatePanel = html`<div class="empty">Loading duplicate analysis…</div>`;
-  else if (duplicateGroups.length === 0)
+  if (duplicatesLoading) {
+    duplicatePanel = html`<div class="empty">Loading duplicate analysis…</div>`;
+  } else if (duplicatesLoaded && duplicateGroups.length === 0) {
     duplicatePanel = html`<div class="empty">No exact duplicate files found.</div>`;
+  } else if (duplicatesLoaded) {
+    duplicatePanel = html`
+      <div class="catalog-duplicate-grid">
+        ${duplicateGroups.map(
+          (group) => html`<${DuplicateGroupCard} key=${group.content_hash} group=${group} />`,
+        )}
+      </div>
+      <div class="catalog-pagination" aria-label="Duplicate group pages">
+        <button
+          class="btn-secondary btn-compact"
+          type="button"
+          disabled=${duplicatePage <= 1 || duplicatesLoading}
+          onClick=${() => loadDuplicates(Math.max(1, duplicatePage - 1))}
+        >
+          Previous
+        </button>
+        <span>
+          Page ${duplicatePage.toLocaleString()} of ${duplicateTotalPages.toLocaleString()}
+        </span>
+        <button
+          class="btn-secondary btn-compact"
+          type="button"
+          disabled=${duplicatePage >= duplicateTotalPages || duplicatesLoading}
+          onClick=${() => loadDuplicates(Math.min(duplicateTotalPages, duplicatePage + 1))}
+        >
+          Next
+        </button>
+      </div>
+    `;
+  }
 
   let inboxPanel = html`<div class="catalog-inbox-grid">
     ${inboxFiles.map(
@@ -669,8 +725,9 @@ export function CatalogView() {
             </p>
           </div>
           <div class="catalog-file-count">
-            ${duplicateGroups.length.toLocaleString()} groups · ${duplicateCopies.toLocaleString()}
-            extra copies
+            ${duplicatesLoaded
+              ? `${duplicateTotal.toLocaleString()} groups · ${duplicateExtraCopies.toLocaleString()} extra copies`
+              : "Not loaded"}
           </div>
         </div>
         ${duplicatePanel}
