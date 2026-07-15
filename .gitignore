@@ -3,6 +3,7 @@ dist/
 frontend/dist/
 coverage/
 .pi-lens/
+.context/
 .DS_Store
 *.sqlite
 *.sqlite-wal
