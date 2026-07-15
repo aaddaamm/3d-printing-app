@@ -106,6 +106,7 @@ npm run format       # Prettier (write)
 npm run format:check # Prettier (check only)
 npm run typecheck    # tsc --noEmit
 npm test             # vitest run
+npm run coverage     # vitest coverage with enforced regression thresholds
 ```
 
 **Always run `npm run lint`, `npm run typecheck`, and `npm test` before committing.**
@@ -116,6 +117,9 @@ are excluded.
 
 Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas,
 100-char print width, 2-space indent.
+
+Coverage thresholds are enforced in `vitest.config.ts`: 85% statements, 73% branches,
+90% functions, and 89% lines across the configured library surface.
 
 ## Development workflow
 

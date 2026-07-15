@@ -35,7 +35,8 @@
 - `npm run lint`: pass
 - `npm run typecheck`: pass
 - `npm run build`: pass with existing font URL warnings
-- `npm test`: 329 pass under Node 24
+- `npm test`: 351 pass under Node 24
+- `npm run coverage`: 87.95% statements, 75.88% branches, 92.64% functions, 91.29% lines
 - Browser QA: desktop and 390px mobile pass; adoption interaction verified on a database backup
 
 ## Related Issues / PRs
