@@ -118,8 +118,8 @@ are excluded.
 Prettier config (`.prettierrc.json`): double quotes, semicolons, trailing commas,
 100-char print width, 2-space indent.
 
-Coverage thresholds are enforced in `vitest.config.ts`: 85% statements, 73% branches,
-90% functions, and 89% lines across the configured library surface.
+Coverage thresholds are enforced in `vitest.config.ts`: 88% statements, 76% branches,
+94% functions, and 92% lines across the configured library surface.
 
 ## Development workflow
 

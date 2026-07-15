@@ -101,4 +101,43 @@ describe("printworks provider config", () => {
       source: "SHOP_BAMBU_TOKEN env",
     });
   });
+
+  it("reads raw and JSON-wrapped tokens from regular files", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "printworks-token-"));
+    const rawPath = path.join(dir, "raw-token");
+    const jsonPath = path.join(dir, "json-token");
+    fs.writeFileSync(rawPath, "  raw-secret\n");
+    fs.writeFileSync(jsonPath, JSON.stringify({ token: " json-secret " }));
+
+    expect(
+      resolveBambuTokenWithSource({ id: "raw", type: "bambu", tokenPath: rawPath }, {}),
+    ).toEqual({ token: "raw-secret", source: rawPath });
+    expect(
+      resolveBambuTokenWithSource({ id: "json", type: "bambu", tokenPath: jsonPath }, {}),
+    ).toEqual({ token: "json-secret", source: jsonPath });
+  });
+
+  it("reports a missing token file without throwing", () => {
+    const tokenPath = path.join(os.tmpdir(), "missing-printworks-token");
+
+    expect(resolveBambuTokenWithSource({ id: "missing", type: "bambu", tokenPath }, {})).toEqual({
+      token: "",
+      source: tokenPath,
+    });
+  });
+
+  it("rejects directories and symbolic links as token sources", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "printworks-token-safety-"));
+    const tokenPath = path.join(dir, "token");
+    const symlinkPath = path.join(dir, "token-link");
+    fs.writeFileSync(tokenPath, "secret");
+    fs.symlinkSync(tokenPath, symlinkPath);
+
+    expect(() =>
+      resolveBambuTokenWithSource({ id: "directory", type: "bambu", tokenPath: dir }, {}),
+    ).toThrow("Bambu token path must point to a regular file");
+    expect(() =>
+      resolveBambuTokenWithSource({ id: "symlink", type: "bambu", tokenPath: symlinkPath }, {}),
+    ).toThrow("Bambu token path must point to a regular file");
+  });
 });
