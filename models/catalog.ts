@@ -1,10 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import {
-  groupCatalogInboxCandidates,
-  type CatalogInboxCandidate,
-} from "../lib/catalog-candidates.js";
-import { groupCatalogDuplicates, type CatalogDuplicateGroup } from "../lib/catalog-duplicates.js";
+import { groupCatalogInboxCandidates } from "../lib/catalog-candidates.js";
+import { groupCatalogDuplicates } from "../lib/catalog-duplicates.js";
 import { catalogPreviewExists, catalogPreviewPath } from "../lib/catalog-preview.js";
 import { db } from "../lib/db.js";
 import { createProduct } from "./products.js";
@@ -15,9 +12,19 @@ import {
   listScanRoots,
   scanCatalogRoot,
   MAX_CATALOG_SCAN_ERRORS,
-  type CatalogScanSummary,
 } from "../lib/catalog-scanner.js";
 import type { CatalogFile, ScanRoot } from "../lib/types.js";
+import type {
+  CatalogCandidateAdoption,
+  CatalogDuplicateGroup,
+  CatalogDuplicatePage,
+  CatalogFileAdoption,
+  CatalogFilePage,
+  CatalogFileSummary,
+  CatalogInboxCandidate,
+  CatalogInboxCandidateFile,
+  CatalogScanSummary,
+} from "../shared/catalog.js";
 
 const catalogStatements = createCatalogStatements(db);
 
@@ -26,50 +33,12 @@ export interface AddCatalogScanRootInput {
   name?: string;
 }
 
-export interface CatalogFileSummary {
-  id: number;
-  filename: string;
-  extension: string | null;
-  folder: string;
-  size_bytes: number | null;
-  modified_at: string | null;
-  scan_status: string;
-  review_status: string;
-  storage_mode: "managed" | "referenced";
-  linked_product_id: number | null;
-  linked_product_name: string | null;
-  preview_url: string | null;
-}
-
 export interface CatalogFileListQuery {
   page?: number;
   pageSize?: number;
   query?: string;
   scanStatus?: "present" | "missing";
   reviewStatus?: "indexed" | "inbox" | "referenced" | "ignored";
-}
-
-export interface CatalogFilePage {
-  files: CatalogFileSummary[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-}
-
-export interface CatalogInboxCandidateFile extends CatalogFileSummary {
-  rootPath: string;
-}
-
-export type CatalogInboxCandidateSummary = CatalogInboxCandidate<CatalogInboxCandidateFile>;
-
-export interface CatalogDuplicatePage {
-  groups: CatalogDuplicateGroup[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  extraCopies: number;
 }
 
 interface CatalogFileListRow extends CatalogFile {
@@ -83,23 +52,9 @@ export interface AdoptCatalogFileInput {
   productName?: string;
 }
 
-export interface CatalogFileAdoption {
-  file: CatalogFileSummary;
-  product_id: number;
-  product_name: string;
-  product_file_id: number;
-}
-
 export interface AdoptCatalogCandidateInput extends AdoptCatalogFileInput {
   fileIds: number[];
   primaryFileId: number;
-}
-
-export interface CatalogCandidateAdoption {
-  files: CatalogFileSummary[];
-  product_id: number;
-  product_name: string;
-  primary_product_file_id: number;
 }
 
 export class CatalogValidationError extends Error {}
@@ -378,7 +333,7 @@ export function listCatalogInboxFiles(): CatalogFileSummary[] {
     .map(toCatalogFileSummary);
 }
 
-export function listCatalogInboxCandidates(): CatalogInboxCandidateSummary[] {
+export function listCatalogInboxCandidates(): CatalogInboxCandidate[] {
   const files = db
     .prepare<[], CatalogFileListRow>(
       `${CATALOG_FILE_LIST_SELECT}

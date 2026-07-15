@@ -3,6 +3,22 @@ import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { fetchJsonOrToast, postJsonOrToast, type ProductSummary } from "../lib/api.js";
+import type {
+  CatalogCandidateAdoptionResponse,
+  CatalogDuplicateGroup,
+  CatalogDuplicatePage,
+  CatalogFileAdoptionResponse,
+  CatalogFilePage,
+  CatalogFileResponse,
+  CatalogFileSummary,
+  CatalogInboxCandidate,
+  CatalogInboxResponse,
+  CatalogRootResponse,
+  CatalogRootsResponse,
+  CatalogScanResponse,
+  CatalogScanRoot,
+  CatalogScanSummary,
+} from "../../shared/catalog.js";
 import { toast } from "./toast.js";
 
 const html = (
@@ -11,112 +27,7 @@ const html = (
   }
 ).bind(h);
 
-type ScanRoot = {
-  id: number;
-  name: string;
-  root_path: string;
-  is_active: number;
-  last_scanned_at: string | null;
-};
-
-type CatalogScanSummary = {
-  scanned: number;
-  added: number;
-  changed: number;
-  unchanged: number;
-  missing: number;
-  restored: number;
-  skipped: number;
-  failed: number;
-  incompleteRoots: number;
-  errors: CatalogScanError[];
-  durationMs: number;
-};
-
-type CatalogScanError = {
-  phase: "read-directory" | "read-metadata" | "index-file";
-  path: string;
-  message: string;
-};
-
-type CatalogFileSummary = {
-  id: number;
-  filename: string;
-  extension: string | null;
-  folder: string;
-  size_bytes: number | null;
-  modified_at: string | null;
-  scan_status: string;
-  review_status: string;
-  storage_mode: "managed" | "referenced";
-  linked_product_id: number | null;
-  linked_product_name: string | null;
-  preview_url: string | null;
-};
-
-type CatalogInboxCandidate = {
-  key: string;
-  name: string;
-  folder: string;
-  primary_file_id: number;
-  total_size_bytes: number;
-  files: CatalogFileSummary[];
-};
-
-type CatalogDuplicateFileSummary = {
-  id: number;
-  filename: string;
-  folder: string;
-  path: string;
-  size_bytes: number | null;
-  modified_at: string | null;
-  scan_status: string;
-};
-
-type CatalogDuplicateGroup = {
-  content_hash: string;
-  size_bytes: number | null;
-  files: CatalogDuplicateFileSummary[];
-  suggested_keep_id: number;
-  suggestion: string;
-};
-
-type DuplicatesResponse = {
-  groups: CatalogDuplicateGroup[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-  extraCopies: number;
-};
-type FilesResponse = {
-  files: CatalogFileSummary[];
-  page: number;
-  pageSize: number;
-  total: number;
-  totalPages: number;
-};
-type InboxResponse = { candidates: CatalogInboxCandidate[] };
 type ProductsResponse = { products: ProductSummary[] };
-type RootsResponse = { roots: ScanRoot[] };
-type RootResponse = { root: ScanRoot };
-type ScanResponse = { summary: CatalogScanSummary };
-type AdoptionResponse = {
-  adoption: {
-    file: CatalogFileSummary;
-    product_id: number;
-    product_name: string;
-    product_file_id: number;
-  };
-};
-type CandidateAdoptionResponse = {
-  adoption: {
-    files: CatalogFileSummary[];
-    product_id: number;
-    product_name: string;
-    primary_product_file_id: number;
-  };
-};
 
 function formatBytes(bytes: number | null): string {
   if (bytes === null || !Number.isFinite(bytes)) return "Unknown size";
@@ -441,7 +352,7 @@ export function CatalogView() {
   const [inboxCandidates, setInboxCandidates] = useState<CatalogInboxCandidate[]>([]);
   const [splitCandidates, setSplitCandidates] = useState<Set<string>>(new Set());
   const [products, setProducts] = useState<ProductSummary[]>([]);
-  const [roots, setRoots] = useState<ScanRoot[]>([]);
+  const [roots, setRoots] = useState<CatalogScanRoot[]>([]);
   const [rootPath, setRootPath] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
@@ -461,7 +372,7 @@ export function CatalogView() {
   const loadDuplicates = async (page = duplicatePage) => {
     setDuplicatesLoaded(true);
     setDuplicatesLoading(true);
-    const data = await fetchJsonOrToast<DuplicatesResponse>(
+    const data = await fetchJsonOrToast<CatalogDuplicatePage>(
       `/catalog/duplicates?page=${page}&pageSize=25`,
       "Failed to load duplicates.",
     );
@@ -482,7 +393,7 @@ export function CatalogView() {
     if (fileQuery) params.set("q", fileQuery);
     if (fileScanStatus) params.set("scanStatus", fileScanStatus);
     if (fileReviewStatus) params.set("reviewStatus", fileReviewStatus);
-    const data = await fetchJsonOrToast<FilesResponse>(
+    const data = await fetchJsonOrToast<CatalogFilePage>(
       `/catalog/files?${params.toString()}`,
       "Failed to load files.",
     );
@@ -496,7 +407,7 @@ export function CatalogView() {
   };
 
   const loadInbox = async () => {
-    const data = await fetchJsonOrToast<InboxResponse>(
+    const data = await fetchJsonOrToast<CatalogInboxResponse>(
       "/catalog/inbox-candidates",
       "Failed to load catalog inbox.",
     );
@@ -518,7 +429,10 @@ export function CatalogView() {
   };
 
   const loadRoots = async () => {
-    const data = await fetchJsonOrToast<RootsResponse>("/catalog/roots", "Failed to load roots.");
+    const data = await fetchJsonOrToast<CatalogRootsResponse>(
+      "/catalog/roots",
+      "Failed to load roots.",
+    );
     if (data) setRoots(data.roots);
   };
 
@@ -542,7 +456,7 @@ export function CatalogView() {
     const payload = name.trim()
       ? { rootPath: trimmedPath, name: name.trim() }
       : { rootPath: trimmedPath };
-    const data = await postJsonOrToast<RootResponse>(
+    const data = await postJsonOrToast<CatalogRootResponse>(
       "/catalog/roots",
       payload,
       "Failed to add root.",
@@ -555,7 +469,7 @@ export function CatalogView() {
   };
 
   const deactivateRoot = async (id: number) => {
-    const data = await fetchJsonOrToast<RootResponse>(
+    const data = await fetchJsonOrToast<CatalogRootResponse>(
       `/catalog/roots/${id}`,
       "Failed to remove root.",
       {
@@ -569,7 +483,7 @@ export function CatalogView() {
   const runScan = async () => {
     setScanning(true);
     try {
-      const data = await postJsonOrToast<ScanResponse>(
+      const data = await postJsonOrToast<CatalogScanResponse>(
         "/catalog/scan",
         {},
         "Catalog scan failed.",
@@ -603,7 +517,7 @@ export function CatalogView() {
   ) => {
     setTriagingKey(`file:${file.id}`);
     try {
-      const data = await postJsonOrToast<AdoptionResponse>(
+      const data = await postJsonOrToast<CatalogFileAdoptionResponse>(
         `/catalog/files/${file.id}/adopt`,
         payload,
         "Failed to adopt catalog file.",
@@ -622,7 +536,7 @@ export function CatalogView() {
   ) => {
     setTriagingKey(candidate.key);
     try {
-      const data = await postJsonOrToast<CandidateAdoptionResponse>(
+      const data = await postJsonOrToast<CatalogCandidateAdoptionResponse>(
         "/catalog/inbox-candidates/adopt",
         {
           fileIds: candidate.files.map((file) => file.id),
@@ -645,7 +559,7 @@ export function CatalogView() {
   const ignoreFile = async (file: CatalogFileSummary) => {
     setTriagingKey(`file:${file.id}`);
     try {
-      const data = await postJsonOrToast<{ file: CatalogFileSummary }>(
+      const data = await postJsonOrToast<CatalogFileResponse>(
         `/catalog/files/${file.id}/ignore`,
         {},
         "Failed to ignore catalog file.",

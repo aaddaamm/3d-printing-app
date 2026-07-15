@@ -1,23 +1,6 @@
 import path from "node:path";
+import type { CatalogDuplicateFileSummary, CatalogDuplicateGroup } from "../shared/catalog.js";
 import type { CatalogFile } from "./types.js";
-
-export interface CatalogDuplicateFileSummary {
-  id: number;
-  filename: string;
-  folder: string;
-  path: string;
-  size_bytes: number | null;
-  modified_at: string | null;
-  scan_status: string;
-}
-
-export interface CatalogDuplicateGroup {
-  content_hash: string;
-  size_bytes: number | null;
-  files: CatalogDuplicateFileSummary[];
-  suggested_keep_id: number;
-  suggestion: string;
-}
 
 const ORGANIZATION_HINT_DIRS = ["Downloads", "Desktop", "3d_prints"];
 

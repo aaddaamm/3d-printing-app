@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import type { CatalogScanError, CatalogScanSummary } from "../shared/catalog.js";
 import { extract3mfPreview, previewContentType, writeCatalogPreview } from "./catalog-preview.js";
 import { createCatalogStatements, type CatalogStatements } from "./db/catalog-statements.js";
 import type { CatalogFile, ScanRoot } from "./types.js";
@@ -43,26 +44,6 @@ export interface CatalogDiscoveryResult {
 
 export interface CatalogScanOptions {
   hashFile?: (filePath: string) => Promise<string>;
-}
-
-export interface CatalogScanSummary {
-  scanned: number;
-  added: number;
-  changed: number;
-  unchanged: number;
-  missing: number;
-  restored: number;
-  skipped: number;
-  failed: number;
-  incompleteRoots: number;
-  errors: CatalogScanError[];
-  durationMs: number;
-}
-
-export interface CatalogScanError {
-  phase: "read-directory" | "read-metadata" | "index-file";
-  path: string;
-  message: string;
 }
 
 const HASH_ALGORITHM = "sha256";
