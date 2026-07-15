@@ -3,6 +3,7 @@ import { useEffect, useState } from "preact/hooks";
 import htm from "htm";
 
 import { fetchProduct, updateProduct, type ProductInput, type ProductSummary } from "../lib/api.js";
+import { numberOrNull, positiveIntegerOrNull, secondsFromHours } from "../lib/form-values.js";
 import {
   PRODUCT_CATEGORIES,
   PRODUCT_LICENSES,
@@ -75,25 +76,6 @@ export function initialProductDetailForm(product: ProductSummary): DetailFormSta
     pricingNotes: product.pricing_notes ?? "",
     notes: product.notes ?? "",
   };
-}
-
-function numberOrNull(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function secondsFromHours(value: string): number | null {
-  const hours = numberOrNull(value);
-  return hours === null ? null : Math.round(hours * 3600);
-}
-
-function positiveIntegerOrNull(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function optionList(

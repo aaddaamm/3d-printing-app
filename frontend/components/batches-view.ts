@@ -10,6 +10,7 @@ import {
   type BatchSummary,
   type ProductSummary,
 } from "../lib/api.js";
+import { positiveIntegerOrNull } from "../lib/form-values.js";
 import { BatchCard } from "./batch-card.js";
 import { toast } from "./toast.js";
 
@@ -24,11 +25,6 @@ type CreateFormState = {
   pricingProfileId: string;
   plannedQuantity: string;
 };
-
-function positiveIntegerOrNull(value: string): number | null {
-  const parsed = Number(value.trim());
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
 
 function BatchCreateCard({
   products,

@@ -14,6 +14,12 @@ import {
   type ProductSummary,
   type ProjectSummary,
 } from "../lib/api.js";
+import {
+  nonNegativeIntegerOrNull,
+  numberOrNull,
+  positiveIntegerOrNull,
+  secondsFromHours,
+} from "../lib/form-values.js";
 import { BatchPriceBreakdown } from "./batch-price-breakdown.js";
 import { toast } from "./toast.js";
 
@@ -45,28 +51,6 @@ function isNil(value: unknown): value is null | undefined {
 
 function hoursFromSeconds(value: number | null | undefined): string {
   return isNil(value) ? "" : String(value / 3600);
-}
-
-function numberOrNull(value: string): number | null {
-  const trimmed = value.trim();
-  if (!trimmed) return null;
-  const parsed = Number(trimmed);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function secondsFromHours(value: string): number | null {
-  const hours = numberOrNull(value);
-  return hours === null ? null : Math.round(hours * 3600);
-}
-
-function positiveIntegerOrNull(value: string): number | null {
-  const parsed = Number(value.trim());
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-}
-
-function nonNegativeIntegerOrNull(value: string): number | null {
-  const parsed = Number(value.trim());
-  return Number.isInteger(parsed) && parsed >= 0 ? parsed : null;
 }
 
 function hasBatchField(batch: BatchSummary, field: keyof BatchSummary): boolean {
