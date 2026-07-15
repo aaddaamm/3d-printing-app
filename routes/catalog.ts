@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import {
   CatalogValidationError,
+  CatalogScanInProgressError,
   addCatalogScanRoot,
   adoptCatalogFile,
   deactivateCatalogScanRoot,
@@ -129,6 +130,11 @@ catalog.delete("/roots/:id", (c) => {
 });
 
 catalog.post("/scan", async (c) => {
-  const summary = await runCatalogScan();
-  return c.json({ summary });
+  try {
+    const summary = await runCatalogScan();
+    return c.json({ summary });
+  } catch (error: unknown) {
+    if (error instanceof CatalogScanInProgressError) return jsonError(c, error.message, 409);
+    throw error;
+  }
 });

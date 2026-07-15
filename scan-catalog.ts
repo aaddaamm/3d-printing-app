@@ -5,6 +5,7 @@ import {
   createCatalogStatements,
   deactivateScanRoot,
   listScanRoots,
+  MAX_CATALOG_SCAN_ERRORS,
   scanCatalogRoot,
 } from "./lib/catalog-scanner.js";
 
@@ -73,6 +74,8 @@ async function main(): Promise<void> {
       restored: 0,
       skipped: 0,
       failed: 0,
+      incompleteRoots: 0,
+      errors: [] as { phase: string; path: string; message: string }[],
       durationMs: 0,
     };
 
@@ -86,12 +89,19 @@ async function main(): Promise<void> {
       totals.restored += summary.restored;
       totals.skipped += summary.skipped;
       totals.failed += summary.failed;
+      totals.incompleteRoots += summary.incompleteRoots;
+      totals.errors.push(
+        ...summary.errors.slice(0, MAX_CATALOG_SCAN_ERRORS - totals.errors.length),
+      );
       totals.durationMs += summary.durationMs;
     }
 
     print(
-      `Catalog scan complete: scanned: ${totals.scanned}, added: ${totals.added}, changed: ${totals.changed}, unchanged: ${totals.unchanged}, missing: ${totals.missing}, restored: ${totals.restored}, skipped: ${totals.skipped}, failed: ${totals.failed}, durationMs: ${totals.durationMs}`,
+      `Catalog scan complete: scanned: ${totals.scanned}, added: ${totals.added}, changed: ${totals.changed}, unchanged: ${totals.unchanged}, missing: ${totals.missing}, restored: ${totals.restored}, skipped: ${totals.skipped}, failed: ${totals.failed}, incompleteRoots: ${totals.incompleteRoots}, durationMs: ${totals.durationMs}`,
     );
+    for (const error of totals.errors) {
+      print(`  ${error.phase}: ${error.path} — ${error.message}`);
+    }
     return;
   }
 

@@ -44,7 +44,11 @@ For filesystem scanners in this repo:
 - Treat discovery as part of scan accounting, not a pure pre-step that can throw freely.
 - Return both discovered files and counters from discovery: supported files, skipped entries, and failed metadata/directory reads.
 - Catch per-directory `readdirSync` failures and per-file `statSync` failures, increment `failed`, and keep scanning other entries.
+- Treat any directory or metadata read failure as an incomplete traversal. Do not mark unseen files
+  missing unless the whole root was traversed successfully.
 - Catch per-file hash/upsert failures in the scan loop, increment `failed`, and keep scanning other files.
+- Return capped, structured error details with the phase, path, and message so the UI and CLI can
+  explain what failed.
 - Count skipped symlinks, unsupported files, and skipped noisy directories.
 - Preserve path case in `normalized_path`; use `path.resolve()` but do not lowercase globally.
 - Validate scan roots at add time so nonexistent paths or files fail before recurring scan runs.
@@ -61,6 +65,7 @@ When planning or reviewing future scanner/importer work:
 
 - Add RED tests for `readdirSync`, `statSync`, and hash failures before implementing scanner changes.
 - Assert `skipped` and `failed` counts are non-placeholder behavior, not always-zero fields.
-- Verify missing/restored handling still runs after discovery failures.
+- Verify missing-file reconciliation is skipped after discovery failures and resumes after a fully
+  successful traversal.
 - Avoid path normalization that loses filesystem-significant information unless an explicit platform policy exists.
 - Keep scanner behavior index-first: no copying, moving, product adoption, or managed storage side effects unless that slice is explicitly approved.

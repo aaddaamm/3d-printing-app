@@ -37,6 +37,8 @@ export interface CatalogDiscoveryResult {
   files: DiscoveredCatalogFile[];
   skipped: number;
   failed: number;
+  complete: boolean;
+  errors: CatalogScanError[];
 }
 
 export interface CatalogScanOptions {
@@ -52,10 +54,19 @@ export interface CatalogScanSummary {
   restored: number;
   skipped: number;
   failed: number;
+  incompleteRoots: number;
+  errors: CatalogScanError[];
   durationMs: number;
 }
 
+export interface CatalogScanError {
+  phase: "read-directory" | "read-metadata" | "index-file";
+  path: string;
+  message: string;
+}
+
 const HASH_ALGORITHM = "sha256";
+export const MAX_CATALOG_SCAN_ERRORS = 20;
 
 const SUPPORTED_CATALOG_EXTENSIONS = new Set([
   ".3mf",
@@ -107,13 +118,25 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
   const discovered: DiscoveredCatalogFile[] = [];
   let skipped = 0;
   let failed = 0;
+  let complete = true;
+  const errors: CatalogScanError[] = [];
+
+  function recordFailure(error: CatalogScanError): void {
+    failed++;
+    complete = false;
+    if (errors.length < MAX_CATALOG_SCAN_ERRORS) errors.push(error);
+  }
 
   function visit(directory: string): void {
     let entries: fs.Dirent[];
     try {
       entries = fs.readdirSync(directory, { withFileTypes: true });
-    } catch {
-      failed++;
+    } catch (error: unknown) {
+      recordFailure({
+        phase: "read-directory",
+        path: directory,
+        message: error instanceof Error ? error.message : String(error),
+      });
       return;
     }
 
@@ -151,8 +174,12 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
           modifiedAt: stat.mtime.toISOString(),
           createdAtFs: stat.birthtime.toISOString(),
         });
-      } catch {
-        failed++;
+      } catch (error: unknown) {
+        recordFailure({
+          phase: "read-metadata",
+          path: entryPath,
+          message: error instanceof Error ? error.message : String(error),
+        });
       }
     }
   }
@@ -162,6 +189,8 @@ export function discoverCatalogFilesWithStats(rootPath: string): CatalogDiscover
     files: discovered.sort((a, b) => a.normalizedPath.localeCompare(b.normalizedPath)),
     skipped,
     failed,
+    complete,
+    errors,
   };
 }
 
@@ -325,6 +354,8 @@ export async function scanCatalogRoot(
     restored: 0,
     skipped: discovery.skipped,
     failed: discovery.failed,
+    incompleteRoots: discovery.complete ? 0 : 1,
+    errors: [...discovery.errors],
     durationMs: 0,
   };
 
@@ -385,17 +416,30 @@ export async function scanCatalogRoot(
       }
       updatePresentCatalogFile(statements, existing, discovered, existing.content_hash, now);
       summary.unchanged++;
-    } catch {
+    } catch (error: unknown) {
       summary.failed++;
+      if (summary.errors.length < MAX_CATALOG_SCAN_ERRORS) {
+        summary.errors.push({
+          phase: "index-file",
+          path: discovered.path,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
   }
 
-  for (const existing of statements.listCatalogFilesByRoot.all(root.id)) {
-    if (existing.scan_status === "missing" || seenPaths.has(existing.normalized_path)) continue;
-    statements.markCatalogFileMissing.run({ id: existing.id, missing_since: now, updated_at: now });
-    const missing = statements.getCatalogFileByNormalizedPath.get(existing.normalized_path)!;
-    insertHistory(statements, missing, "missing", null, existing.content_hash);
-    summary.missing++;
+  if (discovery.complete) {
+    for (const existing of statements.listCatalogFilesByRoot.all(root.id)) {
+      if (existing.scan_status === "missing" || seenPaths.has(existing.normalized_path)) continue;
+      statements.markCatalogFileMissing.run({
+        id: existing.id,
+        missing_since: now,
+        updated_at: now,
+      });
+      const missing = statements.getCatalogFileByNormalizedPath.get(existing.normalized_path)!;
+      insertHistory(statements, missing, "missing", null, existing.content_hash);
+      summary.missing++;
+    }
   }
 
   statements.updateScanRootLastScanned.run({ id: root.id, last_scanned_at: now, updated_at: now });

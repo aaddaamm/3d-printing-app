@@ -530,6 +530,16 @@ describe("catalog scan execution", () => {
       const summary = await scanCatalogRoot(statements, root);
 
       expect(summary).toMatchObject({ scanned: 1, added: 1, failed: 1 });
+      expect(summary).toMatchObject({
+        incompleteRoots: 1,
+        errors: [
+          {
+            phase: "read-metadata",
+            path: badPath,
+            message: "simulated stat failure",
+          },
+        ],
+      });
       expect(database.prepare("SELECT filename FROM catalog_files").all()).toEqual([
         { filename: "good.stl" },
       ]);
@@ -554,6 +564,9 @@ describe("catalog scan execution", () => {
     });
 
     expect(summary).toMatchObject({ scanned: 2, added: 1, failed: 1 });
+    expect(summary.errors).toEqual([
+      { phase: "index-file", path: badPath, message: "simulated hash failure" },
+    ]);
     expect(database.prepare("SELECT filename FROM catalog_files").all()).toEqual([
       { filename: "good.stl" },
     ]);
@@ -589,5 +602,41 @@ describe("catalog scan execution", () => {
       scan_status: "present",
     });
     expect(historyEvents()).toEqual(["discovered", "missing", "restored"]);
+  });
+
+  it("does not mark files missing when the root cannot be read", async () => {
+    const statements = createCatalogStatements(database);
+    const filePath = path.join(tempDir, "dragon.stl");
+    fs.writeFileSync(filePath, "dragon");
+    const root = addScanRoot(statements, { name: "Models", rootPath: tempDir });
+    await scanCatalogRoot(statements, root);
+
+    const readdirSpy = vi.spyOn(fs, "readdirSync").mockImplementation(() => {
+      throw new Error("simulated root read failure");
+    });
+
+    try {
+      const summary = await scanCatalogRoot(statements, root);
+
+      expect(summary).toMatchObject({
+        scanned: 0,
+        missing: 0,
+        failed: 1,
+        incompleteRoots: 1,
+        errors: [
+          {
+            phase: "read-directory",
+            path: tempDir,
+            message: "simulated root read failure",
+          },
+        ],
+      });
+      expect(database.prepare("SELECT scan_status FROM catalog_files").get()).toEqual({
+        scan_status: "present",
+      });
+      expect(historyEvents()).toEqual(["discovered"]);
+    } finally {
+      readdirSpy.mockRestore();
+    }
   });
 });

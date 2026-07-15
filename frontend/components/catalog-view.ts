@@ -28,7 +28,15 @@ type CatalogScanSummary = {
   restored: number;
   skipped: number;
   failed: number;
+  incompleteRoots: number;
+  errors: CatalogScanError[];
   durationMs: number;
+};
+
+type CatalogScanError = {
+  phase: "read-directory" | "read-metadata" | "index-file";
+  path: string;
+  message: string;
 };
 
 type CatalogFileSummary = {
@@ -246,15 +254,39 @@ function DuplicateGroupCard({ group }: { group: CatalogDuplicateGroup }) {
 function ScanSummary({ summary }: { summary: CatalogScanSummary | null }) {
   if (!summary) return null;
   return html`
-    <div class="catalog-summary" role="status" aria-live="polite">
-      <${SummaryPill} label="scanned" value=${summary.scanned} />
-      <${SummaryPill} label="added" value=${summary.added} />
-      <${SummaryPill} label="changed" value=${summary.changed} />
-      <${SummaryPill} label="unchanged" value=${summary.unchanged} />
-      <${SummaryPill} label="missing" value=${summary.missing} />
-      <${SummaryPill} label="restored" value=${summary.restored} />
-      <${SummaryPill} label="skipped" value=${summary.skipped} />
-      <${SummaryPill} label="failed" value=${summary.failed} />
+    <div role="status" aria-live="polite">
+      <div class="catalog-summary">
+        <${SummaryPill} label="scanned" value=${summary.scanned} />
+        <${SummaryPill} label="added" value=${summary.added} />
+        <${SummaryPill} label="changed" value=${summary.changed} />
+        <${SummaryPill} label="unchanged" value=${summary.unchanged} />
+        <${SummaryPill} label="missing" value=${summary.missing} />
+        <${SummaryPill} label="restored" value=${summary.restored} />
+        <${SummaryPill} label="skipped" value=${summary.skipped} />
+        <${SummaryPill} label="failed" value=${summary.failed} />
+      </div>
+      ${summary.incompleteRoots > 0
+        ? html`<p class="catalog-scan-warning">
+            Missing-file detection was skipped for ${summary.incompleteRoots} unreadable
+            ${summary.incompleteRoots === 1 ? "root" : "roots"}.
+          </p>`
+        : null}
+      ${summary.errors.length > 0
+        ? html`<details class="catalog-scan-errors">
+            <summary>
+              Review ${summary.errors.length} scan
+              ${summary.errors.length === 1 ? "error" : "errors"}
+            </summary>
+            <ul>
+              ${summary.errors.map(
+                (error) =>
+                  html`<li>
+                    <strong>${error.phase}</strong> — ${error.path}<br />${error.message}
+                  </li>`,
+              )}
+            </ul>
+          </details>`
+        : null}
     </div>
   `;
 }
@@ -359,7 +391,12 @@ export function CatalogView() {
       );
       if (!data) return;
       setSummary(data.summary);
-      toast("Catalog scan complete.", data.summary.failed > 0 ? "info" : "success");
+      toast(
+        data.summary.incompleteRoots > 0
+          ? "Catalog scan completed with unreadable folders; missing-file detection was skipped."
+          : "Catalog scan complete.",
+        data.summary.failed > 0 ? "info" : "success",
+      );
       await loadCatalog();
     } finally {
       setScanning(false);
@@ -455,7 +492,10 @@ export function CatalogView() {
             </div>
           </div>
           ${root.is_active
-            ? html`<button class="btn-secondary btn-compact" onClick=${() => deactivateRoot(root.id)}>
+            ? html`<button
+                class="btn-secondary btn-compact"
+                onClick=${() => deactivateRoot(root.id)}
+              >
                 Deactivate
               </button>`
             : null}

@@ -2189,6 +2189,30 @@ tbody td {
   line-height: 1.1;
 }
 
+.catalog-scan-warning {
+  margin: 0.75rem 0 0;
+  color: var(--yellow);
+}
+
+.catalog-scan-errors {
+  margin-top: 0.75rem;
+  color: var(--muted);
+}
+
+.catalog-scan-errors summary {
+  cursor: pointer;
+  color: var(--yellow);
+}
+
+.catalog-scan-errors ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.25rem;
+}
+
+.catalog-scan-errors li + li {
+  margin-top: 0.5rem;
+}
+
 .catalog-root-form {
   display: grid;
   grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) auto;

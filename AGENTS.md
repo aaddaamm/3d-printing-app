@@ -172,8 +172,8 @@ unless you increase `BAMBU_LIMIT` to capture them before expiry.
   represented separately by `managed_blob_id` and is not yet exposed as a copy/move workflow.
 - A deactivated scan root remains in the database and currently cannot be reactivated from
   the CLI or UI.
-- Treat an unavailable/unreadable root as a scanner failure risk: current discovery can mark
-  previously indexed files missing when nothing can be read from that root.
+- An unavailable/unreadable root produces an incomplete scan with path-level errors. Missing-file
+  reconciliation is skipped for that root until a complete traversal succeeds.
 
 ## Commit conventions
 

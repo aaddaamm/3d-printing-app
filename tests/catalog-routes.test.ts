@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const {
+  MockCatalogScanInProgressError,
   mockAddCatalogScanRoot,
   mockAdoptCatalogFile,
   mockDeactivateCatalogScanRoot,
@@ -13,6 +14,7 @@ const {
   mockReturnCatalogFileToInbox,
   mockRunCatalogScan,
 } = vi.hoisted(() => ({
+  MockCatalogScanInProgressError: class CatalogScanInProgressError extends Error {},
   mockAddCatalogScanRoot: vi.fn(),
   mockAdoptCatalogFile: vi.fn(),
   mockDeactivateCatalogScanRoot: vi.fn(),
@@ -27,6 +29,7 @@ const {
 }));
 
 vi.mock("../models/catalog.js", () => ({
+  CatalogScanInProgressError: MockCatalogScanInProgressError,
   CatalogValidationError: class CatalogValidationError extends Error {},
   addCatalogScanRoot: mockAddCatalogScanRoot,
   adoptCatalogFile: mockAdoptCatalogFile,
@@ -84,6 +87,8 @@ describe("catalog routes", () => {
       restored: 0,
       skipped: 0,
       failed: 0,
+      incompleteRoots: 0,
+      errors: [],
       durationMs: 5,
     });
     mockAdoptCatalogFile.mockReturnValue({
@@ -249,5 +254,16 @@ describe("catalog routes", () => {
     expect(await jsonBody(res)).toEqual({
       summary: expect.objectContaining({ scanned: 1, added: 1, failed: 0 }),
     });
+  });
+
+  it("rejects an overlapping catalog scan", async () => {
+    mockRunCatalogScan.mockRejectedValueOnce(
+      new MockCatalogScanInProgressError("A catalog scan is already in progress"),
+    );
+
+    const res = await catalog.request("/scan", { method: "POST" });
+
+    expect(res.status).toBe(409);
+    expect(await jsonBody(res)).toEqual({ error: "A catalog scan is already in progress" });
   });
 });

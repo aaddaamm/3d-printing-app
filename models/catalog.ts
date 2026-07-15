@@ -10,6 +10,7 @@ import {
   deactivateScanRoot,
   listScanRoots,
   scanCatalogRoot,
+  MAX_CATALOG_SCAN_ERRORS,
   type CatalogScanSummary,
 } from "../lib/catalog-scanner.js";
 import type { CatalogFile, ScanRoot } from "../lib/types.js";
@@ -54,6 +55,9 @@ export interface CatalogFileAdoption {
 }
 
 export class CatalogValidationError extends Error {}
+export class CatalogScanInProgressError extends Error {}
+
+let catalogScanInProgress = false;
 
 export interface CatalogPreviewContent {
   content: Buffer;
@@ -329,31 +333,44 @@ export function readCatalogPreview(file: string): CatalogPreviewContent | null {
 }
 
 export async function runCatalogScan(): Promise<CatalogScanSummary> {
-  const roots = listCatalogScanRoots().filter((root) => root.is_active === 1);
-  const total: CatalogScanSummary = {
-    scanned: 0,
-    added: 0,
-    changed: 0,
-    unchanged: 0,
-    missing: 0,
-    restored: 0,
-    skipped: 0,
-    failed: 0,
-    durationMs: 0,
-  };
-
-  for (const root of roots) {
-    const summary = await scanCatalogRoot(catalogStatements, root);
-    total.scanned += summary.scanned;
-    total.added += summary.added;
-    total.changed += summary.changed;
-    total.unchanged += summary.unchanged;
-    total.missing += summary.missing;
-    total.restored += summary.restored;
-    total.skipped += summary.skipped;
-    total.failed += summary.failed;
-    total.durationMs += summary.durationMs;
+  if (catalogScanInProgress) {
+    throw new CatalogScanInProgressError("A catalog scan is already in progress");
   }
+  catalogScanInProgress = true;
 
-  return total;
+  try {
+    const roots = listCatalogScanRoots().filter((root) => root.is_active === 1);
+    const total: CatalogScanSummary = {
+      scanned: 0,
+      added: 0,
+      changed: 0,
+      unchanged: 0,
+      missing: 0,
+      restored: 0,
+      skipped: 0,
+      failed: 0,
+      incompleteRoots: 0,
+      errors: [],
+      durationMs: 0,
+    };
+
+    for (const root of roots) {
+      const summary = await scanCatalogRoot(catalogStatements, root);
+      total.scanned += summary.scanned;
+      total.added += summary.added;
+      total.changed += summary.changed;
+      total.unchanged += summary.unchanged;
+      total.missing += summary.missing;
+      total.restored += summary.restored;
+      total.skipped += summary.skipped;
+      total.failed += summary.failed;
+      total.incompleteRoots += summary.incompleteRoots;
+      total.errors.push(...summary.errors.slice(0, MAX_CATALOG_SCAN_ERRORS - total.errors.length));
+      total.durationMs += summary.durationMs;
+    }
+
+    return total;
+  } finally {
+    catalogScanInProgress = false;
+  }
 }

@@ -137,12 +137,12 @@ The scanner indexes common 3D/source/G-code files (`.3mf`, `.stl`, `.step`, `.st
 Current boundaries:
 
 - File identity is path-based. Moving or renaming a file creates a new indexed path and leaves the old record marked missing; matching hashes are reported as duplicates but do not reconcile moves.
-- Scans run in the API request/CLI process and hash files sequentially; there is no background queue or filesystem watcher.
+- Scans run in the API request/CLI process and hash files sequentially; there is no background queue or filesystem watcher. The API rejects overlapping scan requests.
 - Deactivating a root preserves its records, but there is no reactivation action yet.
 - Newly discovered files enter the inbox. Adoption explicitly links the original file to a new or existing product without moving it; ignored files remain indexed but leave the inbox.
 - Files that predate the inbox migration are marked `indexed` rather than flooding the inbox.
 - Managed copy/move operations are not implemented yet; all current adoptions are references to files in place.
-- Only configure roots that are reliably readable. An unavailable root can currently produce failed discovery and missing-file transitions.
+- An unreadable root or subtree is reported as an incomplete scan with path-level errors. Missing-file detection is skipped for that root until a complete traversal succeeds.
 
 ## Product Pipeline
 
@@ -268,19 +268,19 @@ gate in the local-first mode.
 
 ### Catalog
 
-| Method   | Path                      | Description                                      |
-| -------- | ------------------------- | ------------------------------------------------ |
-| `GET`    | `/catalog/files`          | List indexed catalog-file summaries              |
-| `GET`    | `/catalog/inbox`          | List present files awaiting review                |
-| `GET`    | `/catalog/duplicates`     | Group exact-content matches by SHA-256 hash       |
-| `GET`    | `/catalog/previews/:file` | Serve a cached embedded 3MF preview               |
-| `POST`   | `/catalog/files/:id/adopt`| Link a file to a new or existing product          |
-| `POST`   | `/catalog/files/:id/ignore`| Remove a discovery from the inbox                |
-| `POST`   | `/catalog/files/:id/inbox`| Return an indexed file to the review inbox        |
-| `GET`    | `/catalog/roots`          | List active and inactive scan roots               |
-| `POST`   | `/catalog/roots`          | Add an existing server-local directory            |
-| `DELETE` | `/catalog/roots/:id`      | Deactivate a root without deleting indexed files  |
-| `POST`   | `/catalog/scan`           | Synchronously scan every active root              |
+| Method   | Path                        | Description                                      |
+| -------- | --------------------------- | ------------------------------------------------ |
+| `GET`    | `/catalog/files`            | List indexed catalog-file summaries              |
+| `GET`    | `/catalog/inbox`            | List present files awaiting review               |
+| `GET`    | `/catalog/duplicates`       | Group exact-content matches by SHA-256 hash      |
+| `GET`    | `/catalog/previews/:file`   | Serve a cached embedded 3MF preview              |
+| `POST`   | `/catalog/files/:id/adopt`  | Link a file to a new or existing product         |
+| `POST`   | `/catalog/files/:id/ignore` | Remove a discovery from the inbox                |
+| `POST`   | `/catalog/files/:id/inbox`  | Return an indexed file to the review inbox       |
+| `GET`    | `/catalog/roots`            | List active and inactive scan roots              |
+| `POST`   | `/catalog/roots`            | Add an existing server-local directory           |
+| `DELETE` | `/catalog/roots/:id`        | Deactivate a root without deleting indexed files |
+| `POST`   | `/catalog/scan`             | Synchronously scan every active root             |
 
 ### Tasks
 

@@ -35,7 +35,7 @@
 - `npm run lint`: pass
 - `npm run typecheck`: pass
 - `npm run build`: pass with existing font URL warnings
-- `npm test`: 294 pass under Node 24
+- `npm test`: 298 pass under Node 24
 - Browser QA: desktop and 390px mobile pass; adoption interaction verified on a database backup
 
 ## Related Issues / PRs
@@ -46,7 +46,7 @@
 ## Next 3 Actions
 
 1. Group inbox discoveries into folder/package-level design candidates.
-2. Add hash-based move/rename reconciliation and unreadable-root safety.
+2. Add hash-based move/rename reconciliation; unreadable-root safety is now implemented.
 3. Design opt-in managed copy/move previews and a canonical library layout.
 
 ## Resume Commands
