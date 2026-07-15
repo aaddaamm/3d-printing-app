@@ -37,6 +37,22 @@ export interface CatalogFileSummary {
   preview_url: string | null;
 }
 
+export interface CatalogFileListQuery {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  scanStatus?: "present" | "missing";
+  reviewStatus?: "indexed" | "inbox" | "referenced" | "ignored";
+}
+
+export interface CatalogFilePage {
+  files: CatalogFileSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
 interface CatalogFileListRow extends CatalogFile {
   linked_product_id: number | null;
   linked_product_name: string | null;
@@ -208,14 +224,55 @@ export function deactivateCatalogScanRoot(id: number): ScanRoot {
   return deactivateScanRoot(catalogStatements, id);
 }
 
-export function listCatalogFiles(): CatalogFileSummary[] {
-  return db
-    .prepare<
-      [],
-      CatalogFileListRow
-    >(`${CATALOG_FILE_LIST_SELECT} ORDER BY cf.updated_at DESC, cf.id DESC`)
-    .all()
-    .map(toCatalogFileSummary);
+export function listCatalogFiles(input: CatalogFileListQuery = {}): CatalogFilePage {
+  const requestedPage = Math.max(1, Math.trunc(input.page ?? 1));
+  const pageSize = Math.min(100, Math.max(1, Math.trunc(input.pageSize ?? 48)));
+  const conditions: string[] = [];
+  const parameters: string[] = [];
+  const query = input.query?.trim();
+
+  if (query) {
+    conditions.push("(cf.filename LIKE ? ESCAPE '\\' OR cf.path LIKE ? ESCAPE '\\')");
+    const escapedQuery = query
+      .replaceAll("\\", "\\\\")
+      .replaceAll("%", "\\%")
+      .replaceAll("_", "\\_");
+    parameters.push(`%${escapedQuery}%`, `%${escapedQuery}%`);
+  }
+  if (input.scanStatus) {
+    conditions.push("cf.scan_status = ?");
+    parameters.push(input.scanStatus);
+  }
+  if (input.reviewStatus) {
+    conditions.push("cf.review_status = ?");
+    parameters.push(input.reviewStatus);
+  }
+
+  const whereClause = conditions.length > 0 ? ` WHERE ${conditions.join(" AND ")}` : "";
+  const total = Number(
+    db
+      .prepare(`SELECT COUNT(*) FROM catalog_files cf${whereClause}`)
+      .pluck()
+      .get(...parameters),
+  );
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const offset = (page - 1) * pageSize;
+  const rows = db
+    .prepare(
+      `${CATALOG_FILE_LIST_SELECT}${whereClause}
+       ORDER BY cf.updated_at DESC, cf.id DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(...parameters, pageSize, offset) as CatalogFileListRow[];
+
+  return {
+    files: rows.map(toCatalogFileSummary),
+    page,
+    pageSize,
+    total,
+    totalPages,
+  };
 }
 
 export function listCatalogInboxFiles(): CatalogFileSummary[] {

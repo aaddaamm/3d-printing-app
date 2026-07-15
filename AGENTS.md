@@ -168,6 +168,8 @@ unless you increase `BAMBU_LIMIT` to capture them before expiry.
   filesystem watcher, automatic product matching, or managed file storage exists.
 - Existing files are grandfathered with `review_status = 'indexed'`; newly discovered files
   enter the inbox. Adoption creates a `product_files` reference and never moves the source.
+- The catalog file gallery API is paginated (48 rows by default, 100 maximum) and supports
+  filename/path search plus scan-status and review-status filters.
 - Current review states are `indexed`, `inbox`, `referenced`, and `ignored`. Managed storage is
   represented separately by `managed_blob_id` and is not yet exposed as a copy/move workflow.
 - A deactivated scan root remains in the database and currently cannot be reactivated from

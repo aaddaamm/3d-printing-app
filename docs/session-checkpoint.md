@@ -35,7 +35,7 @@
 - `npm run lint`: pass
 - `npm run typecheck`: pass
 - `npm run build`: pass with existing font URL warnings
-- `npm test`: 298 pass under Node 24
+- `npm test`: 302 pass under Node 24
 - Browser QA: desktop and 390px mobile pass; adoption interaction verified on a database backup
 
 ## Related Issues / PRs
@@ -48,6 +48,9 @@
 1. Group inbox discoveries into folder/package-level design candidates.
 2. Add hash-based move/rename reconciliation; unreadable-root safety is now implemented.
 3. Design opt-in managed copy/move previews and a canonical library layout.
+
+Catalog gallery pagination, filename/folder search, and state filters are now implemented; the UI
+loads 48 catalog records per request instead of the entire inventory.
 
 ## Resume Commands
 

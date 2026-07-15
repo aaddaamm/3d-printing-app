@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { fetchJsonOrToast, postJsonOrToast, type ProductSummary } from "../lib/api.js";
@@ -73,7 +73,14 @@ type CatalogDuplicateGroup = {
 };
 
 type DuplicatesResponse = { groups: CatalogDuplicateGroup[] };
-type FilesResponse = { files: CatalogFileSummary[] };
+type FilesResponse = {
+  files: CatalogFileSummary[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+};
+type InboxResponse = { files: CatalogFileSummary[] };
 type ProductsResponse = { products: ProductSummary[] };
 type RootsResponse = { roots: ScanRoot[] };
 type RootResponse = { root: ScanRoot };
@@ -300,9 +307,18 @@ export function CatalogView() {
   const [rootPath, setRootPath] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(true);
+  const [filesLoading, setFilesLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [triagingId, setTriagingId] = useState<number | null>(null);
   const [summary, setSummary] = useState<CatalogScanSummary | null>(null);
+  const [filePage, setFilePage] = useState(1);
+  const [fileTotal, setFileTotal] = useState(0);
+  const [fileTotalPages, setFileTotalPages] = useState(1);
+  const [fileSearchInput, setFileSearchInput] = useState("");
+  const [fileQuery, setFileQuery] = useState("");
+  const [fileScanStatus, setFileScanStatus] = useState("");
+  const [fileReviewStatus, setFileReviewStatus] = useState("");
+  const fileRequestId = useRef(0);
 
   const loadDuplicates = async () => {
     const data = await fetchJsonOrToast<DuplicatesResponse>(
@@ -313,12 +329,27 @@ export function CatalogView() {
   };
 
   const loadFiles = async () => {
-    const data = await fetchJsonOrToast<FilesResponse>("/catalog/files", "Failed to load files.");
-    if (data) setFiles(data.files);
+    const requestId = ++fileRequestId.current;
+    setFilesLoading(true);
+    const params = new URLSearchParams({ page: String(filePage), pageSize: "48" });
+    if (fileQuery) params.set("q", fileQuery);
+    if (fileScanStatus) params.set("scanStatus", fileScanStatus);
+    if (fileReviewStatus) params.set("reviewStatus", fileReviewStatus);
+    const data = await fetchJsonOrToast<FilesResponse>(
+      `/catalog/files?${params.toString()}`,
+      "Failed to load files.",
+    );
+    if (data && requestId === fileRequestId.current) {
+      setFiles(data.files);
+      setFilePage(data.page);
+      setFileTotal(data.total);
+      setFileTotalPages(data.totalPages);
+    }
+    if (requestId === fileRequestId.current) setFilesLoading(false);
   };
 
   const loadInbox = async () => {
-    const data = await fetchJsonOrToast<FilesResponse>(
+    const data = await fetchJsonOrToast<InboxResponse>(
       "/catalog/inbox",
       "Failed to load catalog inbox.",
     );
@@ -339,13 +370,17 @@ export function CatalogView() {
   };
 
   const loadCatalog = async () => {
-    await Promise.all([loadRoots(), loadFiles(), loadInbox(), loadProducts(), loadDuplicates()]);
+    await Promise.all([loadRoots(), loadInbox(), loadProducts(), loadDuplicates()]);
     setLoading(false);
   };
 
   useEffect(() => {
     loadCatalog();
   }, []);
+
+  useEffect(() => {
+    loadFiles();
+  }, [filePage, fileQuery, fileScanStatus, fileReviewStatus]);
 
   const addRoot = async (event: Event) => {
     event.preventDefault();
@@ -397,7 +432,7 @@ export function CatalogView() {
           : "Catalog scan complete.",
         data.summary.failed > 0 ? "info" : "success",
       );
-      await loadCatalog();
+      await Promise.all([loadCatalog(), loadFiles()]);
     } finally {
       setScanning(false);
     }
@@ -433,8 +468,8 @@ export function CatalogView() {
       );
       if (!data) return;
       setInboxFiles((items) => items.filter((item) => item.id !== file.id));
-      setFiles((items) => items.map((item) => (item.id === file.id ? data.file : item)));
       toast(`${file.filename} removed from the inbox.`, "success");
+      await loadFiles();
     } finally {
       setTriagingId(null);
     }
@@ -443,7 +478,7 @@ export function CatalogView() {
   let fileGallery = html`<div class="catalog-file-grid">
     ${files.map((file) => html`<${CatalogFileCard} key=${file.id} file=${file} />`)}
   </div>`;
-  if (loading) fileGallery = html`<div class="empty">Loading catalog files…</div>`;
+  if (filesLoading) fileGallery = html`<div class="empty">Loading catalog files…</div>`;
   else if (files.length === 0)
     fileGallery = html`<div class="empty">No catalog files scanned yet.</div>`;
 
@@ -548,9 +583,81 @@ export function CatalogView() {
               Browse scanned 3MF/model files with embedded thumbnails when available.
             </p>
           </div>
-          <div class="catalog-file-count">${files.length.toLocaleString()} files</div>
+          <div class="catalog-file-count">${fileTotal.toLocaleString()} files</div>
         </div>
+        <form
+          class="catalog-file-toolbar"
+          onSubmit=${(event: Event) => {
+            event.preventDefault();
+            setFilePage(1);
+            setFileQuery(fileSearchInput.trim());
+          }}
+        >
+          <label class="form-label catalog-file-search">
+            Search
+            <input
+              type="search"
+              class="form-input"
+              placeholder="Filename or folder"
+              value=${fileSearchInput}
+              onInput=${(event: Event) =>
+                setFileSearchInput((event.target as HTMLInputElement).value)}
+            />
+          </label>
+          <label class="form-label">
+            File state
+            <select
+              class="form-input"
+              value=${fileScanStatus}
+              onChange=${(event: Event) => {
+                setFilePage(1);
+                setFileScanStatus((event.target as HTMLSelectElement).value);
+              }}
+            >
+              <option value="">All files</option>
+              <option value="present">Present</option>
+              <option value="missing">Missing</option>
+            </select>
+          </label>
+          <label class="form-label">
+            Review state
+            <select
+              class="form-input"
+              value=${fileReviewStatus}
+              onChange=${(event: Event) => {
+                setFilePage(1);
+                setFileReviewStatus((event.target as HTMLSelectElement).value);
+              }}
+            >
+              <option value="">All states</option>
+              <option value="inbox">Inbox</option>
+              <option value="referenced">Referenced</option>
+              <option value="indexed">Indexed</option>
+              <option value="ignored">Ignored</option>
+            </select>
+          </label>
+          <button class="btn-secondary" type="submit">Search</button>
+        </form>
         ${fileGallery}
+        <div class="catalog-pagination" aria-label="Catalog file pages">
+          <button
+            class="btn-secondary btn-compact"
+            type="button"
+            disabled=${filePage <= 1 || filesLoading}
+            onClick=${() => setFilePage((page) => Math.max(1, page - 1))}
+          >
+            Previous
+          </button>
+          <span>Page ${filePage.toLocaleString()} of ${fileTotalPages.toLocaleString()}</span>
+          <button
+            class="btn-secondary btn-compact"
+            type="button"
+            disabled=${filePage >= fileTotalPages || filesLoading}
+            onClick=${() => setFilePage((page) => Math.min(fileTotalPages, page + 1))}
+          >
+            Next
+          </button>
+        </div>
       </section>
 
       <section class="admin-section">

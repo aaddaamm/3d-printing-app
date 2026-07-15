@@ -54,7 +54,13 @@ describe("catalog routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockListCatalogDuplicateGroups.mockReturnValue([]);
-    mockListCatalogFiles.mockReturnValue([]);
+    mockListCatalogFiles.mockReturnValue({
+      files: [],
+      page: 1,
+      pageSize: 48,
+      total: 0,
+      totalPages: 1,
+    });
     mockListCatalogInboxFiles.mockReturnValue([]);
     mockListCatalogScanRoots.mockReturnValue([]);
     mockReadCatalogPreview.mockReturnValue(null);
@@ -111,26 +117,56 @@ describe("catalog routes", () => {
   });
 
   it("lists catalog files with preview URLs", async () => {
-    mockListCatalogFiles.mockReturnValue([
-      {
-        id: 10,
-        filename: "dragon.3mf",
-        extension: "3mf",
-        folder: "/models",
-        size_bytes: 1234,
-        modified_at: "2026-07-06T00:00:00.000Z",
-        scan_status: "present",
-        preview_url:
-          "/catalog/previews/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
-      },
-    ]);
+    mockListCatalogFiles.mockReturnValue({
+      files: [
+        {
+          id: 10,
+          filename: "dragon.3mf",
+          extension: "3mf",
+          folder: "/models",
+          size_bytes: 1234,
+          modified_at: "2026-07-06T00:00:00.000Z",
+          scan_status: "present",
+          preview_url:
+            "/catalog/previews/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.png",
+        },
+      ],
+      page: 2,
+      pageSize: 24,
+      total: 30,
+      totalPages: 2,
+    });
 
-    const res = await catalog.request("/files");
+    const res = await catalog.request(
+      "/files?page=2&pageSize=24&q=dragon&scanStatus=present&reviewStatus=indexed",
+    );
 
     expect(res.status).toBe(200);
+    expect(mockListCatalogFiles).toHaveBeenCalledWith({
+      page: 2,
+      pageSize: 24,
+      query: "dragon",
+      scanStatus: "present",
+      reviewStatus: "indexed",
+    });
     expect(await jsonBody(res)).toEqual({
       files: [expect.objectContaining({ filename: "dragon.3mf", preview_url: expect.any(String) })],
+      page: 2,
+      pageSize: 24,
+      total: 30,
+      totalPages: 2,
     });
+  });
+
+  it("rejects invalid catalog pagination and filters", async () => {
+    const badPage = await catalog.request("/files?page=0");
+    const badPageSize = await catalog.request("/files?pageSize=101");
+    const badStatus = await catalog.request("/files?scanStatus=gone");
+
+    expect(badPage.status).toBe(400);
+    expect(badPageSize.status).toBe(400);
+    expect(badStatus.status).toBe(400);
+    expect(mockListCatalogFiles).not.toHaveBeenCalled();
   });
 
   it("lists newly discovered inbox files", async () => {

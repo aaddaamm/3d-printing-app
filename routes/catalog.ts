@@ -18,8 +18,45 @@ import { jsonError, parseId, parseJsonBody } from "../lib/util.js";
 
 export const catalog = new Hono();
 
+const CATALOG_SCAN_STATUSES = new Set(["present", "missing"]);
+const CATALOG_REVIEW_STATUSES = new Set(["indexed", "inbox", "referenced", "ignored"]);
+
+function positiveInteger(value: string | undefined, fallback: number): number | null {
+  if (value === undefined) return fallback;
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 catalog.get("/files", (c) => {
-  return c.json({ files: listCatalogFiles() });
+  const page = positiveInteger(c.req.query("page"), 1);
+  const pageSize = positiveInteger(c.req.query("pageSize"), 48);
+  if (page === null) return jsonError(c, "page must be a positive integer", 400);
+  if (pageSize === null || pageSize > 100) {
+    return jsonError(c, "pageSize must be an integer between 1 and 100", 400);
+  }
+
+  const query = c.req.query("q")?.trim();
+  if (query && query.length > 200) return jsonError(c, "q must be 200 characters or fewer", 400);
+  const scanStatus = c.req.query("scanStatus");
+  if (scanStatus && !CATALOG_SCAN_STATUSES.has(scanStatus)) {
+    return jsonError(c, "Invalid scanStatus", 400);
+  }
+  const reviewStatus = c.req.query("reviewStatus");
+  if (reviewStatus && !CATALOG_REVIEW_STATUSES.has(reviewStatus)) {
+    return jsonError(c, "Invalid reviewStatus", 400);
+  }
+
+  return c.json(
+    listCatalogFiles({
+      page,
+      pageSize,
+      ...(query ? { query } : {}),
+      ...(scanStatus ? { scanStatus: scanStatus as "present" | "missing" } : {}),
+      ...(reviewStatus
+        ? { reviewStatus: reviewStatus as "indexed" | "inbox" | "referenced" | "ignored" }
+        : {}),
+    }),
+  );
 });
 
 catalog.get("/inbox", (c) => {

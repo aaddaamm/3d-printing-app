@@ -1999,6 +1999,24 @@ tbody td {
   white-space: nowrap;
 }
 
+.catalog-file-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 2fr) minmax(145px, 1fr) minmax(145px, 1fr) auto;
+  gap: 12px;
+  align-items: end;
+  margin-bottom: 16px;
+}
+
+.catalog-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .catalog-file-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
@@ -2247,6 +2265,7 @@ tbody td {
   .catalog-header-row,
   .catalog-root-card,
   .catalog-root-form,
+  .catalog-file-toolbar,
   .catalog-section-heading {
     grid-template-columns: 1fr;
     flex-direction: column;
