@@ -10,6 +10,7 @@ import {
   ErrorView,
   getRouteState,
   renderMainContent,
+  routeNeedsDashboardBootstrap,
 } from "./components/app-shell.js";
 import { toast, ToastContainer } from "./components/toast.js";
 import { fetchJson, patchJsonOrToast } from "./lib/api.js";
@@ -119,7 +120,6 @@ type UseJobsViewStateArgs = {
   sortDir: SortDir;
   setSortCol: (col: string) => void;
   setSortDir: (updater: (dir: SortDir) => SortDir) => void;
-  loc: string;
 };
 
 function useJobsViewState({
@@ -131,7 +131,6 @@ function useJobsViewState({
   sortDir,
   setSortCol,
   setSortDir,
-  loc,
 }: UseJobsViewStateArgs) {
   const devices = useMemo(
     () =>
@@ -163,9 +162,7 @@ function useJobsViewState({
     [sortCol, setSortCol, setSortDir],
   );
 
-  const route = useMemo(() => getRouteState(loc), [loc]);
-
-  return { devices, isFiltered, filtered, sorted, handleSort, route };
+  return { devices, isFiltered, filtered, sorted, handleSort };
 }
 
 function useJobActions({
@@ -307,7 +304,7 @@ function SelectedJobModal({
   />`;
 }
 
-function useBootstrapData(state: AppState) {
+function useBootstrapData(state: AppState, enabled: boolean) {
   const setProjectsFromBootstrap = useCallback(
     (items: unknown[]) => state.setProjects(items as Project[]),
     [state.setProjects],
@@ -321,14 +318,17 @@ function useBootstrapData(state: AppState) {
     [state.setDataRange],
   );
 
-  return useDashboardBootstrap({
-    setJobs: state.setJobs,
-    setProjects: setProjectsFromBootstrap,
-    setProjectPrices: state.setProjectPrices,
-    setSummary: setSummaryFromBootstrap,
-    setDataRange: setDataRangeFromBootstrap,
-    toast,
-  });
+  return useDashboardBootstrap(
+    {
+      setJobs: state.setJobs,
+      setProjects: setProjectsFromBootstrap,
+      setProjectPrices: state.setProjectPrices,
+      setSummary: setSummaryFromBootstrap,
+      setDataRange: setDataRangeFromBootstrap,
+      toast,
+    },
+    enabled,
+  );
 }
 
 // ── App ──────────────────────────────────────────────────────────────────────
@@ -336,6 +336,7 @@ function useBootstrapData(state: AppState) {
 function App() {
   const state = useAppState();
   const [loc, navigate] = useLocation();
+  const route = useMemo(() => getRouteState(loc), [loc]);
 
   const {
     loading,
@@ -345,9 +346,9 @@ function App() {
     bootStatus,
     refreshProjectsAndPrices,
     refreshJobPrices,
-  } = useBootstrapData(state);
+  } = useBootstrapData(state, routeNeedsDashboardBootstrap(route));
 
-  const { devices, isFiltered, filtered, sorted, handleSort, route } = useJobsViewState({
+  const { devices, isFiltered, filtered, sorted, handleSort } = useJobsViewState({
     jobs: state.jobs,
     q: state.q,
     statusFilter: state.statusFilter,
@@ -356,7 +357,6 @@ function App() {
     sortDir: state.sortDir,
     setSortCol: state.setSortCol,
     setSortDir: state.setSortDir,
-    loc,
   });
 
   const {

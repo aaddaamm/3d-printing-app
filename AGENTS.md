@@ -171,6 +171,8 @@ unless you increase `BAMBU_LIMIT` to capture them before expiry.
 - The catalog file gallery API is paginated (48 rows by default, 100 maximum) and supports
   filename/path search plus scan-status and review-status filters.
 - Exact-duplicate analysis is lazy in the UI and paginated (25 groups by default, 50 maximum).
+- Catalog, Products, Batches, and Admin routes bypass the shared print-history bootstrap; Jobs,
+  Projects, and Printers still require it. Navigation back to a dependent route starts the bootstrap.
 - Current review states are `indexed`, `inbox`, `referenced`, and `ignored`. Managed storage is
   represented separately by `managed_blob_id` and is not yet exposed as a copy/move workflow.
 - A deactivated scan root remains in the database and currently cannot be reactivated from

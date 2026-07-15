@@ -293,6 +293,10 @@ export function getRouteState(loc: string): RouteState {
   };
 }
 
+export function routeNeedsDashboardBootstrap(route: RouteState): boolean {
+  return !(route.isAdmin || route.isCatalog || route.isProducts || route.isBatches);
+}
+
 export function renderMainContent({
   route,
   summary,

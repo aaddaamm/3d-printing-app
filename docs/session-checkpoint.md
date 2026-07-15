@@ -35,7 +35,7 @@
 - `npm run lint`: pass
 - `npm run typecheck`: pass
 - `npm run build`: pass with existing font URL warnings
-- `npm test`: 304 pass under Node 24
+- `npm test`: 314 pass under Node 24
 - Browser QA: desktop and 390px mobile pass; adoption interaction verified on a database backup
 
 ## Related Issues / PRs
@@ -52,6 +52,7 @@
 Catalog gallery pagination, filename/folder search, and state filters are now implemented; the UI
 loads 48 catalog records per request instead of the entire inventory.
 Duplicate analysis is now loaded on demand and paginated at 25 groups per request.
+Catalog, Products, Batches, and Admin routes now bypass the shared print-history dashboard bootstrap.
 
 ## Resume Commands
 

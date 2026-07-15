@@ -17,19 +17,16 @@ type BootstrapArgs = {
   toast: (message: string, kind: "error" | "success") => void;
 };
 
-export function useDashboardBootstrap({
-  setJobs,
-  setProjects,
-  setProjectPrices,
-  setSummary,
-  setDataRange,
-  toast,
-}: BootstrapArgs) {
-  const [loading, setLoading] = useState(true);
-  const [projectsLoading, setProjectsLoading] = useState(true);
+export function useDashboardBootstrap(
+  { setJobs, setProjects, setProjectPrices, setSummary, setDataRange, toast }: BootstrapArgs,
+  enabled = true,
+) {
+  const [loading, setLoading] = useState(enabled);
+  const [projectsLoading, setProjectsLoading] = useState(enabled);
   const [loadProgress, setLoadProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [bootStatus, setBootStatus] = useState("Starting dashboard…");
+  const [hasLoadedDashboard, setHasLoadedDashboard] = useState(false);
 
   const loadOptional = useCallback(
     async <T>({
@@ -87,8 +84,23 @@ export function useDashboardBootstrap({
   );
 
   useEffect(() => {
-    const advanceProgress = () =>
-      setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
+    if (!enabled) {
+      setLoading(false);
+      setProjectsLoading(false);
+      setError(null);
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setProjectsLoading(true);
+    setLoadProgress(0);
+    setError(null);
+    setBootStatus("Starting dashboard…");
+
+    const advanceProgress = () => {
+      if (!cancelled) setLoadProgress((p) => Math.min(100, p + 100 / TOTAL_BOOT_REQUESTS));
+    };
     const trackedFetchJson = <T>(url: string, fallback: string, label: string) => {
       setBootStatus(`Loading ${url}…`);
       return fetchJson<T>(url, fallback)
@@ -100,6 +112,7 @@ export function useDashboardBootstrap({
     };
 
     const failsafe = setTimeout(() => {
+      if (cancelled) return;
       setError("Dashboard load timed out. Check console/network for the failing request.");
       setLoading(false);
       setProjectsLoading(false);
@@ -115,26 +128,32 @@ export function useDashboardBootstrap({
       ),
     ])
       .then(([data, sum, range]) => {
+        if (cancelled) return;
         setJobs(data.jobs);
         setSummary(sum);
         setDataRange(range);
+        setHasLoadedDashboard(true);
         setLoading(false);
         setBootStatus("Loading optional data…");
         refreshJobPrices(false);
         refreshProjectsAndPrices();
       })
       .catch((err: Error) => {
+        if (cancelled) return;
         setError(err.message);
         setLoading(false);
         setProjectsLoading(false);
       })
       .finally(() => clearTimeout(failsafe));
 
-    return () => clearTimeout(failsafe);
-  }, [setJobs, setSummary, setDataRange, refreshJobPrices, refreshProjectsAndPrices]);
+    return () => {
+      cancelled = true;
+      clearTimeout(failsafe);
+    };
+  }, [enabled, setJobs, setSummary, setDataRange, refreshJobPrices, refreshProjectsAndPrices]);
 
   return {
-    loading,
+    loading: enabled && !error && !hasLoadedDashboard ? true : loading,
     projectsLoading,
     loadProgress,
     error,

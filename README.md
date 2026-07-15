@@ -143,6 +143,7 @@ Current boundaries:
 - Files that predate the inbox migration are marked `indexed` rather than flooding the inbox.
 - The file gallery loads 48 records at a time and supports filename/folder search plus scan-state and review-state filters.
 - Exact-duplicate analysis is loaded on demand and paginated at 25 groups per request.
+- Catalog, Products, Batches, and Rates/Admin routes load independently from the print-history dashboard bootstrap. Jobs, Projects, and Printers still load shared history, summary, and pricing data.
 - Managed copy/move operations are not implemented yet; all current adoptions are references to files in place.
 - An unreadable root or subtree is reported as an incomplete scan with path-level errors. Missing-file detection is skipped for that root until a complete traversal succeeds.
 
