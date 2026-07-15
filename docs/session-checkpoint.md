@@ -2,11 +2,11 @@
 
 ## Timestamp
 
-- 2026-07-14 10:46 EDT
+- 2026-07-15 08:45 EDT
 
 ## Goal
 
-- Reconcile project/agent documentation and begin the hybrid catalog inbox and managed-library design.
+- Continue the hybrid catalog work while reducing duplicated TypeScript contracts and form parsing.
 
 ## Completed
 
@@ -16,13 +16,13 @@
 - Added non-destructive inbox adoption into new or existing products.
 - Added inbox UI, adoption/ignore controls, history events, and responsive fixes.
 - Verified migration 18 against a SQLite backup containing 5,240 catalog files.
+- Grouped inbox files into design candidates with transactional package adoption.
+- Added shared catalog API contracts consumed by backend and frontend TypeScript.
+- Centralized product and batch form-value parsing with direct edge-case tests.
 
 ## In Progress
 
-- Issue #43 remains open for folder/package grouping, move reconciliation, root-failure safety,
-  and opt-in managed copy/move operations.
-- The working tree also contains pre-existing catalog preview/gallery and provider changes from
-  before this work block; preserve them when committing.
+- Issue #43 remains open for move reconciliation and opt-in managed copy/move operations.
 
 ## Blockers / Risks
 
@@ -35,12 +35,13 @@
 - `npm run lint`: pass
 - `npm run typecheck`: pass
 - `npm run build`: pass with existing font URL warnings
-- `npm test`: 325 pass under Node 24
+- `npm test`: 329 pass under Node 24
 - Browser QA: desktop and 390px mobile pass; adoption interaction verified on a database backup
 
 ## Related Issues / PRs
 
 - #43 — hybrid catalog inbox and managed design library; first non-destructive slice implemented
+- #22 — TypeScript-only architecture completed, including the first shared API contract module
 - #31 — generalized documentation/naming remains open
 
 ## Next 3 Actions
