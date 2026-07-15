@@ -2131,6 +2131,62 @@ tbody td {
   align-items: center;
 }
 
+.catalog-candidate-body > * {
+  min-width: 0;
+}
+
+.catalog-candidate-files {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.catalog-candidate-files summary {
+  cursor: pointer;
+  color: var(--accent);
+}
+
+.catalog-candidate-files ul {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.catalog-candidate-files li {
+  overflow-wrap: anywhere;
+}
+
+.catalog-candidate-actions {
+  flex-wrap: wrap;
+}
+
+.catalog-split-candidate {
+  display: grid;
+  gap: 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.catalog-split-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  color: var(--text);
+}
+
+.catalog-split-header div {
+  display: grid;
+  gap: 3px;
+}
+
+.catalog-split-header span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 .catalog-duplicate-grid {
   display: grid;
   gap: 12px;
@@ -2272,6 +2328,11 @@ tbody td {
   .catalog-file-toolbar,
   .catalog-section-heading {
     grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .catalog-split-header {
+    align-items: flex-start;
     flex-direction: column;
   }
 

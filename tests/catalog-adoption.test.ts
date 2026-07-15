@@ -54,6 +54,35 @@ function insertCatalogFile(reviewStatus = "inbox", scanStatus = "present"): numb
   );
 }
 
+function insertCandidateFiles(): { stlId: number; threeMfId: number } {
+  const rootId = Number(
+    dbModule!.db
+      .prepare(
+        `INSERT INTO scan_roots (name, root_path, normalized_root_path)
+         VALUES ('Models', '/models', '/models') RETURNING id`,
+      )
+      .pluck()
+      .get(),
+  );
+  const insert = dbModule!.db
+    .prepare(
+      `INSERT INTO catalog_files (
+        root_id, path, normalized_path, filename, extension, content_hash, hash_algorithm,
+        scan_status, review_status, size_bytes
+      ) VALUES (?, ?, ?, ?, ?, ?, 'sha256', 'present', 'inbox', ?)
+      RETURNING id`,
+    )
+    .pluck();
+  const stlPath = "/models/Dragon/STL/dragon.stl";
+  const threeMfPath = "/models/Dragon/3MF/dragon.3mf";
+  return {
+    stlId: Number(insert.get(rootId, stlPath, stlPath, "dragon.stl", "stl", "b".repeat(64), 100)),
+    threeMfId: Number(
+      insert.get(rootId, threeMfPath, threeMfPath, "dragon.3mf", "3mf", "c".repeat(64), 200),
+    ),
+  };
+}
+
 describe.sequential("catalog inbox adoption", () => {
   beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "catalog-adoption-"));
@@ -164,6 +193,82 @@ describe.sequential("catalog inbox adoption", () => {
       .run(fileId);
     expect(() => catalogModule!.returnCatalogFileToInbox(fileId)).toThrow(
       "Linked catalog files cannot be returned to the inbox",
+    );
+  });
+
+  it("groups a package candidate and adopts all files transactionally", () => {
+    const { stlId, threeMfId } = insertCandidateFiles();
+    const [candidate] = catalogModule!.listCatalogInboxCandidates();
+    const product = productsModule!.createProduct({ name: "Dragon", status_id: "idea" });
+
+    expect(candidate).toMatchObject({
+      name: "Dragon",
+      folder: "/models/Dragon",
+      primary_file_id: threeMfId,
+      total_size_bytes: 300,
+    });
+
+    const adoption = catalogModule!.adoptCatalogCandidate({
+      fileIds: [stlId, threeMfId],
+      primaryFileId: threeMfId,
+      productId: product.id,
+    });
+
+    expect(adoption).toMatchObject({
+      product_id: product.id,
+      product_name: "Dragon",
+      files: expect.arrayContaining([
+        expect.objectContaining({ id: stlId, review_status: "referenced" }),
+        expect.objectContaining({ id: threeMfId, review_status: "referenced" }),
+      ]),
+    });
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_files WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(2);
+    expect(
+      dbModule!.db
+        .prepare(
+          `SELECT pf.file_id
+           FROM products p JOIN product_files pf ON pf.id = p.main_file_id
+           WHERE p.id = ?`,
+        )
+        .pluck()
+        .get(product.id),
+    ).toBe(threeMfId);
+  });
+
+  it("rejects files from unrelated candidates before creating a product", () => {
+    const rootId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO scan_roots (name, root_path, normalized_root_path)
+           VALUES ('Models', '/models', '/models') RETURNING id`,
+        )
+        .pluck()
+        .get(),
+    );
+    const insert = dbModule!.db
+      .prepare(
+        `INSERT INTO catalog_files (
+          root_id, path, normalized_path, filename, extension, scan_status, review_status
+        ) VALUES (?, ?, ?, ?, 'stl', 'present', 'inbox') RETURNING id`,
+      )
+      .pluck();
+    const firstId = Number(insert.get(rootId, "/models/A/a.stl", "/models/A/a.stl", "a.stl"));
+    const secondId = Number(insert.get(rootId, "/models/B/b.stl", "/models/B/b.stl", "b.stl"));
+
+    expect(() =>
+      catalogModule!.adoptCatalogCandidate({
+        fileIds: [firstId, secondId],
+        primaryFileId: firstId,
+        productName: "Invalid Bundle",
+      }),
+    ).toThrow("fileIds must belong to one current inbox candidate");
+    expect(productsModule!.listProducts()).not.toContainEqual(
+      expect.objectContaining({ name: "Invalid Bundle" }),
     );
   });
 });

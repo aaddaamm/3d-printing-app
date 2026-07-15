@@ -4,11 +4,13 @@ const {
   MockCatalogConflictError,
   MockCatalogScanInProgressError,
   mockAddCatalogScanRoot,
+  mockAdoptCatalogCandidate,
   mockAdoptCatalogFile,
   mockDeactivateCatalogScanRoot,
   mockIgnoreCatalogFile,
   mockListCatalogDuplicateGroups,
   mockListCatalogFiles,
+  mockListCatalogInboxCandidates,
   mockListCatalogInboxFiles,
   mockListCatalogScanRoots,
   mockReadCatalogPreview,
@@ -18,11 +20,13 @@ const {
   MockCatalogConflictError: class CatalogConflictError extends Error {},
   MockCatalogScanInProgressError: class CatalogScanInProgressError extends Error {},
   mockAddCatalogScanRoot: vi.fn(),
+  mockAdoptCatalogCandidate: vi.fn(),
   mockAdoptCatalogFile: vi.fn(),
   mockDeactivateCatalogScanRoot: vi.fn(),
   mockIgnoreCatalogFile: vi.fn(),
   mockListCatalogDuplicateGroups: vi.fn(),
   mockListCatalogFiles: vi.fn(),
+  mockListCatalogInboxCandidates: vi.fn(),
   mockListCatalogInboxFiles: vi.fn(),
   mockListCatalogScanRoots: vi.fn(),
   mockReadCatalogPreview: vi.fn(),
@@ -35,11 +39,13 @@ vi.mock("../models/catalog.js", () => ({
   CatalogScanInProgressError: MockCatalogScanInProgressError,
   CatalogValidationError: class CatalogValidationError extends Error {},
   addCatalogScanRoot: mockAddCatalogScanRoot,
+  adoptCatalogCandidate: mockAdoptCatalogCandidate,
   adoptCatalogFile: mockAdoptCatalogFile,
   deactivateCatalogScanRoot: mockDeactivateCatalogScanRoot,
   ignoreCatalogFile: mockIgnoreCatalogFile,
   listCatalogDuplicateGroups: mockListCatalogDuplicateGroups,
   listCatalogFiles: mockListCatalogFiles,
+  listCatalogInboxCandidates: mockListCatalogInboxCandidates,
   listCatalogInboxFiles: mockListCatalogInboxFiles,
   listCatalogScanRoots: mockListCatalogScanRoots,
   readCatalogPreview: mockReadCatalogPreview,
@@ -71,6 +77,7 @@ describe("catalog routes", () => {
       total: 0,
       totalPages: 1,
     });
+    mockListCatalogInboxCandidates.mockReturnValue([]);
     mockListCatalogInboxFiles.mockReturnValue([]);
     mockListCatalogScanRoots.mockReturnValue([]);
     mockReadCatalogPreview.mockReturnValue(null);
@@ -112,6 +119,15 @@ describe("catalog routes", () => {
       product_id: 2,
       product_name: "Dragon",
       product_file_id: 3,
+    });
+    mockAdoptCatalogCandidate.mockReturnValue({
+      files: [
+        { id: 10, review_status: "referenced" },
+        { id: 11, review_status: "referenced" },
+      ],
+      product_id: 2,
+      product_name: "Dragon",
+      primary_product_file_id: 3,
     });
     mockIgnoreCatalogFile.mockReturnValue({ id: 10, review_status: "ignored" });
     mockReturnCatalogFileToInbox.mockReturnValue({ id: 10, review_status: "inbox" });
@@ -186,6 +202,61 @@ describe("catalog routes", () => {
 
     expect(res.status).toBe(200);
     expect(await jsonBody(res)).toEqual({ files: [{ id: 10, review_status: "inbox" }] });
+  });
+
+  it("lists grouped inbox candidates", async () => {
+    mockListCatalogInboxCandidates.mockReturnValue([
+      {
+        key: "folder:/models/Dragon",
+        name: "Dragon",
+        folder: "/models/Dragon",
+        primary_file_id: 11,
+        total_size_bytes: 300,
+        files: [{ id: 10 }, { id: 11 }],
+      },
+    ]);
+
+    const res = await catalog.request("/inbox-candidates");
+
+    expect(res.status).toBe(200);
+    expect(await jsonBody(res)).toEqual({
+      candidates: [expect.objectContaining({ name: "Dragon", primary_file_id: 11 })],
+    });
+  });
+
+  it("adopts every file in an inbox candidate", async () => {
+    const res = await catalog.request("/inbox-candidates/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileIds: [10, 11], primaryFileId: 11, productName: "Dragon" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockAdoptCatalogCandidate).toHaveBeenCalledWith({
+      fileIds: [10, 11],
+      primaryFileId: 11,
+      productName: "Dragon",
+    });
+    expect(await jsonBody(res)).toEqual({
+      adoption: expect.objectContaining({ product_id: 2, primary_product_file_id: 3 }),
+    });
+  });
+
+  it("rejects malformed candidate adoption payloads", async () => {
+    const missingFiles = await catalog.request("/inbox-candidates/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ primaryFileId: 11, productName: "Dragon" }),
+    });
+    const badPrimary = await catalog.request("/inbox-candidates/adopt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ fileIds: [10, 11], primaryFileId: "11", productName: "Dragon" }),
+    });
+
+    expect(missingFiles.status).toBe(400);
+    expect(badPrimary.status).toBe(400);
+    expect(mockAdoptCatalogCandidate).not.toHaveBeenCalled();
   });
 
   it("adopts a catalog file into an existing product", async () => {

@@ -139,7 +139,8 @@ Current boundaries:
 - File identity is path-based. Moving or renaming a file creates a new indexed path and leaves the old record marked missing; matching hashes are reported as duplicates but do not reconcile moves.
 - Scans run in the API request/CLI process and hash files sequentially; there is no background queue or filesystem watcher. The API rejects overlapping scan requests.
 - Deactivating a root preserves its records, but there is no reactivation action yet.
-- Newly discovered files enter the inbox. Adoption explicitly links the original file to a new or existing product without moving it; ignored files remain indexed but leave the inbox.
+- Newly discovered files enter the inbox as design candidates. Files in one package folder are grouped together; generic `STL`/`3MF` subfolders fold into their parent package, while loose root files group only by matching filename stem.
+- Candidate adoption links every grouped file to one new or existing product, uses a likely primary file (favoring 3MF), and never moves the originals. “Review separately” exposes the existing per-file adoption and ignore actions when a grouping is not useful.
 - Review transitions are enforced: only inbox files can be ignored, only ignored files can return to the inbox, and product-linked files cannot enter either triage state.
 - Files that predate the inbox migration are marked `indexed` rather than flooding the inbox.
 - The file gallery loads 48 records at a time and supports filename/folder search plus scan-state and review-state filters.

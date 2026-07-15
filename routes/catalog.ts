@@ -4,11 +4,13 @@ import {
   CatalogValidationError,
   CatalogScanInProgressError,
   addCatalogScanRoot,
+  adoptCatalogCandidate,
   adoptCatalogFile,
   deactivateCatalogScanRoot,
   ignoreCatalogFile,
   listCatalogDuplicateGroups,
   listCatalogFiles,
+  listCatalogInboxCandidates,
   listCatalogInboxFiles,
   listCatalogScanRoots,
   readCatalogPreview,
@@ -62,6 +64,45 @@ catalog.get("/files", (c) => {
 
 catalog.get("/inbox", (c) => {
   return c.json({ files: listCatalogInboxFiles() });
+});
+
+catalog.get("/inbox-candidates", (c) => {
+  return c.json({ candidates: listCatalogInboxCandidates() });
+});
+
+catalog.post("/inbox-candidates/adopt", async (c) => {
+  const body = await parseJsonBody(c);
+  if (!body) return jsonError(c, "Invalid JSON", 400);
+
+  const fileIds = body["fileIds"];
+  const primaryFileId = body["primaryFileId"];
+  const productId = body["productId"];
+  const productName = body["productName"];
+  if (!Array.isArray(fileIds)) return jsonError(c, "fileIds must be an array", 400);
+  if (typeof primaryFileId !== "number") {
+    return jsonError(c, "primaryFileId must be a number", 400);
+  }
+  if (productId !== undefined && typeof productId !== "number") {
+    return jsonError(c, "productId must be a number", 400);
+  }
+  if (productName !== undefined && typeof productName !== "string") {
+    return jsonError(c, "productName must be a string", 400);
+  }
+
+  try {
+    return c.json({
+      adoption: adoptCatalogCandidate({
+        fileIds: fileIds as number[],
+        primaryFileId,
+        ...(productId === undefined ? {} : { productId }),
+        ...(productName === undefined ? {} : { productName }),
+      }),
+    });
+  } catch (error: unknown) {
+    if (error instanceof CatalogConflictError) return jsonError(c, error.message, 409);
+    if (error instanceof CatalogValidationError) return jsonError(c, error.message, 400);
+    throw error;
+  }
 });
 
 catalog.post("/files/:id/adopt", async (c) => {

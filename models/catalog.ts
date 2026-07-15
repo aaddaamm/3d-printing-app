@@ -1,5 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
+import {
+  groupCatalogInboxCandidates,
+  type CatalogInboxCandidate,
+} from "../lib/catalog-candidates.js";
 import { groupCatalogDuplicates, type CatalogDuplicateGroup } from "../lib/catalog-duplicates.js";
 import { catalogPreviewExists, catalogPreviewPath } from "../lib/catalog-preview.js";
 import { db } from "../lib/db.js";
@@ -53,6 +57,12 @@ export interface CatalogFilePage {
   totalPages: number;
 }
 
+export interface CatalogInboxCandidateFile extends CatalogFileSummary {
+  rootPath: string;
+}
+
+export type CatalogInboxCandidateSummary = CatalogInboxCandidate<CatalogInboxCandidateFile>;
+
 export interface CatalogDuplicatePage {
   groups: CatalogDuplicateGroup[];
   page: number;
@@ -65,6 +75,7 @@ export interface CatalogDuplicatePage {
 interface CatalogFileListRow extends CatalogFile {
   linked_product_id: number | null;
   linked_product_name: string | null;
+  scan_root_path: string | null;
 }
 
 export interface AdoptCatalogFileInput {
@@ -77,6 +88,18 @@ export interface CatalogFileAdoption {
   product_id: number;
   product_name: string;
   product_file_id: number;
+}
+
+export interface AdoptCatalogCandidateInput extends AdoptCatalogFileInput {
+  fileIds: number[];
+  primaryFileId: number;
+}
+
+export interface CatalogCandidateAdoption {
+  files: CatalogFileSummary[];
+  product_id: number;
+  product_name: string;
+  primary_product_file_id: number;
 }
 
 export class CatalogValidationError extends Error {}
@@ -142,8 +165,10 @@ function toCatalogFileSummary(file: CatalogFileListRow): CatalogFileSummary {
 const CATALOG_FILE_LIST_SELECT = `SELECT
   cf.*,
   linked.product_id AS linked_product_id,
-  linked.product_name AS linked_product_name
+  linked.product_name AS linked_product_name,
+  sr.root_path AS scan_root_path
 FROM catalog_files cf
+LEFT JOIN scan_roots sr ON sr.id = cf.root_id
 LEFT JOIN (
   SELECT pf.file_id, pf.product_id, p.name AS product_name
   FROM product_files pf
@@ -154,6 +179,13 @@ LEFT JOIN (
     WHERE first_pf.file_id = pf.file_id
   )
 ) linked ON linked.file_id = cf.id`;
+
+function toCatalogInboxCandidateFile(file: CatalogFileListRow): CatalogInboxCandidateFile {
+  return {
+    ...toCatalogFileSummary(file),
+    rootPath: file.scan_root_path ?? path.dirname(file.path),
+  };
+}
 
 function getCatalogFileRow(id: number): CatalogFileListRow | null {
   return (
@@ -228,6 +260,45 @@ function catalogFileHasProductLinks(fileId: number): boolean {
       >("SELECT 1 AS linked FROM product_files WHERE file_id = ? LIMIT 1")
       .get(fileId),
   );
+}
+
+function createProductFileReference(productId: number, file: CatalogFile): number {
+  const existing = db
+    .prepare<
+      [number, number],
+      { id: number }
+    >("SELECT id FROM product_files WHERE product_id = ? AND file_id = ? ORDER BY id LIMIT 1")
+    .get(productId, file.id)?.id;
+  if (existing) return existing;
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO product_files (product_id, file_id, role, label)
+         VALUES (?, ?, 'source', ?)
+         RETURNING id`,
+      )
+      .pluck()
+      .get(productId, file.id, file.filename),
+  );
+}
+
+function markCatalogFileReferenced(
+  file: CatalogFile,
+  productId: number,
+  productFileId: number,
+  now: string,
+  candidateKey?: string,
+): void {
+  db.prepare(
+    `UPDATE catalog_files
+     SET review_status = 'referenced', reviewed_at = ?, updated_at = ?
+     WHERE id = ?`,
+  ).run(now, now, file.id);
+  recordCatalogReview(file, "referenced", {
+    productId,
+    productFileId,
+    ...(candidateKey ? { candidateKey } : {}),
+  });
 }
 
 export function listCatalogScanRoots(): ScanRoot[] {
@@ -307,6 +378,18 @@ export function listCatalogInboxFiles(): CatalogFileSummary[] {
     .map(toCatalogFileSummary);
 }
 
+export function listCatalogInboxCandidates(): CatalogInboxCandidateSummary[] {
+  const files = db
+    .prepare<[], CatalogFileListRow>(
+      `${CATALOG_FILE_LIST_SELECT}
+       WHERE cf.review_status = 'inbox' AND cf.scan_status = 'present'
+       ORDER BY cf.first_seen_at DESC, cf.id DESC`,
+    )
+    .all()
+    .map(toCatalogInboxCandidateFile);
+  return groupCatalogInboxCandidates(files);
+}
+
 export function adoptCatalogFile(id: number, input: AdoptCatalogFileInput): CatalogFileAdoption {
   return db.transaction(() => {
     const file = requireCatalogFileRow(id);
@@ -314,24 +397,7 @@ export function adoptCatalogFile(id: number, input: AdoptCatalogFileInput): Cata
       throw new CatalogValidationError("Missing catalog files cannot be adopted");
     }
     const product = resolveAdoptionProduct(input);
-    let productFileId = db
-      .prepare<
-        [number, number],
-        { id: number }
-      >("SELECT id FROM product_files WHERE product_id = ? AND file_id = ? ORDER BY id LIMIT 1")
-      .get(product.id, file.id)?.id;
-    if (!productFileId) {
-      productFileId = Number(
-        db
-          .prepare(
-            `INSERT INTO product_files (product_id, file_id, role, label)
-             VALUES (?, ?, 'source', ?)
-             RETURNING id`,
-          )
-          .pluck()
-          .get(product.id, file.id, file.filename),
-      );
-    }
+    const productFileId = createProductFileReference(product.id, file);
 
     const now = new Date().toISOString();
     db.prepare(
@@ -339,21 +405,77 @@ export function adoptCatalogFile(id: number, input: AdoptCatalogFileInput): Cata
        SET main_file_id = COALESCE(main_file_id, ?), updated_at = ?
        WHERE id = ?`,
     ).run(productFileId, now, product.id);
-    db.prepare(
-      `UPDATE catalog_files
-       SET review_status = 'referenced', reviewed_at = ?, updated_at = ?
-       WHERE id = ?`,
-    ).run(now, now, file.id);
-    recordCatalogReview(file, "referenced", {
-      productId: product.id,
-      productFileId,
-    });
+    markCatalogFileReferenced(file, product.id, productFileId, now);
 
     return {
       file: toCatalogFileSummary(requireCatalogFileRow(file.id)),
       product_id: product.id,
       product_name: product.name,
       product_file_id: productFileId,
+    };
+  })();
+}
+
+export function adoptCatalogCandidate(input: AdoptCatalogCandidateInput): CatalogCandidateAdoption {
+  return db.transaction(() => {
+    const fileIds = [...new Set(input.fileIds)];
+    if (fileIds.length === 0 || fileIds.length > 500) {
+      throw new CatalogValidationError("fileIds must contain between 1 and 500 unique files");
+    }
+    if (fileIds.some((id) => !Number.isInteger(id) || id <= 0)) {
+      throw new CatalogValidationError("fileIds must contain positive integers");
+    }
+    if (!fileIds.includes(input.primaryFileId)) {
+      throw new CatalogValidationError("primaryFileId must be included in fileIds");
+    }
+
+    const placeholders = fileIds.map(() => "?").join(", ");
+    const files = db
+      .prepare(`${CATALOG_FILE_LIST_SELECT} WHERE cf.id IN (${placeholders})`)
+      .all(...fileIds) as CatalogFileListRow[];
+    if (files.length !== fileIds.length) {
+      throw new CatalogValidationError("One or more catalog files were not found");
+    }
+    if (files.some((file) => file.scan_status !== "present" || file.review_status !== "inbox")) {
+      throw new CatalogConflictError("Candidate files must be present and awaiting inbox review");
+    }
+    if (files.some((file) => catalogFileHasProductLinks(file.id))) {
+      throw new CatalogConflictError("Candidate files cannot already be linked to products");
+    }
+
+    const candidates = groupCatalogInboxCandidates(files.map(toCatalogInboxCandidateFile));
+    if (candidates.length !== 1 || candidates[0]?.files.length !== files.length) {
+      throw new CatalogValidationError("fileIds must belong to one current inbox candidate");
+    }
+    const [candidate] = candidates;
+    if (!candidate || candidate.primary_file_id !== input.primaryFileId) {
+      throw new CatalogConflictError(
+        "The candidate primary file has changed; refresh and try again",
+      );
+    }
+
+    const product = resolveAdoptionProduct(input);
+    const now = new Date().toISOString();
+    let primaryProductFileId: number | null = null;
+    for (const file of files) {
+      const productFileId = createProductFileReference(product.id, file);
+      if (file.id === input.primaryFileId) primaryProductFileId = productFileId;
+      markCatalogFileReferenced(file, product.id, productFileId, now, candidate.key);
+    }
+    if (primaryProductFileId === null) {
+      throw new CatalogValidationError("Unable to create the primary product file reference");
+    }
+    db.prepare(
+      `UPDATE products
+       SET main_file_id = COALESCE(main_file_id, ?), updated_at = ?
+       WHERE id = ?`,
+    ).run(primaryProductFileId, now, product.id);
+
+    return {
+      files: files.map((file) => toCatalogFileSummary(requireCatalogFileRow(file.id))),
+      product_id: product.id,
+      product_name: product.name,
+      primary_product_file_id: primaryProductFileId,
     };
   })();
 }

@@ -54,6 +54,15 @@ type CatalogFileSummary = {
   preview_url: string | null;
 };
 
+type CatalogInboxCandidate = {
+  key: string;
+  name: string;
+  folder: string;
+  primary_file_id: number;
+  total_size_bytes: number;
+  files: CatalogFileSummary[];
+};
+
 type CatalogDuplicateFileSummary = {
   id: number;
   filename: string;
@@ -87,7 +96,7 @@ type FilesResponse = {
   total: number;
   totalPages: number;
 };
-type InboxResponse = { files: CatalogFileSummary[] };
+type InboxResponse = { candidates: CatalogInboxCandidate[] };
 type ProductsResponse = { products: ProductSummary[] };
 type RootsResponse = { roots: ScanRoot[] };
 type RootResponse = { root: ScanRoot };
@@ -98,6 +107,14 @@ type AdoptionResponse = {
     product_id: number;
     product_name: string;
     product_file_id: number;
+  };
+};
+type CandidateAdoptionResponse = {
+  adoption: {
+    files: CatalogFileSummary[];
+    product_id: number;
+    product_name: string;
+    primary_product_file_id: number;
   };
 };
 
@@ -235,6 +252,113 @@ function CatalogInboxCard({
   </article>`;
 }
 
+function CatalogCandidateCard({
+  candidate,
+  products,
+  busy,
+  onAdopt,
+  onReviewSeparately,
+}: {
+  candidate: CatalogInboxCandidate;
+  products: ProductSummary[];
+  busy: boolean;
+  onAdopt: (
+    candidate: CatalogInboxCandidate,
+    payload: { productId?: number; productName?: string },
+  ) => void;
+  onReviewSeparately: (candidate: CatalogInboxCandidate) => void;
+}) {
+  const [selectedProduct, setSelectedProduct] = useState("new");
+  const [productName, setProductName] = useState(candidate.name);
+  const useExisting = selectedProduct !== "new";
+  const canAdopt = useExisting || productName.trim() !== "";
+  const primary =
+    candidate.files.find((file) => file.id === candidate.primary_file_id) ?? candidate.files[0];
+
+  const adopt = () => {
+    if (!canAdopt) return;
+    if (useExisting) {
+      onAdopt(candidate, { productId: Number(selectedProduct) });
+      return;
+    }
+    onAdopt(candidate, { productName: productName.trim() });
+  };
+
+  return html`<article class="catalog-inbox-card catalog-candidate-card">
+    <div class="catalog-file-preview catalog-inbox-preview">
+      ${primary?.preview_url
+        ? html`<img
+            src=${primary.preview_url}
+            alt=${`Preview of ${primary.filename}`}
+            loading="lazy"
+          />`
+        : html`<div class="catalog-file-placeholder">
+            ${(primary?.extension ?? "files").toUpperCase()}
+          </div>`}
+    </div>
+    <div class="catalog-inbox-body catalog-candidate-body">
+      <div>
+        <h4 class="catalog-file-name" title=${candidate.name}>${candidate.name}</h4>
+        <div class="catalog-file-folder" title=${candidate.folder}>${candidate.folder}</div>
+        <details class="catalog-candidate-files">
+          <summary>
+            ${candidate.files.length.toLocaleString()}
+            ${candidate.files.length === 1 ? "file" : "related files"} ·
+            ${formatBytes(candidate.total_size_bytes)}
+          </summary>
+          <ul>
+            ${candidate.files.map(
+              (file) =>
+                html`<li key=${file.id}>
+                  ${file.id === candidate.primary_file_id ? html`<strong>Primary:</strong>` : null}
+                  ${file.filename}
+                </li>`,
+            )}
+          </ul>
+        </details>
+      </div>
+      <label class="form-label">
+        Adopt as
+        <select
+          class="form-input"
+          value=${selectedProduct}
+          onInput=${(event: Event) => setSelectedProduct((event.target as HTMLSelectElement).value)}
+        >
+          <option value="new">New product</option>
+          ${products.map(
+            (product) =>
+              html`<option value=${String(product.id)} key=${product.id}>${product.name}</option>`,
+          )}
+        </select>
+      </label>
+      ${useExisting
+        ? null
+        : html`<label class="form-label">
+            Product name
+            <input
+              class="form-input"
+              value=${productName}
+              onInput=${(event: Event) => setProductName((event.target as HTMLInputElement).value)}
+            />
+          </label>`}
+      <div class="catalog-inbox-actions catalog-candidate-actions">
+        <button class="btn-primary" onClick=${adopt} disabled=${busy || !canAdopt}>
+          ${busy ? "Working…" : `Adopt ${candidate.files.length === 1 ? "file" : "package"}`}
+        </button>
+        ${candidate.files.length > 1
+          ? html`<button
+              class="btn-secondary"
+              onClick=${() => onReviewSeparately(candidate)}
+              disabled=${busy}
+            >
+              Review separately
+            </button>`
+          : null}
+      </div>
+    </div>
+  </article>`;
+}
+
 function DuplicateGroupCard({ group }: { group: CatalogDuplicateGroup }) {
   return html`<article class="catalog-duplicate-card">
     <div class="catalog-duplicate-card-header">
@@ -314,7 +438,8 @@ export function CatalogView() {
   const [duplicateTotalPages, setDuplicateTotalPages] = useState(1);
   const [duplicateExtraCopies, setDuplicateExtraCopies] = useState(0);
   const [files, setFiles] = useState<CatalogFileSummary[]>([]);
-  const [inboxFiles, setInboxFiles] = useState<CatalogFileSummary[]>([]);
+  const [inboxCandidates, setInboxCandidates] = useState<CatalogInboxCandidate[]>([]);
+  const [splitCandidates, setSplitCandidates] = useState<Set<string>>(new Set());
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [roots, setRoots] = useState<ScanRoot[]>([]);
   const [rootPath, setRootPath] = useState("");
@@ -322,7 +447,7 @@ export function CatalogView() {
   const [loading, setLoading] = useState(true);
   const [filesLoading, setFilesLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
-  const [triagingId, setTriagingId] = useState<number | null>(null);
+  const [triagingKey, setTriagingKey] = useState<string | null>(null);
   const [summary, setSummary] = useState<CatalogScanSummary | null>(null);
   const [filePage, setFilePage] = useState(1);
   const [fileTotal, setFileTotal] = useState(0);
@@ -372,10 +497,16 @@ export function CatalogView() {
 
   const loadInbox = async () => {
     const data = await fetchJsonOrToast<InboxResponse>(
-      "/catalog/inbox",
+      "/catalog/inbox-candidates",
       "Failed to load catalog inbox.",
     );
-    if (data) setInboxFiles(data.files);
+    if (data) {
+      setInboxCandidates(data.candidates);
+      setSplitCandidates((current) => {
+        const candidateKeys = new Set(data.candidates.map((candidate) => candidate.key));
+        return new Set([...current].filter((key) => candidateKeys.has(key)));
+      });
+    }
   };
 
   const loadProducts = async () => {
@@ -470,7 +601,7 @@ export function CatalogView() {
     file: CatalogFileSummary,
     payload: { productId?: number; productName?: string },
   ) => {
-    setTriagingId(file.id);
+    setTriagingKey(`file:${file.id}`);
     try {
       const data = await postJsonOrToast<AdoptionResponse>(
         `/catalog/files/${file.id}/adopt`,
@@ -478,16 +609,41 @@ export function CatalogView() {
         "Failed to adopt catalog file.",
       );
       if (!data) return;
-      setInboxFiles((items) => items.filter((item) => item.id !== file.id));
       toast(`Linked ${file.filename} to ${data.adoption.product_name}.`, "success");
-      await Promise.all([loadFiles(), loadProducts()]);
+      await Promise.all([loadInbox(), loadFiles(), loadProducts()]);
     } finally {
-      setTriagingId(null);
+      setTriagingKey(null);
+    }
+  };
+
+  const adoptCandidate = async (
+    candidate: CatalogInboxCandidate,
+    payload: { productId?: number; productName?: string },
+  ) => {
+    setTriagingKey(candidate.key);
+    try {
+      const data = await postJsonOrToast<CandidateAdoptionResponse>(
+        "/catalog/inbox-candidates/adopt",
+        {
+          fileIds: candidate.files.map((file) => file.id),
+          primaryFileId: candidate.primary_file_id,
+          ...payload,
+        },
+        "Failed to adopt catalog candidate.",
+      );
+      if (!data) return;
+      toast(
+        `Linked ${candidate.files.length.toLocaleString()} files to ${data.adoption.product_name}.`,
+        "success",
+      );
+      await Promise.all([loadInbox(), loadFiles(), loadProducts()]);
+    } finally {
+      setTriagingKey(null);
     }
   };
 
   const ignoreFile = async (file: CatalogFileSummary) => {
-    setTriagingId(file.id);
+    setTriagingKey(`file:${file.id}`);
     try {
       const data = await postJsonOrToast<{ file: CatalogFileSummary }>(
         `/catalog/files/${file.id}/ignore`,
@@ -495,11 +651,10 @@ export function CatalogView() {
         "Failed to ignore catalog file.",
       );
       if (!data) return;
-      setInboxFiles((items) => items.filter((item) => item.id !== file.id));
       toast(`${file.filename} removed from the inbox.`, "success");
-      await loadFiles();
+      await Promise.all([loadInbox(), loadFiles()]);
     } finally {
-      setTriagingId(null);
+      setTriagingKey(null);
     }
   };
 
@@ -551,21 +706,57 @@ export function CatalogView() {
     `;
   }
 
+  const inboxFileCount = inboxCandidates.reduce(
+    (total, candidate) => total + candidate.files.length,
+    0,
+  );
   let inboxPanel = html`<div class="catalog-inbox-grid">
-    ${inboxFiles.map(
-      (file) =>
-        html`<${CatalogInboxCard}
-          key=${file.id}
-          file=${file}
-          products=${products}
-          busy=${triagingId === file.id}
-          onAdopt=${adoptFile}
-          onIgnore=${ignoreFile}
-        />`,
+    ${inboxCandidates.map((candidate) =>
+      splitCandidates.has(candidate.key)
+        ? html`<div class="catalog-split-candidate" key=${candidate.key}>
+            <div class="catalog-split-header">
+              <div>
+                <strong>${candidate.name}</strong>
+                <span>${candidate.files.length.toLocaleString()} files shown separately</span>
+              </div>
+              <button
+                class="btn-secondary btn-compact"
+                type="button"
+                onClick=${() =>
+                  setSplitCandidates((current) => {
+                    const next = new Set(current);
+                    next.delete(candidate.key);
+                    return next;
+                  })}
+              >
+                Keep grouped
+              </button>
+            </div>
+            ${candidate.files.map(
+              (file) =>
+                html`<${CatalogInboxCard}
+                  key=${file.id}
+                  file=${file}
+                  products=${products}
+                  busy=${triagingKey === `file:${file.id}`}
+                  onAdopt=${adoptFile}
+                  onIgnore=${ignoreFile}
+                />`,
+            )}
+          </div>`
+        : html`<${CatalogCandidateCard}
+            key=${candidate.key}
+            candidate=${candidate}
+            products=${products}
+            busy=${triagingKey === candidate.key}
+            onAdopt=${adoptCandidate}
+            onReviewSeparately=${(item: CatalogInboxCandidate) =>
+              setSplitCandidates((current) => new Set(current).add(item.key))}
+          />`,
     )}
   </div>`;
   if (loading) inboxPanel = html`<div class="empty">Loading catalog inbox…</div>`;
-  else if (inboxFiles.length === 0)
+  else if (inboxCandidates.length === 0)
     inboxPanel = html`<div class="empty">
       Inbox clear. Newly scanned files will appear here for review.
     </div>`;
@@ -626,7 +817,11 @@ export function CatalogView() {
               they are.
             </p>
           </div>
-          <div class="catalog-file-count">${inboxFiles.length.toLocaleString()} to review</div>
+          <div class="catalog-file-count">
+            ${inboxCandidates.length.toLocaleString()}
+            ${inboxCandidates.length === 1 ? "candidate" : "candidates"} ·
+            ${inboxFileCount.toLocaleString()} ${inboxFileCount === 1 ? "file" : "files"}
+          </div>
         </div>
         ${inboxPanel}
       </section>

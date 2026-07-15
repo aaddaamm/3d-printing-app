@@ -168,6 +168,9 @@ unless you increase `BAMBU_LIMIT` to capture them before expiry.
   filesystem watcher, automatic product matching, or managed file storage exists.
 - Existing files are grandfathered with `review_status = 'indexed'`; newly discovered files
   enter the inbox. Adoption creates a `product_files` reference and never moves the source.
+- Inbox files are grouped into design candidates by package folder. Generic `STL`/`3MF`/model
+  subfolders fold into their parent; loose scan-root files group only by matching filename stem.
+  Candidate adoption transactionally links every file and favors 3MF as the primary file.
 - The catalog file gallery API is paginated (48 rows by default, 100 maximum) and supports
   filename/path search plus scan-status and review-status filters.
 - Exact-duplicate analysis is lazy in the UI and paginated (25 groups by default, 50 maximum).

@@ -35,7 +35,7 @@
 - `npm run lint`: pass
 - `npm run typecheck`: pass
 - `npm run build`: pass with existing font URL warnings
-- `npm test`: 317 pass under Node 24
+- `npm test`: 325 pass under Node 24
 - Browser QA: desktop and 390px mobile pass; adoption interaction verified on a database backup
 
 ## Related Issues / PRs
@@ -45,7 +45,8 @@
 
 ## Next 3 Actions
 
-1. Group inbox discoveries into folder/package-level design candidates.
+1. Exercise candidate grouping on real discoveries and add persisted split/merge overrides only if
+   the folder/stem heuristics prove insufficient.
 2. Add hash-based move/rename reconciliation; unreadable-root safety is now implemented.
 3. Design opt-in managed copy/move previews and a canonical library layout.
 
@@ -54,6 +55,8 @@ loads 48 catalog records per request instead of the entire inventory.
 Duplicate analysis is now loaded on demand and paginated at 25 groups per request.
 Catalog, Products, Batches, and Admin routes now bypass the shared print-history dashboard bootstrap.
 Catalog triage now rejects invalid review-state changes and protects product-linked files.
+The inbox now presents folder/package-level design candidates with transactional multi-file adoption
+and a session-level “review separately” escape hatch.
 
 ## Resume Commands
 
