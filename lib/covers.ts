@@ -41,6 +41,53 @@ export function localCoverExists(taskId: string): boolean {
   return fs.existsSync(localCoverPath(taskId));
 }
 
+type CoverCacheStatus = "ready" | "downloaded" | "expired" | "failed" | "unavailable";
+
+export interface CoverCacheResult {
+  status: CoverCacheStatus;
+  path: string | null;
+}
+
+function assertRegularCoverFile(filePath: string): void {
+  const stat = fs.lstatSync(filePath);
+  if (!stat.isFile() || stat.isSymbolicLink()) {
+    throw new Error(`Refusing non-regular cover file path: ${filePath}`);
+  }
+}
+
+async function downloadCoverToFile(url: string, dest: string): Promise<void> {
+  const resp = await fetchWithRetry(url, {}, { retries: 2, timeoutMs: 5000 });
+  const buf = Buffer.from(await resp.arrayBuffer());
+  fs.writeFileSync(dest, buf);
+}
+
+export async function ensureLocalCoverCached(taskId: string): Promise<CoverCacheResult> {
+  if (!isSafeTaskId(taskId)) return { status: "unavailable", path: null };
+
+  const dest = localCoverPath(taskId);
+  if (fs.existsSync(dest)) {
+    assertRegularCoverFile(dest);
+    return { status: "ready", path: dest };
+  }
+
+  const task = db
+    .prepare<
+      [string],
+      { cover: string | null; thumbnail: string | null }
+    >("SELECT cover, thumbnail FROM print_tasks WHERE id = ?")
+    .get(taskId);
+  const mediaUrl = task?.cover ?? task?.thumbnail ?? null;
+  if (!mediaUrl) return { status: "unavailable", path: null };
+
+  try {
+    await downloadCoverToFile(mediaUrl, dest);
+    return { status: "downloaded", path: dest };
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 403) return { status: "expired", path: null };
+    return { status: "failed", path: null };
+  }
+}
+
 /**
  * Downloads cover images for all tasks that have a cover URL but no local file.
  * Idempotent — skips already-downloaded files.
@@ -82,16 +129,11 @@ export async function downloadCovers(): Promise<{
     const taskId = sanitizeTaskId(task.id);
     const dest = localCoverPath(taskId);
     if (fs.existsSync(dest)) {
-      const stat = fs.lstatSync(dest);
-      if (!stat.isFile() || stat.isSymbolicLink()) {
-        throw new Error(`Refusing non-regular cover file path: ${dest}`);
-      }
+      assertRegularCoverFile(dest);
       skipped++;
     } else {
       try {
-        const resp = await fetchWithRetry(task.cover, {}, { retries: 2, timeoutMs: 5000 });
-        const buf = Buffer.from(await resp.arrayBuffer());
-        fs.writeFileSync(dest, buf);
+        await downloadCoverToFile(task.cover, dest);
         downloaded++;
       } catch (e) {
         if (e instanceof HttpError && e.status === 403) expired++;

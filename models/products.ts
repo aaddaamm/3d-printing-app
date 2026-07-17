@@ -122,7 +122,15 @@ const PRODUCT_SELECT = `
     psrc.label AS source_label,
     p.license_id,
     pl.label AS license_label,
-    COALESCE(pp.path, cf.path) AS main_photo_path,
+    CASE
+      WHEN pp.id IS NULL THEN NULL
+      WHEN COALESCE(pp.path, cf.path) LIKE '/Users/%'
+        OR COALESCE(pp.path, cf.path) LIKE '/Volumes/%'
+        OR COALESCE(pp.path, cf.path) LIKE '/private/%'
+        OR COALESCE(pp.path, cf.path) LIKE '/tmp/%'
+        THEN '/ui/product-photos/' || pp.id
+      ELSE COALESCE(pp.path, cf.path)
+    END AS main_photo_path,
     p.target_sale_price,
     COALESCE(p.restock_priority, 'none') AS restock_priority,
     p.model_url,

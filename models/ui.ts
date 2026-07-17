@@ -150,8 +150,12 @@ export function listUiJobs(): UiJobRow[] {
       filament_colors_json,
       ...row
     }) => {
-      const localCoverUrl =
-        first_task_id && localCoverExists(first_task_id) ? `/ui/covers/${first_task_id}` : null;
+      const canServeLocalCover =
+        first_task_id &&
+        /^\d+$/.test(first_task_id) &&
+        (localCoverExists(first_task_id) ||
+          (first_task_provider === "bambu" && Boolean(first_task_cover ?? first_task_thumbnail)));
+      const localCoverUrl = canServeLocalCover ? `/ui/covers/${first_task_id}` : null;
       const fallbackCoverUrl = remoteCoverUrl(
         first_task_provider,
         first_task_provider_printer_id,

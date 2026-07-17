@@ -52,12 +52,17 @@ function moonrakerMediaUrl(
 }
 
 function resolveProjectCoverUrl(fields: ProjectCoverFields): string | null {
-  const latestCoverTaskId = fields.latest_cover_task_id;
-  if (latestCoverTaskId && localCoverExists(String(latestCoverTaskId))) {
-    return `/ui/covers/${latestCoverTaskId}`;
-  }
-
+  const latestCoverTaskId = fields.latest_cover_task_id
+    ? String(fields.latest_cover_task_id)
+    : null;
   const mediaUrl = fields.latest_cover_thumbnail ?? fields.latest_cover;
+  const canServeLocalCover =
+    latestCoverTaskId &&
+    /^\d+$/.test(latestCoverTaskId) &&
+    (localCoverExists(latestCoverTaskId) ||
+      (fields.latest_cover_provider === "bambu" && Boolean(mediaUrl)));
+  if (canServeLocalCover) return `/ui/covers/${latestCoverTaskId}`;
+
   if (!mediaUrl) return null;
   if (fields.latest_cover_provider === "moonraker") {
     return moonrakerMediaUrl(

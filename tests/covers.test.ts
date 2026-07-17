@@ -5,8 +5,9 @@ import path from "node:path";
 
 // db.ts opens a real SQLite file at module load — mock it before covers.ts loads.
 const mockPrepareAll = vi.fn().mockReturnValue([]);
+const mockPrepareGet = vi.fn().mockReturnValue(null);
 vi.mock("../lib/db.js", () => ({
-  db: { prepare: vi.fn(() => ({ all: mockPrepareAll })) },
+  db: { prepare: vi.fn(() => ({ all: mockPrepareAll, get: mockPrepareGet })) },
   stmts: {},
 }));
 
@@ -26,7 +27,13 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import fs from "node:fs";
-import { localCoverPath, localCoverExists, downloadCovers, COVERS_DIR } from "../lib/covers.js";
+import {
+  localCoverPath,
+  localCoverExists,
+  downloadCovers,
+  ensureLocalCoverCached,
+  COVERS_DIR,
+} from "../lib/covers.js";
 
 // ── localCoverPath ────────────────────────────────────────────────────────────
 
@@ -61,6 +68,66 @@ describe("localCoverExists", () => {
   it("returns false when existsSync returns false", () => {
     vi.mocked(fs.existsSync).mockReturnValue(false);
     expect(localCoverExists("task2")).toBe(false);
+  });
+});
+
+// ── ensureLocalCoverCached ────────────────────────────────────────────────────
+
+describe("ensureLocalCoverCached", () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    vi.stubGlobal("fetch", vi.fn());
+  });
+
+  it("returns ready without fetching when the local file already exists", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.lstatSync).mockReturnValue({
+      isFile: () => true,
+      isSymbolicLink: () => false,
+    } as fs.Stats);
+
+    const result = await ensureLocalCoverCached("t1");
+
+    expect(result).toEqual({ status: "ready", path: localCoverPath("t1") });
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("downloads and caches a missing local cover from the database cover URL", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockPrepareGet.mockReturnValue({ cover: "https://example.com/t1.png", thumbnail: null });
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as Response);
+
+    const result = await ensureLocalCoverCached("t1");
+
+    expect(result).toEqual({ status: "downloaded", path: localCoverPath("t1") });
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      localCoverPath("t1"),
+      Buffer.from(new ArrayBuffer(8)),
+    );
+  });
+
+  it("returns unavailable when the cached file is missing and the provider URL is expired", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockPrepareGet.mockReturnValue({ cover: "https://example.com/t1.png", thumbnail: null });
+    vi.mocked(fetch).mockResolvedValue({ ok: false, status: 403 } as Response);
+
+    const result = await ensureLocalCoverCached("t1");
+
+    expect(result).toEqual({ status: "expired", path: null });
+    expect(fs.writeFileSync).not.toHaveBeenCalled();
+  });
+
+  it("returns unavailable when no media URL is stored for the task", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    mockPrepareGet.mockReturnValue({ cover: null, thumbnail: null });
+
+    const result = await ensureLocalCoverCached("t1");
+
+    expect(result).toEqual({ status: "unavailable", path: null });
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

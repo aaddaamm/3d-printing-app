@@ -1,8 +1,9 @@
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, existsSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
-import { localCoverPath, localCoverExists } from "../lib/covers.js";
+import { ensureLocalCoverCached } from "../lib/covers.js";
+import { db } from "../lib/db.js";
 import { listUiJobs } from "../models/ui.js";
 
 const SOURCE_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
@@ -41,6 +42,13 @@ const isProd = process.env["NODE_ENV"] === "production";
 const fileCache = new Map<string, string>();
 const SAFE_ASSET_FILE_RE = /^[\w.-]+$/;
 const SAFE_FONT_FILE_RE = /^[\w,.-]+\.(woff2|ttf)$/;
+const IMAGE_CONTENT_TYPES = new Map<string, string>([
+  [".gif", "image/gif"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".png", "image/png"],
+  [".webp", "image/webp"],
+]);
 
 function assertInsideDirectory(root: string, candidate: string): string {
   const resolvedRoot = path.resolve(root);
@@ -138,15 +146,43 @@ function serveFontFile(c: Context): Response {
   return binaryResponse(new Uint8Array(content), contentType);
 }
 
-function serveCoverFile(c: Context): Response {
+async function serveCoverFile(c: Context): Promise<Response> {
   const taskId = c.req.param("taskId");
   if (!taskId || !/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
-  if (!localCoverExists(taskId)) return notFound(c);
+
+  const cover = await ensureLocalCoverCached(taskId);
+  if (!cover.path) return notFound(c);
+
   return binaryResponse(
-    readFileSync(localCoverPath(taskId)),
+    readFileSync(cover.path),
     "image/png",
     "public, max-age=31536000, immutable",
   );
+}
+
+function resolveProductPhotoPath(photoId: number): string | null {
+  const row = db
+    .prepare<[number], { path: string | null }>(
+      `SELECT COALESCE(pp.path, cf.path) AS path
+       FROM product_photos pp
+       LEFT JOIN catalog_files cf ON cf.id = pp.file_id
+       WHERE pp.id = ?`,
+    )
+    .get(photoId);
+  return row?.path ?? null;
+}
+
+function serveProductPhotoFile(c: Context): Response {
+  const photoId = Number(c.req.param("photoId"));
+  if (!Number.isInteger(photoId) || photoId <= 0) return c.json({ error: "Invalid" }, 400);
+
+  const filePath = resolveProductPhotoPath(photoId);
+  if (!filePath || !path.isAbsolute(filePath) || !existsSync(filePath)) return notFound(c);
+
+  const contentType = IMAGE_CONTENT_TYPES.get(path.extname(filePath).toLowerCase());
+  if (!contentType || !statSync(filePath).isFile()) return notFound(c);
+
+  return binaryResponse(readFileSync(filePath), contentType, "public, max-age=86400");
 }
 
 function servePrinterPhotoFile(c: Context): Response {
@@ -181,7 +217,9 @@ function registerStaticRoutes(ui: Hono): void {
 
   ui.get("/fonts/:file", (c) => serveFontFile(c));
 
-  ui.get("/covers/:taskId", (c) => serveCoverFile(c));
+  ui.get("/covers/:taskId", async (c) => serveCoverFile(c));
+
+  ui.get("/product-photos/:photoId", (c) => serveProductPhotoFile(c));
 
   ui.get("/printers/:slug", (c) => servePrinterPhotoFile(c));
 }

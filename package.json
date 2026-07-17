@@ -7,6 +7,7 @@
     "sync": "npx tsx sync-configured-providers.ts",
     "sync:bambu": "npx tsx dump-bambu-history.ts",
     "sync:moonraker": "npx tsx sync-moonraker-history.ts",
+    "covers:repair": "npx tsx scripts/repair-covers.ts",
     "catalog": "npx tsx scan-catalog.ts",
     "normalize": "npx tsx normalize.ts",
     "baseline": "npx tsx scripts/baseline-report.ts",
