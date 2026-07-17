@@ -130,6 +130,7 @@ function ProjectDetail({
   onProjectUpdated,
   onMoveJobToProject,
   onNavigateToProject,
+  onNavigateToProduct,
 }: {
   project: Project;
   jobs: Job[];
@@ -141,6 +142,7 @@ function ProjectDetail({
   onProjectUpdated: (project: Project) => void;
   onMoveJobToProject: (jobId: number, projectId: number) => void;
   onNavigateToProject: (projectId: number) => void;
+  onNavigateToProduct: (productId: number) => void;
 }) {
   const [showAddJobs, setShowAddJobs] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -252,7 +254,14 @@ function ProjectDetail({
           ${editing ? "Cancel edit" : "Edit project"}
         </button>
         <button class="btn-secondary" onClick=${copyProject}>Copy details</button>
-        <button class="btn-secondary" onClick=${createProduct}>Create product</button>
+        ${project.product_id
+          ? html`<button
+              class="btn-secondary"
+              onClick=${() => onNavigateToProduct(project.product_id!)}
+            >
+              Open product
+            </button>`
+          : html`<button class="btn-secondary" onClick=${createProduct}>Create product</button>`}
         <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
       </div>
       ${editing &&

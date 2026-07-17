@@ -160,6 +160,7 @@ function ProjectRouteView({
     onMoveJobToProject=${(jobId: number, newProjectId: number) =>
       handleJobProjectChange(jobId, newProjectId)}
     onNavigateToProject=${(newProjectId: number) => navigate(`/projects/${newProjectId}`)}
+    onNavigateToProduct=${(productId: number) => navigate(`/products/${productId}`)}
   />`;
 }
 

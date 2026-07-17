@@ -465,7 +465,8 @@ for (const [id, label, sortOrder] of [
   ["makerworld", "MakerWorld", 40],
   ["thangs", "Thangs", 50],
   ["stlflix", "STLFlix", 60],
-  ["custom_commission", "Custom Commission", 70],
+  ["cubee", "Cubee", 70],
+  ["custom_commission", "Custom Commission", 80],
 ] as const) {
   db.prepare("INSERT OR IGNORE INTO product_sources (id, label, sort_order) VALUES (?, ?, ?)").run(
     id,

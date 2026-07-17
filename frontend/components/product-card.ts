@@ -39,6 +39,7 @@ export const PRODUCT_SOURCES = [
   { id: "makerworld", label: "MakerWorld" },
   { id: "thangs", label: "Thangs" },
   { id: "stlflix", label: "STLFlix" },
+  { id: "cubee", label: "Cubee" },
   { id: "custom_commission", label: "Custom Commission" },
 ] as const;
 

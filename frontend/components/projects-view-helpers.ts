@@ -10,6 +10,7 @@ export type Project = {
   total_weight_g?: number | null;
   total_time_s?: number | null;
   cover_url?: string | null;
+  product_id?: number | null;
 };
 
 export type Job = {

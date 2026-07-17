@@ -928,6 +928,18 @@ const DB_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    id: 19,
+    description: "add Cubee product source",
+    up(database) {
+      database
+        .prepare("INSERT OR IGNORE INTO product_sources (id, label, sort_order) VALUES (?, ?, ?)")
+        .run("cubee", "Cubee", 70);
+      database
+        .prepare("UPDATE product_sources SET sort_order = ? WHERE id = ?")
+        .run(80, "custom_commission");
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

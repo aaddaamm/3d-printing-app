@@ -9,6 +9,7 @@ export type ProjectWithStats = Project & {
   total_plates: number | null;
   total_weight_g: number | null;
   total_time_s: number | null;
+  product_id: number | null;
   cover_url: string | null;
 };
 

@@ -132,6 +132,7 @@ export type ProjectSummary = {
   job_count?: number;
   total_weight_g?: number | null;
   total_time_s?: number | null;
+  product_id?: number | null;
 };
 
 export type JobPlateSummary = {

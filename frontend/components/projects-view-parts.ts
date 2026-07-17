@@ -31,11 +31,13 @@ function ProjectCard({
   totalPrice,
   onClick,
   onRename,
+  onOpenProduct,
 }: {
   project: Project;
   totalPrice: number | null;
   onClick: () => void;
   onRename: (project: Project) => void;
+  onOpenProduct: (productId: number) => void;
 }) {
   const totalW = project.total_weight_g;
   const totalT = project.total_time_s;
@@ -75,9 +77,24 @@ function ProjectCard({
         <button type="button" class="btn-secondary proj-card-action" onClick=${copyProject}>
           Copy
         </button>
-        <button type="button" class="btn-secondary proj-card-action" onClick=${createProduct}>
-          Create product
-        </button>
+        ${project.product_id
+          ? html`<button
+              type="button"
+              class="btn-secondary proj-card-action"
+              onClick=${(event: MouseEvent) => {
+                event.stopPropagation();
+                onOpenProduct(project.product_id!);
+              }}
+            >
+              Open product
+            </button>`
+          : html`<button
+              type="button"
+              class="btn-secondary proj-card-action"
+              onClick=${createProduct}
+            >
+              Create product
+            </button>`}
       </div>
       <div class="proj-card-meta">
         ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
@@ -230,6 +247,7 @@ export function ProjectsBody({
             totalPrice=${projectPrices[project.id] ?? null}
             onClick=${() => navigate(`/projects/${project.id}`)}
             onRename=${onRename}
+            onOpenProduct=${(productId: number) => navigate(`/products/${productId}`)}
           />`,
       )}
     </div>

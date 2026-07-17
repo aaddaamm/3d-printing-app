@@ -250,6 +250,7 @@ describe.sequential("catalog foundation schema migration", () => {
       "makerworld",
       "thangs",
       "stlflix",
+      "cubee",
       "custom_commission",
     ]);
     expect(sortedLookupIds("product_licenses")).toEqual([

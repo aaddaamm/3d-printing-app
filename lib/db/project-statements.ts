@@ -10,6 +10,7 @@ export function createProjectStatements(db: Database.Database) {
         total_plates: number | null;
         total_weight_g: number | null;
         total_time_s: number | null;
+        product_id: number | null;
         latest_cover_task_id: string | null;
         latest_cover_provider: string | null;
         latest_cover_provider_printer_id: string | null;
@@ -23,6 +24,9 @@ export function createProjectStatements(db: Database.Database) {
         SUM(j.plate_count)    AS total_plates,
         SUM(j.total_weight_g) AS total_weight_g,
         SUM(j.total_time_s)   AS total_time_s,
+        (SELECT pp.product_id FROM project_products pp
+         WHERE pp.project_id = p.id
+         ORDER BY pp.created_at, pp.product_id LIMIT 1) AS product_id,
         (SELECT pt.id FROM print_tasks pt
          WHERE pt.session_id = (
            SELECT j2.session_id FROM jobs j2
@@ -71,7 +75,14 @@ export function createProjectStatements(db: Database.Database) {
       ORDER BY p.created_at DESC
     `),
 
-    getProjectById: db.prepare<[number], Project>("SELECT * FROM projects WHERE id = ?"),
+    getProjectById: db.prepare<[number], Project & { product_id: number | null }>(`
+      SELECT p.*,
+        (SELECT pp.product_id FROM project_products pp
+         WHERE pp.project_id = p.id
+         ORDER BY pp.created_at, pp.product_id LIMIT 1) AS product_id
+      FROM projects p
+      WHERE p.id = ?
+    `),
 
     createProject: db.prepare<Omit<Project, "id">>(`
       INSERT INTO projects (name, customer, notes, created_at)
