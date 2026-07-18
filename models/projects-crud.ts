@@ -2,6 +2,7 @@ import { db, stmts } from "../lib/db.js";
 import { localCoverExists } from "../lib/covers.js";
 import { autoGroupProjects } from "../lib/auto-group.js";
 import { invalidateProjectPriceCache } from "../lib/price-cache.js";
+import { providerRemoteMediaUrl } from "../lib/media-urls.js";
 import type { Project, Job } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
@@ -22,35 +23,6 @@ type ProjectCoverFields = {
   latest_cover_thumbnail: string | null | undefined;
 };
 
-function dirname(filename: string): string {
-  const lastSlash = filename.lastIndexOf("/");
-  return lastSlash === -1 ? "" : filename.slice(0, lastSlash);
-}
-
-function joinPosixPath(...parts: string[]): string {
-  return parts
-    .flatMap((part) => part.split("/"))
-    .filter((part) => part.length > 0 && part !== ".")
-    .join("/");
-}
-
-function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-function moonrakerMediaUrl(
-  providerPrinterId: string | null | undefined,
-  filename: string | null | undefined,
-  mediaPath: string,
-): string | null {
-  if (/^https?:\/\//i.test(mediaPath)) return mediaPath;
-  if (!providerPrinterId) return null;
-  const thumbnailPath = mediaPath.startsWith("/")
-    ? mediaPath.slice(1)
-    : joinPosixPath(dirname(filename ?? ""), mediaPath);
-  return `http://${providerPrinterId}/server/files/gcodes/${encodePath(thumbnailPath)}`;
-}
-
 function resolveProjectCoverUrl(fields: ProjectCoverFields): string | null {
   const latestCoverTaskId = fields.latest_cover_task_id
     ? String(fields.latest_cover_task_id)
@@ -63,15 +35,13 @@ function resolveProjectCoverUrl(fields: ProjectCoverFields): string | null {
       (fields.latest_cover_provider === "bambu" && Boolean(mediaUrl)));
   if (canServeLocalCover) return `/ui/covers/${latestCoverTaskId}`;
 
-  if (!mediaUrl) return null;
-  if (fields.latest_cover_provider === "moonraker") {
-    return moonrakerMediaUrl(
-      fields.latest_cover_provider_printer_id,
-      fields.latest_cover_title,
-      mediaUrl,
-    );
-  }
-  return /^https?:\/\//i.test(mediaUrl) ? mediaUrl : null;
+  return providerRemoteMediaUrl({
+    provider: fields.latest_cover_provider ?? "",
+    providerPrinterId: fields.latest_cover_provider_printer_id,
+    filename: fields.latest_cover_title,
+    thumbnail: fields.latest_cover_thumbnail,
+    cover: fields.latest_cover,
+  });
 }
 
 export function listProjects(): ProjectWithStats[] {

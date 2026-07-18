@@ -1,5 +1,6 @@
 import { db } from "../lib/db.js";
 import { localCoverExists } from "../lib/covers.js";
+import { providerRemoteMediaUrl } from "../lib/media-urls.js";
 
 export interface UiJobRow {
   id: number;
@@ -24,49 +25,6 @@ export interface UiJobRow {
   cover_url: string | null;
   filament_colors: string[];
   material_usage_confidence: string | null;
-}
-
-function dirname(filename: string): string {
-  const lastSlash = filename.lastIndexOf("/");
-  return lastSlash === -1 ? "" : filename.slice(0, lastSlash);
-}
-
-function joinPosixPath(...parts: string[]): string {
-  return parts
-    .flatMap((part) => part.split("/"))
-    .filter((part) => part.length > 0 && part !== ".")
-    .join("/");
-}
-
-function encodePath(path: string): string {
-  return path.split("/").map(encodeURIComponent).join("/");
-}
-
-function moonrakerMediaUrl(
-  providerPrinterId: string | null,
-  filename: string | null,
-  mediaPath: string,
-): string | null {
-  if (/^https?:\/\//i.test(mediaPath)) return mediaPath;
-  if (!providerPrinterId) return null;
-  const thumbnailPath = mediaPath.startsWith("/")
-    ? mediaPath.slice(1)
-    : joinPosixPath(dirname(filename ?? ""), mediaPath);
-  return `http://${providerPrinterId}/server/files/gcodes/${encodePath(thumbnailPath)}`;
-}
-
-function remoteCoverUrl(
-  provider: string,
-  providerPrinterId: string | null,
-  title: string | null,
-  thumbnail: string | null,
-  cover: string | null,
-): string | null {
-  if (provider === "bambu") return null;
-  const mediaUrl = thumbnail ?? cover;
-  if (!mediaUrl) return null;
-  if (provider === "moonraker") return moonrakerMediaUrl(providerPrinterId, title, mediaUrl);
-  return /^https?:\/\//i.test(mediaUrl) ? mediaUrl : null;
 }
 
 function parseFilamentColors(value: string | null): string[] {
@@ -156,13 +114,13 @@ export function listUiJobs(): UiJobRow[] {
         (localCoverExists(first_task_id) ||
           (first_task_provider === "bambu" && Boolean(first_task_cover ?? first_task_thumbnail)));
       const localCoverUrl = canServeLocalCover ? `/ui/covers/${first_task_id}` : null;
-      const fallbackCoverUrl = remoteCoverUrl(
-        first_task_provider,
-        first_task_provider_printer_id,
-        first_task_title,
-        first_task_thumbnail,
-        first_task_cover,
-      );
+      const fallbackCoverUrl = providerRemoteMediaUrl({
+        provider: first_task_provider,
+        providerPrinterId: first_task_provider_printer_id,
+        filename: first_task_title,
+        thumbnail: first_task_thumbnail,
+        cover: first_task_cover,
+      });
       return {
         ...row,
         cover_url: localCoverUrl ?? fallbackCoverUrl,
