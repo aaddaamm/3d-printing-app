@@ -1,3 +1,5 @@
+import { calcProductionPricing } from "./production-pricing.js";
+
 export interface BatchPricingInput {
   completedQuantity: number;
   failedQuantity: number;
@@ -37,85 +39,38 @@ export function calcBatchPricing(input: BatchPricingInput): BatchPricingBreakdow
     throw new Error("completedQuantity must be greater than 0");
   }
 
-  const marginAndFee = input.targetMarginPct + input.platformFeePct;
-  if (marginAndFee >= 0.95) {
-    throw new Error("target margin plus platform fee must be less than 0.95");
-  }
-
   const materialCost = input.totalFilamentG * input.materialRatePerG;
   const machineCost = (input.totalPrintTimeS / 3600) * input.machineRatePerHr;
-  const setupLaborCost = (input.setupMinutes / 60) * input.laborHourlyRate;
-  const handlingLaborCost =
-    (input.completedQuantity * input.handlingMinutesPerUnit * input.laborHourlyRate) / 60;
-  const packagingCost = input.completedQuantity * input.packagingCostPerUnit;
-  const subtotalCost =
-    materialCost + machineCost + setupLaborCost + handlingLaborCost + packagingCost;
-  const bufferCost = subtotalCost * (input.failureBufferPct + input.overheadBufferPct);
-  const totalCost = subtotalCost + bufferCost;
-  const unitCost = totalCost / input.completedQuantity;
-  const suggestedPrice = calcSuggestedPrice(input, unitCost);
-  const estimatedMarginPct = calcEstimatedMarginPct(
-    suggestedPrice,
-    round2(unitCost),
-    input.platformFeePct,
-    input.fixedFeePerOrder,
-  );
+  const pricing = calcProductionPricing({
+    sellableUnits: input.completedQuantity,
+    materialCost,
+    machineCost,
+    productionLossCost: 0,
+    laborHourlyRate: input.laborHourlyRate,
+    batchLaborMinutes: input.setupMinutes,
+    perUnitLaborMinutes: input.handlingMinutesPerUnit,
+    packagingCostPerUnit: input.packagingCostPerUnit,
+    extraCost: 0,
+    targetMarginPct: input.targetMarginPct,
+    platformFeePct: input.platformFeePct,
+    fixedFeePerOrder: input.fixedFeePerOrder,
+    failureBufferPct: input.failureBufferPct,
+    overheadBufferPct: input.overheadBufferPct,
+    minimumPrice: input.minimumPrice,
+  });
 
   return {
-    sellableUnits: input.completedQuantity,
-    materialCost: round2(materialCost),
-    machineCost: round2(machineCost),
-    setupLaborCost: round2(setupLaborCost),
-    handlingLaborCost: round2(handlingLaborCost),
-    packagingCost: round2(packagingCost),
-    subtotalCost: round2(subtotalCost),
-    bufferCost: round2(bufferCost),
-    totalCost: round2(totalCost),
-    unitCost: round2(unitCost),
-    suggestedPrice,
-    estimatedMarginPct,
+    sellableUnits: pricing.sellableUnits,
+    materialCost: pricing.materialCost,
+    machineCost: pricing.machineCost,
+    setupLaborCost: pricing.batchLaborCost,
+    handlingLaborCost: pricing.perUnitLaborCost,
+    packagingCost: pricing.packagingCost,
+    subtotalCost: pricing.subtotalCost,
+    bufferCost: pricing.bufferCost,
+    totalCost: pricing.totalCost,
+    unitCost: pricing.unitCost,
+    suggestedPrice: pricing.suggestedPrice,
+    estimatedMarginPct: pricing.estimatedMarginPct,
   };
-}
-
-function calcSuggestedPrice(input: BatchPricingInput, unitCost: number): number {
-  const roundedUnitCost = round2(unitCost);
-  if (input.targetMarginPct === 0 && input.platformFeePct === 0) {
-    return roundedUnitCost;
-  }
-
-  const rawPrice =
-    (unitCost + input.fixedFeePerOrder) / (1 - input.targetMarginPct - input.platformFeePct);
-  const minimumPrice = input.minimumPrice ?? 0;
-  return roundUpToFriendly99(Math.max(rawPrice, minimumPrice));
-}
-
-function calcEstimatedMarginPct(
-  suggestedPrice: number,
-  unitCost: number,
-  platformFeePct: number,
-  fixedFeePerOrder: number,
-): number {
-  if (suggestedPrice === 0) return 0;
-
-  return round4(
-    (suggestedPrice * (1 - platformFeePct) - fixedFeePerOrder - unitCost) / suggestedPrice,
-  );
-}
-
-function roundUpToFriendly99(value: number): number {
-  const dollars = Math.floor(value);
-  let friendlyPrice = dollars + 0.99;
-  if (friendlyPrice + Number.EPSILON < value) {
-    friendlyPrice += 1;
-  }
-
-  return round2(friendlyPrice);
-}
-
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
-
-function round4(n: number): number {
-  return Math.round(n * 10000) / 10000;
 }
