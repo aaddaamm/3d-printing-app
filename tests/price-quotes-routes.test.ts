@@ -124,4 +124,23 @@ describe("price quote routes", () => {
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Unknown job_ids: 999" });
   });
+
+  it("propagates unexpected calculation errors", async () => {
+    const unexpected = new Error("database unavailable");
+    mockCalculatePriceQuote.mockImplementation(() => {
+      throw unexpected;
+    });
+    const app = apiApp();
+    app.onError((error) => {
+      throw error;
+    });
+
+    await expect(
+      app.request("/api/price-quotes/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(validBody),
+      }),
+    ).rejects.toBe(unexpected);
+  });
 });

@@ -208,6 +208,24 @@ describe.sequential("price quotes model", () => {
     expect(result.breakdown.machineCost).toBe(4);
   });
 
+  it("uses effective material rates including configured waste buffers", () => {
+    const updateRate = dbModule!.db.prepare(
+      `UPDATE material_rates
+       SET waste_buffer_pct = ?, rate_per_g = ?
+       WHERE filament_type = ?`,
+    );
+    updateRate.run(0.25, 0.025, "PLA");
+    updateRate.run(0.5, 0.045, "PETG");
+
+    const configured = priceQuotesModule!.calculatePriceQuote(validInput());
+    expect(configured.attempts.map((attempt) => attempt.material_cost)).toEqual([1.25, 0.9]);
+    expect(configured.breakdown.materialCost).toBe(2.15);
+
+    dbModule!.db.prepare("DELETE FROM job_filaments WHERE task_id = 'moon-task'").run();
+    const plaFallback = priceQuotesModule!.calculatePriceQuote(validInput());
+    expect(plaFallback.attempts[1]!.material_cost).toBe(0.5);
+  });
+
   it("falls back to task weight and PLA cost with a visible filament warning", () => {
     dbModule!.db.prepare("DELETE FROM job_filaments WHERE task_id = 'moon-task'").run();
 
@@ -231,6 +249,16 @@ describe.sequential("price quotes model", () => {
     expect(result.warnings).toEqual([
       expect.stringMatching(/job .*Dragon retry.*task .*Dragon body retry.*ABS.*PLA/i),
     ]);
+  });
+
+  it("warns explicitly when missing filament data and task weight produce zero material cost", () => {
+    dbModule!.db.prepare("DELETE FROM job_filaments WHERE task_id = 'moon-task'").run();
+    dbModule!.db.prepare("UPDATE print_tasks SET weight = NULL WHERE id = 'moon-task'").run();
+
+    const result = priceQuotesModule!.calculatePriceQuote(validInput());
+
+    expect(result.attempts[1]!.material_cost).toBe(0);
+    expect(result.warnings).toEqual([expect.stringMatching(/zero material cost/i)]);
   });
 
   it("uses the existing fallback machine rate with a visible warning", () => {

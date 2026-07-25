@@ -32,6 +32,7 @@ export function isJobsRoute(loc: string): boolean {
     !loc.startsWith("/admin") &&
     !loc.startsWith("/printers") &&
     !loc.startsWith("/catalog") &&
+    !loc.startsWith("/price") &&
     !loc.startsWith("/products") &&
     !loc.startsWith("/batches")
   );

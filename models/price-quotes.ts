@@ -264,11 +264,16 @@ function resolveTaskCost(
           `${taskLabel}: no material rate for ${filament.filament_type ? `"${filament.filament_type}"` : "the recorded filament"}; used PLA rate.`,
         );
       }
-      return total + filament.weight_g * (configuredRate ?? plaRate).cost_per_g;
+      return total + filament.weight_g * (configuredRate ?? plaRate).rate_per_g;
     }, 0);
   } else {
-    materialCost = nonnegative(task.weight) * plaRate.cost_per_g;
-    warnings.push(`${taskLabel}: no usable filament data; used task weight with PLA rate.`);
+    const taskWeight = nonnegative(task.weight);
+    materialCost = taskWeight * plaRate.rate_per_g;
+    warnings.push(
+      taskWeight > 0
+        ? `${taskLabel}: no usable filament data; used task weight with PLA rate.`
+        : `${taskLabel}: no usable filament data or positive task weight; used zero material cost.`,
+    );
   }
 
   const machineModels = [

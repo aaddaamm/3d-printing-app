@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "../frontend/components/toast.js";
 import {
   addProjectJobsToBatch,
+  calculatePriceQuote,
   createBatch,
   createProduct,
   createProductFromJob,
@@ -121,8 +122,54 @@ describe("frontend API transport", () => {
 });
 
 describe("frontend API endpoint contracts", () => {
+  beforeEach(() => {
+    vi.mocked(toast).mockReset();
+  });
+
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("posts the exact price quote payload and returns quote or null", async () => {
+    const input = {
+      job_ids: [4, 9],
+      sellable_units: 3,
+      batch_labor_minutes: 12,
+      per_unit_labor_minutes: 2.5,
+      packaging_cost_per_unit: 0.75,
+      extra_cost: 1.25,
+      channel: "etsy" as const,
+      target_margin_pct: 0.45,
+    };
+    const quote = { channel: "etsy", attempts: [{ job_id: 4 }] };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse({ quote }))
+      .mockResolvedValueOnce(jsonResponse({ error: "Cannot calculate quote" }, 422));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(calculatePriceQuote(input)).resolves.toEqual(quote);
+    await expect(calculatePriceQuote(input)).resolves.toBeNull();
+    expect(toast).toHaveBeenCalledWith("Cannot calculate quote", "error");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/api/price-quotes/calculate",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/api/price-quotes/calculate",
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      }),
+    );
   });
 
   it("maps every exported domain helper to its expected URL and method", async () => {
