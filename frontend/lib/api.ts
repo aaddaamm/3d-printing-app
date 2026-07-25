@@ -151,7 +151,58 @@ export type JobDetailResponse = {
   plates: JobPlateSummary[];
 };
 
+export type PriceQuoteRequest = {
+  job_ids: number[];
+  sellable_units: number;
+  batch_labor_minutes: number;
+  per_unit_labor_minutes: number;
+  packaging_cost_per_unit: number;
+  extra_cost: number;
+  channel: "direct" | "etsy";
+  target_margin_pct?: number;
+};
+
+export type PriceQuoteResult = {
+  channel: "direct" | "etsy";
+  assumptions: {
+    labor_hourly_rate: number;
+    target_margin_pct: number;
+    platform_fee_pct: number;
+    fixed_fee_per_order: number;
+  };
+  attempts: Array<{
+    job_id: number;
+    title: string;
+    status: string;
+    printer: string;
+    material_cost: number;
+    machine_cost: number;
+    production_loss_cost: number;
+  }>;
+  warnings: string[];
+  breakdown: {
+    sellableUnits: number;
+    materialCost: number;
+    machineCost: number;
+    productionLossCost: number;
+    batchLaborCost: number;
+    perUnitLaborCost: number;
+    packagingCost: number;
+    extraCost: number;
+    subtotalCost: number;
+    bufferCost: number;
+    totalCost: number;
+    unitCost: number;
+    minimumViablePrice: number;
+    suggestedPrice: number;
+    profitPerUnit: number;
+    profitPerBatch: number;
+    estimatedMarginPct: number;
+  };
+};
+
 type ProductsResponse = { products: ProductSummary[] };
+type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
 type ProjectsResponse = { projects: ProjectSummary[] };
 type BatchesResponse = { batches: BatchSummary[] };
@@ -243,6 +294,17 @@ export async function postJsonOrToast<T = JsonRecord>(
     headers: { "Content-Type": "application/json", ...options?.headers },
     body: JSON.stringify(payload),
   });
+}
+
+export async function calculatePriceQuote(
+  input: PriceQuoteRequest,
+): Promise<PriceQuoteResult | null> {
+  const data = await postJsonOrToast<PriceQuoteResponse>(
+    "/api/price-quotes/calculate",
+    input,
+    "Failed to calculate price quote.",
+  );
+  return data?.quote ?? null;
 }
 
 export async function fetchProjects(): Promise<ProjectSummary[]> {
