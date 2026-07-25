@@ -16,6 +16,7 @@ import { toast, ToastContainer } from "./components/toast.js";
 import { fetchJson, patchJsonOrToast } from "./lib/api.js";
 import { useDashboardBootstrap } from "./components/bootstrap.js";
 import { filterDashboardJobs, sortDashboardJobs } from "./components/dashboard-job-helpers.js";
+import { parsePriceJobIds } from "./components/price-this-helpers.js";
 
 const html = (
   htm as unknown as {
@@ -337,6 +338,7 @@ function App() {
   const state = useAppState();
   const [loc, navigate] = useLocation();
   const route = useMemo(() => getRouteState(loc), [loc]);
+  const priceJobIds = route.isPrice ? parsePriceJobIds(window.location.search) : [];
 
   const {
     loading,
@@ -391,6 +393,7 @@ function App() {
       projects: state.projects,
       setProjects: state.setProjects,
       jobs: state.jobs,
+      priceJobIds,
       projectsLoading,
       navigate,
       setSelectedJob: state.setSelectedJob,

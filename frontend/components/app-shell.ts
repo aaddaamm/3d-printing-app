@@ -10,6 +10,7 @@ import { CatalogView } from "./catalog-view.js";
 import { ProductDetailView } from "./product-detail-view.js";
 import { ProductPrintNextView } from "./product-print-next-view.js";
 import { ProductsView } from "./products-view.js";
+import { PriceThisView } from "./price-this-view.js";
 
 const html = (
   htm as unknown as {
@@ -263,6 +264,7 @@ function JobsRouteView({
 
 export type RouteState = {
   isAdmin: boolean;
+  isPrice: boolean;
   isPrinters: boolean;
   isProjects: boolean;
   isCatalog: boolean;
@@ -276,18 +278,21 @@ export type RouteState = {
 };
 
 export function getRouteState(loc: string): RouteState {
-  const projectDetailMatch = loc.match(/^\/projects\/(\d+)$/);
-  const productDetailMatch = loc.match(/^\/products\/(\d+)$/);
-  const batchDetailMatch = loc.match(/^\/batches\/(\d+)$/);
+  const queryIndex = loc.indexOf("?");
+  const path = queryIndex === -1 ? loc : loc.slice(0, queryIndex);
+  const projectDetailMatch = path.match(/^\/projects\/(\d+)$/);
+  const productDetailMatch = path.match(/^\/products\/(\d+)$/);
+  const batchDetailMatch = path.match(/^\/batches\/(\d+)$/);
   return {
-    isAdmin: loc.startsWith("/admin"),
-    isPrinters: loc.startsWith("/printers"),
-    isProjects: loc.startsWith("/projects"),
-    isCatalog: loc.startsWith("/catalog"),
-    isProducts: loc.startsWith("/products"),
-    isProductPipeline: loc === "/products/pipeline",
-    isProductPrintNext: loc === "/products/print-next",
-    isBatches: loc.startsWith("/batches"),
+    isAdmin: path.startsWith("/admin"),
+    isPrice: path === "/price",
+    isPrinters: path.startsWith("/printers"),
+    isProjects: path.startsWith("/projects"),
+    isCatalog: path.startsWith("/catalog"),
+    isProducts: path.startsWith("/products"),
+    isProductPipeline: path === "/products/pipeline",
+    isProductPrintNext: path === "/products/print-next",
+    isBatches: path.startsWith("/batches"),
     projectId: projectDetailMatch ? Number(projectDetailMatch[1]) : null,
     productId: productDetailMatch ? Number(productDetailMatch[1]) : null,
     batchId: batchDetailMatch ? Number(batchDetailMatch[1]) : null,
@@ -304,6 +309,7 @@ export function renderMainContent({
   projects,
   setProjects,
   jobs,
+  priceJobIds,
   projectsLoading,
   navigate,
   setSelectedJob,
@@ -334,6 +340,7 @@ export function renderMainContent({
   projects: Project[];
   setProjects: (updater: Project[] | ((ps: Project[]) => Project[])) => void;
   jobs: Job[];
+  priceJobIds: number[];
   projectsLoading: boolean;
   navigate: (path: string) => void;
   setSelectedJob: (job: Job | null) => void;
@@ -375,6 +382,13 @@ export function renderMainContent({
     />`;
   }
   if (route.isCatalog) return html`<${CatalogView} />`;
+  if (route.isPrice) {
+    return html`<${PriceThisView}
+      jobs=${jobs}
+      initialJobIds=${priceJobIds}
+      navigate=${navigate}
+    />`;
+  }
   if (route.isPrinters) {
     return html`<${PrinterBreakdownView}
       summary=${summary}

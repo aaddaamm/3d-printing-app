@@ -9,10 +9,25 @@ describe("dashboard bootstrap route policy", () => {
     },
   );
 
-  it.each(["/", "/projects", "/projects/12", "/printers"])(
+  it.each(["/", "/projects", "/projects/12", "/printers", "/price"])(
     "keeps dashboard bootstrap enabled for %s",
     (path) => {
       expect(routeNeedsDashboardBootstrap(getRouteState(path))).toBe(true);
     },
   );
+});
+
+describe("Price-this route", () => {
+  it("matches the route without interpreting a numeric detail ID", () => {
+    expect(getRouteState("/price")).toMatchObject({
+      isPrice: true,
+      projectId: null,
+      productId: null,
+      batchId: null,
+    });
+  });
+
+  it("matches the route when job IDs are present in the query string", () => {
+    expect(getRouteState("/price?jobIds=12,7").isPrice).toBe(true);
+  });
 });

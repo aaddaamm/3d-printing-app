@@ -1,5 +1,54 @@
-import type { PriceQuoteResult } from "../lib/api.js";
+import type { PriceQuoteRequest, PriceQuoteResult } from "../lib/api.js";
 import type { Job } from "./jobs-view-types.js";
+
+export type PriceThisDraft = {
+  selectedJobIds: number[];
+  sellableUnits: number;
+  batchLaborMinutes: number;
+  perUnitLaborMinutes: number;
+  packagingCostPerUnit: number;
+  extraCost: number;
+  channel: "direct" | "etsy";
+};
+
+export function initialPriceThisDraft(jobIds: number[]): PriceThisDraft {
+  return {
+    selectedJobIds: [...new Set(jobIds)],
+    sellableUnits: 1,
+    batchLaborMinutes: 0,
+    perUnitLaborMinutes: 0,
+    packagingCostPerUnit: 0,
+    extraCost: 0,
+    channel: "direct",
+  };
+}
+
+export function canCalculatePriceQuote(draft: PriceThisDraft): boolean {
+  return (
+    draft.selectedJobIds.length > 0 &&
+    Number.isInteger(draft.sellableUnits) &&
+    draft.sellableUnits > 0
+  );
+}
+
+export function togglePriceJob(draft: PriceThisDraft, jobId: number): PriceThisDraft {
+  const selectedJobIds = draft.selectedJobIds.includes(jobId)
+    ? draft.selectedJobIds.filter((id) => id !== jobId)
+    : [...draft.selectedJobIds, jobId];
+  return { ...draft, selectedJobIds };
+}
+
+export function priceThisDraftToRequest(draft: PriceThisDraft): PriceQuoteRequest {
+  return {
+    job_ids: [...draft.selectedJobIds],
+    sellable_units: draft.sellableUnits,
+    batch_labor_minutes: draft.batchLaborMinutes,
+    per_unit_labor_minutes: draft.perUnitLaborMinutes,
+    packaging_cost_per_unit: draft.packagingCostPerUnit,
+    extra_cost: draft.extraCost,
+    channel: draft.channel,
+  };
+}
 
 export function parsePriceJobIds(search: string): number[] {
   const values = new URLSearchParams(search).get("jobIds")?.split(",") ?? [];
