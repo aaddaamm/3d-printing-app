@@ -75,8 +75,6 @@ interface PricingProfileRow {
   target_margin_pct: number;
   platform_fee_pct: number;
   fixed_fee_per_order: number;
-  failure_buffer_pct: number;
-  overhead_buffer_pct: number;
   minimum_price: number | null;
 }
 
@@ -127,8 +125,6 @@ const getProfileStatement = db.prepare<[string], PricingProfileRow>(`
     target_margin_pct,
     platform_fee_pct,
     fixed_fee_per_order,
-    failure_buffer_pct,
-    overhead_buffer_pct,
     minimum_price
   FROM pricing_profiles
   WHERE id = ?
@@ -219,8 +215,8 @@ export function calculatePriceQuote(input: PriceQuoteRequest): PriceQuoteResult 
     targetMarginPct,
     platformFeePct,
     fixedFeePerOrder,
-    failureBufferPct: profile.failure_buffer_pct,
-    overheadBufferPct: profile.overhead_buffer_pct,
+    failureBufferPct: rates.laborConfig.failure_buffer_pct,
+    overheadBufferPct: rates.laborConfig.overhead_buffer_pct,
     minimumPrice: profile.minimum_price,
   });
 
@@ -295,7 +291,14 @@ function resolveTaskCost(
     );
   }
 
-  const machineCost = (nonnegative(task.costTime) / 3600) * machineRate;
+  const durationSeconds =
+    typeof task.costTime === "number" && Number.isFinite(task.costTime) && task.costTime >= 0
+      ? task.costTime
+      : null;
+  if (durationSeconds === null) {
+    warnings.push(`${taskLabel}: missing or invalid print duration; used zero machine time.`);
+  }
+  const machineCost = ((durationSeconds ?? 0) / 3600) * machineRate;
   const productionLossCost = task.status === "finish" ? 0 : materialCost + machineCost;
   return { materialCost, machineCost, productionLossCost, printer };
 }

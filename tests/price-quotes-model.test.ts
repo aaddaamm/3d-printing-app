@@ -297,6 +297,54 @@ describe.sequential("price quotes model", () => {
     expect(etsy.breakdown.suggestedPrice).toBeGreaterThan(direct.breakdown.suggestedPrice);
   });
 
+  it("keeps manufacturing costs channel-independent when profile buffers differ", () => {
+    dbModule!.db
+      .prepare(
+        `UPDATE labor_config
+         SET failure_buffer_pct = 0.1, overhead_buffer_pct = 0.05
+         WHERE id = 1`,
+      )
+      .run();
+    dbModule!.db
+      .prepare(
+        `UPDATE pricing_profiles
+         SET failure_buffer_pct = 0.01, overhead_buffer_pct = 0.02
+         WHERE id = 'booth'`,
+      )
+      .run();
+    dbModule!.db
+      .prepare(
+        `UPDATE pricing_profiles
+         SET failure_buffer_pct = 0.3, overhead_buffer_pct = 0.2
+         WHERE id = 'etsy'`,
+      )
+      .run();
+
+    const direct = priceQuotesModule!.calculatePriceQuote(validInput());
+    const etsy = priceQuotesModule!.calculatePriceQuote(validInput({ channel: "etsy" }));
+
+    expect(etsy.breakdown.materialCost).toBe(direct.breakdown.materialCost);
+    expect(etsy.breakdown.machineCost).toBe(direct.breakdown.machineCost);
+    expect(etsy.breakdown.bufferCost).toBe(direct.breakdown.bufferCost);
+    expect(etsy.breakdown.totalCost).toBe(direct.breakdown.totalCost);
+    expect(etsy.breakdown.unitCost).toBe(direct.breakdown.unitCost);
+    expect(direct.breakdown.bufferCost).toBeGreaterThan(0);
+    expect(etsy.breakdown.suggestedPrice).not.toBe(direct.breakdown.suggestedPrice);
+  });
+
+  it.each([null, -10])("warns when a task duration is missing or invalid: %s", (costTime) => {
+    dbModule!.db
+      .prepare("UPDATE print_tasks SET costTime = ? WHERE id = 'bambu-task'")
+      .run(costTime);
+
+    const result = priceQuotesModule!.calculatePriceQuote(validInput({ job_ids: [successJobId] }));
+
+    expect(result.attempts[0]!.machine_cost).toBe(0);
+    expect(result.warnings).toEqual([
+      expect.stringMatching(/job .*Dragon.*task .*Dragon body.*duration.*zero/i),
+    ]);
+  });
+
   it.each([
     ["empty selection", { job_ids: [] }],
     ["non-integer job id", { job_ids: [successJobId, 1.5] }],
