@@ -172,6 +172,7 @@ function renderJobsBody({
   sortDir,
   onSort,
   onJobClick,
+  onPriceJob,
   density,
 }: {
   sorted: Job[];
@@ -180,6 +181,7 @@ function renderJobsBody({
   sortDir: "asc" | "desc";
   onSort: (col: string) => void;
   onJobClick: (job: Job) => void;
+  onPriceJob: (job: Job) => void;
   density: "compact" | "comfy";
 }) {
   if (sorted.length === 0) {
@@ -193,11 +195,17 @@ function renderJobsBody({
       sortDir=${sortDir}
       onSort=${onSort}
       onJobClick=${onJobClick}
+      onPriceJob=${onPriceJob}
       density=${density}
     />`;
   }
 
-  return html`<${GridView} sorted=${sorted} onJobClick=${onJobClick} density=${density} />`;
+  return html`<${GridView}
+    sorted=${sorted}
+    onJobClick=${onJobClick}
+    onPriceJob=${onPriceJob}
+    density=${density}
+  />`;
 }
 
 function JobsRouteView({
@@ -218,6 +226,7 @@ function JobsRouteView({
   sortDir,
   onSort,
   onJobClick,
+  onPriceJob,
   density,
   setDensity,
 }: {
@@ -238,6 +247,7 @@ function JobsRouteView({
   sortDir: "asc" | "desc";
   onSort: (col: string) => void;
   onJobClick: (job: Job) => void;
+  onPriceJob: (job: Job) => void;
   density: "compact" | "comfy";
   setDensity: (density: "compact" | "comfy") => void;
 }) {
@@ -258,7 +268,7 @@ function JobsRouteView({
       totalCount=${jobs.length}
     />
     <${TotalsBar} filtered=${filtered} isFiltered=${isFiltered} />
-    ${renderJobsBody({ sorted, view, sortCol, sortDir, onSort, onJobClick, density })}
+    ${renderJobsBody({ sorted, view, sortCol, sortDir, onSort, onJobClick, onPriceJob, density })}
   `;
 }
 
@@ -438,6 +448,7 @@ export function renderMainContent({
     sortDir=${sortDir}
     onSort=${handleSort}
     onJobClick=${setSelectedJob}
+    onPriceJob=${(job: Job) => navigate(`/price?jobIds=${job.id}`)}
     density=${density}
     setDensity=${setDensity}
   />`;

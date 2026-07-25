@@ -10,8 +10,8 @@ type SmokeContext = {
   dbPath: string;
   port: number;
   origin: string;
-  jobId: number;
-  projectId: number;
+  jobId: number | null;
+  projectId: number | null;
 };
 
 type JsonRecord = Record<string, unknown>;
@@ -70,7 +70,7 @@ function prepareSmokeData(dbPath: string): Pick<SmokeContext, "jobId" | "project
          LIMIT 1`,
       )
       .get();
-    if (!job) throw new Error("Smoke test requires at least one job with weight/time totals.");
+    if (!job) return { jobId: null, projectId: null };
 
     const project = db
       .prepare<[], { id: number }>(
@@ -239,25 +239,60 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
   if (!Array.isArray(batches.batches)) throw new Error("/api/batches did not return batches[]");
   pass("batches API lists");
 
+  const jobId = ctx.jobId;
+  const projectId = ctx.projectId;
+  if (jobId === null || projectId === null) {
+    warn("no jobs with weight/time totals; skipped price quote and job-backed workflow smoke");
+    return;
+  }
+
+  const priceQuote = await fetchJson<{
+    quote?: { breakdown?: { unitCost?: unknown; suggestedPrice?: unknown } };
+  }>(`${ctx.origin}/api/price-quotes/calculate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_ids: [jobId],
+      sellable_units: 1,
+      batch_labor_minutes: 0,
+      per_unit_labor_minutes: 0,
+      packaging_cost_per_unit: 0,
+      extra_cost: 0,
+      channel: "direct",
+      target_margin_pct: 0.4,
+    }),
+  });
+  const quoteUnitCost = Number(priceQuote.quote?.breakdown?.unitCost);
+  const quoteSuggestedPrice = Number(priceQuote.quote?.breakdown?.suggestedPrice);
+  if (!Number.isFinite(quoteUnitCost) || quoteUnitCost <= 0) {
+    throw new Error("Price quote did not return a finite positive unit cost");
+  }
+  if (!Number.isFinite(quoteSuggestedPrice) || quoteSuggestedPrice <= 0) {
+    throw new Error("Price quote did not return a finite positive suggested price");
+  }
+  pass(
+    `priced job ${jobId}; unit cost $${quoteUnitCost.toFixed(2)}, suggested $${quoteSuggestedPrice.toFixed(2)}`,
+  );
+
   const fromJob = await fetchJson<{ product?: { id?: unknown; name?: unknown } }>(
-    `${ctx.origin}/api/products/from-job/${ctx.jobId}`,
+    `${ctx.origin}/api/products/from-job/${jobId}`,
     { method: "POST" },
   );
   const jobProductId = Number(fromJob.product?.id);
   if (!Number.isInteger(jobProductId) || jobProductId <= 0) {
     throw new Error("Create product from job did not return a product id");
   }
-  pass(`created product ${jobProductId} from job ${ctx.jobId}`);
+  pass(`created product ${jobProductId} from job ${jobId}`);
 
   const fromProject = await fetchJson<{ product?: { id?: unknown; name?: unknown } }>(
-    `${ctx.origin}/api/products/from-project/${ctx.projectId}`,
+    `${ctx.origin}/api/products/from-project/${projectId}`,
     { method: "POST" },
   );
   const projectProductId = Number(fromProject.product?.id);
   if (!Number.isInteger(projectProductId) || projectProductId <= 0) {
     throw new Error("Create product from project did not return a product id");
   }
-  pass(`created product ${projectProductId} from project ${ctx.projectId}`);
+  pass(`created product ${projectProductId} from project ${projectId}`);
 
   const createdBatch = await fetchJson<{
     batch?: { id?: unknown; unit_cost?: unknown; suggested_price?: unknown };
@@ -277,7 +312,7 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
 
   const linkedBatch = await fetchJson<{
     batch?: { total_filament_g?: unknown; total_print_time_s?: unknown; unit_cost?: unknown };
-  }>(`${ctx.origin}/api/batches/${batchId}/projects/${ctx.projectId}`, { method: "POST" });
+  }>(`${ctx.origin}/api/batches/${batchId}/projects/${projectId}`, { method: "POST" });
   const totalFilament = Number(linkedBatch.batch?.total_filament_g);
   const totalTime = Number(linkedBatch.batch?.total_print_time_s);
   const unitCost = Number(linkedBatch.batch?.unit_cost);

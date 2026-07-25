@@ -335,7 +335,24 @@ async function copyJobDetails(job: Job, event: Event): Promise<void> {
   }
 }
 
-function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
+export function handlePriceJobAction(
+  event: Pick<Event, "stopPropagation">,
+  job: Job,
+  onPriceJob: (job: Job) => void,
+): void {
+  event.stopPropagation();
+  onPriceJob(job);
+}
+
+function JobRecordRow({
+  job,
+  onJobClick,
+  onPriceJob,
+}: {
+  job: Job;
+  onJobClick: (job: Job) => void;
+  onPriceJob: (job: Job) => void;
+}) {
   return html`
     <article class="jobs-record-row" onClick=${() => onJobClick(job)}>
       <div class="jobs-record-top">
@@ -370,6 +387,13 @@ function JobRecordRow({ job, onJobClick }: { job: Job; onJobClick: (job: Job) =>
         <button
           class="btn-secondary btn-compact"
           type="button"
+          onClick=${(event: Event) => handlePriceJobAction(event, job, onPriceJob)}
+        >
+          Price this
+        </button>
+        <button
+          class="btn-secondary btn-compact"
+          type="button"
           onClick=${(event: Event) => copyJobDetails(job, event)}
         >
           Copy
@@ -385,6 +409,7 @@ export function TableView({
   sortDir,
   onSort,
   onJobClick,
+  onPriceJob,
   density,
 }: {
   sorted: Job[];
@@ -392,6 +417,7 @@ export function TableView({
   sortDir: "asc" | "desc";
   onSort: (col: string) => void;
   onJobClick: (job: Job) => void;
+  onPriceJob: (job: Job) => void;
   density: "compact" | "comfy";
 }) {
   return html`
@@ -399,14 +425,28 @@ export function TableView({
       <${JobsSortBar} sortCol=${sortCol} sortDir=${sortDir} onSort=${onSort} />
       <div class="jobs-record-list">
         ${sorted.map(
-          (job) => html`<${JobRecordRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
+          (job) =>
+            html`<${JobRecordRow}
+              key=${job.id}
+              job=${job}
+              onJobClick=${onJobClick}
+              onPriceJob=${onPriceJob}
+            />`,
         )}
       </div>
     </div>
   `;
 }
 
-function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void }) {
+function JobCard({
+  job,
+  onJobClick,
+  onPriceJob,
+}: {
+  job: Job;
+  onJobClick: (job: Job) => void;
+  onPriceJob: (job: Job) => void;
+}) {
   const createProduct = async (event: Event) => {
     event.stopPropagation();
     const product = await createProductFromJob(job.id);
@@ -438,6 +478,13 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
           <button
             class="btn-secondary btn-compact"
             type="button"
+            onClick=${(event: Event) => handlePriceJobAction(event, job, onPriceJob)}
+          >
+            Price this
+          </button>
+          <button
+            class="btn-secondary btn-compact"
+            type="button"
             onClick=${(event: Event) => copyJobDetails(job, event)}
           >
             Copy
@@ -454,15 +501,25 @@ function JobCard({ job, onJobClick }: { job: Job; onJobClick: (job: Job) => void
 export function GridView({
   sorted,
   onJobClick,
+  onPriceJob,
   density,
 }: {
   sorted: Job[];
   onJobClick: (job: Job) => void;
+  onPriceJob: (job: Job) => void;
   density: "compact" | "comfy";
 }) {
   return html`
     <div class=${"grid-view density-" + density}>
-      ${sorted.map((job) => html`<${JobCard} key=${job.id} job=${job} onJobClick=${onJobClick} />`)}
+      ${sorted.map(
+        (job) =>
+          html`<${JobCard}
+            key=${job.id}
+            job=${job}
+            onJobClick=${onJobClick}
+            onPriceJob=${onPriceJob}
+          />`,
+      )}
     </div>
   `;
 }
