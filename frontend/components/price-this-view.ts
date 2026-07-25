@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useMemo, useState } from "preact/hooks";
+import { useMemo, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { calculatePriceQuote, type PriceQuoteResult } from "../lib/api.js";
@@ -8,10 +8,15 @@ import { Badge } from "./atoms.js";
 import { fmtCurrency, fmtDate, fmtTime, fmtWeight } from "./helpers.js";
 import type { Job } from "./jobs-view-types.js";
 import {
+  beginPriceQuoteRequest,
   canCalculatePriceQuote,
+  completePriceQuoteRequest,
   filterPriceCandidateJobs,
   formatPriceQuoteForClipboard,
+  initialPriceQuoteRequestState,
   initialPriceThisDraft,
+  invalidatePriceQuoteRequests,
+  isCurrentPriceQuoteRequest,
   priceThisDraftToRequest,
   togglePriceJob,
   type PriceThisDraft,
@@ -222,6 +227,7 @@ export function PriceThisView({
   const [candidateQuery, setCandidateQuery] = useState("");
   const [quote, setQuote] = useState<PriceQuoteResult | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const quoteRequestState = useRef(initialPriceQuoteRequestState());
 
   const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
   const selectedIds = useMemo(() => new Set(draft.selectedJobIds), [draft.selectedJobIds]);
@@ -240,8 +246,10 @@ export function PriceThisView({
   const measuredTime = selectedJobs.reduce((total, job) => total + (job?.total_time_s || 0), 0);
 
   const replaceDraft = (next: PriceThisDraft) => {
+    quoteRequestState.current = invalidatePriceQuoteRequests(quoteRequestState.current);
     setDraft(next);
     setQuote(null);
+    setCalculating(false);
   };
   const updateNumber = (field: NumericDraftField, value: number) => {
     replaceDraft({ ...draft, [field]: value });
@@ -257,12 +265,27 @@ export function PriceThisView({
   const calculate = async (event: Event) => {
     event.preventDefault();
     if (!canCalculatePriceQuote(draft)) return;
+
+    const started = beginPriceQuoteRequest(quoteRequestState.current);
+    quoteRequestState.current = started.state;
+    setQuote(null);
     setCalculating(true);
     try {
       const result = await calculatePriceQuote(priceThisDraftToRequest(draft));
-      if (result) setQuote(result);
+      if (
+        result &&
+        isCurrentPriceQuoteRequest(quoteRequestState.current, started.requestGeneration)
+      ) {
+        setQuote(result);
+      }
     } finally {
-      setCalculating(false);
+      if (isCurrentPriceQuoteRequest(quoteRequestState.current, started.requestGeneration)) {
+        quoteRequestState.current = completePriceQuoteRequest(
+          quoteRequestState.current,
+          started.requestGeneration,
+        );
+        setCalculating(false);
+      }
     }
   };
 

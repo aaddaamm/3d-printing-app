@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+  beginPriceQuoteRequest,
   canCalculatePriceQuote,
+  completePriceQuoteRequest,
+  initialPriceQuoteRequestState,
   initialPriceThisDraft,
+  invalidatePriceQuoteRequests,
+  isCurrentPriceQuoteRequest,
   priceThisDraftToRequest,
   togglePriceJob,
 } from "../frontend/components/price-this-helpers.js";
@@ -59,5 +64,25 @@ describe("Price-this draft state", () => {
       extra_cost: 6.5,
       channel: "etsy",
     });
+  });
+});
+
+describe("Price-this request invalidation", () => {
+  it("rejects a response after a draft edit invalidates its request", () => {
+    const started = beginPriceQuoteRequest(initialPriceQuoteRequestState());
+    const invalidated = invalidatePriceQuoteRequests(started.state);
+
+    expect(isCurrentPriceQuoteRequest(invalidated, started.requestGeneration)).toBe(false);
+  });
+
+  it("only accepts the newest calculation and closes it on completion", () => {
+    const first = beginPriceQuoteRequest(initialPriceQuoteRequestState());
+    const second = beginPriceQuoteRequest(first.state);
+
+    expect(isCurrentPriceQuoteRequest(second.state, first.requestGeneration)).toBe(false);
+    expect(isCurrentPriceQuoteRequest(second.state, second.requestGeneration)).toBe(true);
+
+    const completed = completePriceQuoteRequest(second.state, second.requestGeneration);
+    expect(isCurrentPriceQuoteRequest(completed, second.requestGeneration)).toBe(false);
   });
 });

@@ -11,6 +11,48 @@ export type PriceThisDraft = {
   channel: "direct" | "etsy";
 };
 
+export type PriceQuoteRequestState = {
+  generation: number;
+  activeGeneration: number | null;
+};
+
+export function initialPriceQuoteRequestState(): PriceQuoteRequestState {
+  return { generation: 0, activeGeneration: null };
+}
+
+export function beginPriceQuoteRequest(state: PriceQuoteRequestState): {
+  state: PriceQuoteRequestState;
+  requestGeneration: number;
+} {
+  const requestGeneration = state.generation + 1;
+  return {
+    state: { generation: requestGeneration, activeGeneration: requestGeneration },
+    requestGeneration,
+  };
+}
+
+export function invalidatePriceQuoteRequests(
+  state: PriceQuoteRequestState,
+): PriceQuoteRequestState {
+  return { generation: state.generation + 1, activeGeneration: null };
+}
+
+export function isCurrentPriceQuoteRequest(
+  state: PriceQuoteRequestState,
+  requestGeneration: number,
+): boolean {
+  return state.generation === requestGeneration && state.activeGeneration === requestGeneration;
+}
+
+export function completePriceQuoteRequest(
+  state: PriceQuoteRequestState,
+  requestGeneration: number,
+): PriceQuoteRequestState {
+  return isCurrentPriceQuoteRequest(state, requestGeneration)
+    ? { ...state, activeGeneration: null }
+    : state;
+}
+
 export function initialPriceThisDraft(jobIds: number[]): PriceThisDraft {
   return {
     selectedJobIds: [...new Set(jobIds)],
