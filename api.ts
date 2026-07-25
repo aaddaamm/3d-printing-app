@@ -10,6 +10,7 @@ import { printers } from "./routes/printers.js";
 import { catalog } from "./routes/catalog.js";
 import { products } from "./routes/products.js";
 import { batches } from "./routes/batches.js";
+import { priceQuotes } from "./routes/price-quotes.js";
 import { createUiApp } from "./routes/ui.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
@@ -44,6 +45,7 @@ function mountRoutes(): void {
   app.route("/catalog", catalog);
   app.route("/api/products", products);
   app.route("/api/batches", batches);
+  app.route("/api/price-quotes", priceQuotes);
 }
 
 function startServer(): void {
