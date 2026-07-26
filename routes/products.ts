@@ -10,6 +10,10 @@ import {
   type CreateProductInput,
   type UpdateProductInput,
 } from "../models/products.js";
+import {
+  listProductPricingHistory,
+  SavedProductPricingValidationError,
+} from "../models/saved-product-pricing.js";
 import { jsonError, parseJsonBody, requireId, unknownFields } from "../lib/util.js";
 
 export const products = new Hono();
@@ -17,6 +21,7 @@ export const products = new Hono();
 const PRODUCT_MUTABLE_FIELDS = [
   "name",
   "description",
+  "designer",
   "category_id",
   "status_id",
   "source_id",
@@ -50,6 +55,13 @@ function handleProductError(c: Parameters<typeof jsonError>[0], error: unknown):
 
 function findProduct(id: number) {
   return listProducts().find((product) => product.id === id) ?? null;
+}
+
+function handleSavedPricingError(c: Parameters<typeof jsonError>[0], error: unknown): Response {
+  if (error instanceof SavedProductPricingValidationError) {
+    return jsonError(c, error.message, 400);
+  }
+  throw error;
 }
 
 products.get("/", (c) => {
@@ -99,6 +111,20 @@ products.post("/", async (c) => {
     return c.json({ product }, 201);
   } catch (error: unknown) {
     return handleProductError(c, error);
+  }
+});
+
+products.get("/:id/pricing-history", (c) => {
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+
+  const product = findProduct(idOrError);
+  if (!product) return jsonError(c, "Not found", 404);
+
+  try {
+    return c.json({ history: listProductPricingHistory(idOrError) });
+  } catch (error: unknown) {
+    return handleSavedPricingError(c, error);
   }
 });
 

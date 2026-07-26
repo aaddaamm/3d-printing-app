@@ -10,6 +10,7 @@ export type SellabilityLevel = "green" | "yellow" | "red";
 export type ProductSummary = {
   id: number;
   name: string;
+  designer: string | null;
   category_id: string | null;
   category_label: string | null;
   status_id: string;
@@ -44,6 +45,7 @@ export type ProductSummary = {
 export type ProductInput = Partial<{
   name: string;
   description: string | null;
+  designer: string | null;
   category_id: string | null;
   status_id: string;
   source_id: string | null;
@@ -215,9 +217,58 @@ export type PriceQuoteResult = {
   };
 };
 
+export type SaveProductPricingRequest = {
+  job_ids: number[];
+  sellable_units: number;
+  batch_labor_minutes: number;
+  per_unit_labor_minutes: number;
+  packaging_cost_per_unit: number;
+  extra_cost: number;
+  target_margin_pct?: number;
+  product_id?: number;
+  new_product?: {
+    name: string;
+    designer?: string | null;
+    source_id?: string | null;
+    license_id?: string | null;
+    model_url?: string | null;
+    notes?: string | null;
+  };
+  notes?: string | null;
+};
+
+export type SavedPriceSnapshot = {
+  id: number;
+  batch_id: number;
+  channel: "direct" | "etsy";
+  created_at: string;
+  quote: PriceQuoteResult;
+};
+
+export type SavedProductPricing = {
+  product: ProductSummary;
+  batch_id: number;
+  snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
+};
+
+export type SavedProductPricingBatch = {
+  batch_id: number;
+  created_at: string;
+  sellable_units: number;
+  job_ids: number[];
+  notes: string | null;
+  snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
+};
+
+export type SavedProductPricingResponse = {
+  saved: SavedProductPricing;
+  image_warnings: string[];
+};
+
 type ProductsResponse = { products: ProductSummary[] };
 type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
+type ProductPricingHistoryResponse = { history: SavedProductPricingBatch[] };
 type ProjectsResponse = { projects: ProjectSummary[] };
 type BatchesResponse = { batches: BatchSummary[] };
 type BatchResponse = { batch: BatchSummary };
@@ -321,6 +372,16 @@ export async function calculatePriceQuote(
   return data?.quote ?? null;
 }
 
+export async function savePriceQuoteToProduct(
+  input: SaveProductPricingRequest,
+): Promise<SavedProductPricingResponse | null> {
+  return postJsonOrToast<SavedProductPricingResponse>(
+    "/api/price-quotes/save-to-product",
+    input,
+    "Failed to save product pricing.",
+  );
+}
+
 export async function fetchProjects(): Promise<ProjectSummary[]> {
   const data = await fetchJson<ProjectsResponse>("/api/projects", "Failed to load projects.");
   return data.projects;
@@ -338,6 +399,16 @@ export async function fetchProducts(): Promise<ProductSummary[]> {
 export async function fetchProduct(id: number): Promise<ProductSummary> {
   const data = await fetchJson<ProductResponse>(`/api/products/${id}`, "Failed to load product.");
   return data.product;
+}
+
+export async function fetchProductPricingHistory(
+  productId: number,
+): Promise<SavedProductPricingBatch[]> {
+  const data = await fetchJson<ProductPricingHistoryResponse>(
+    `/api/products/${productId}/pricing-history`,
+    "Failed to load product pricing history.",
+  );
+  return data.history;
 }
 
 export async function fetchPrintNextProducts(): Promise<ProductSummary[]> {

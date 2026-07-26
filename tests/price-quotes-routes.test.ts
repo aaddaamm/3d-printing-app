@@ -1,17 +1,30 @@
 import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockCalculatePriceQuote, MockPriceQuoteValidationError } = vi.hoisted(() => {
+const {
+  mockCalculatePriceQuote,
+  mockSaveProductPricing,
+  MockPriceQuoteValidationError,
+  MockSavedProductPricingValidationError,
+} = vi.hoisted(() => {
   class PriceQuoteValidationError extends Error {}
+  class SavedProductPricingValidationError extends Error {}
   return {
     mockCalculatePriceQuote: vi.fn(),
+    mockSaveProductPricing: vi.fn(),
     MockPriceQuoteValidationError: PriceQuoteValidationError,
+    MockSavedProductPricingValidationError: SavedProductPricingValidationError,
   };
 });
 
 vi.mock("../models/price-quotes.js", () => ({
   calculatePriceQuote: mockCalculatePriceQuote,
   PriceQuoteValidationError: MockPriceQuoteValidationError,
+}));
+
+vi.mock("../models/saved-product-pricing.js", () => ({
+  saveProductPricing: mockSaveProductPricing,
+  SavedProductPricingValidationError: MockSavedProductPricingValidationError,
 }));
 
 import { priceQuotes } from "../routes/price-quotes.js";
@@ -25,6 +38,18 @@ const validBody = {
   extra_cost: 1.25,
   channel: "etsy",
   target_margin_pct: 0.45,
+};
+
+const validSaveBody = {
+  job_ids: [4, 9],
+  sellable_units: 3,
+  batch_labor_minutes: 12,
+  per_unit_labor_minutes: 2.5,
+  packaging_cost_per_unit: 0.75,
+  extra_cost: 1.25,
+  target_margin_pct: 0.45,
+  product_id: 7,
+  notes: "Save this version",
 };
 
 const sampleQuote = {
@@ -54,6 +79,60 @@ const sampleQuote = {
   breakdown: { suggestedPrice: 12.5 },
 };
 
+const sampleSavedPricing = {
+  product: {
+    id: 7,
+    name: "Controller Stand",
+    designer: "PrintWorks",
+    category_id: null,
+    category_label: null,
+    status_id: "idea",
+    status_label: "Idea",
+    source_id: null,
+    source_label: null,
+    license_id: null,
+    license_label: null,
+    main_photo_path: null,
+    target_sale_price: 12.5,
+    restock_priority: "none",
+    model_url: null,
+    etsy_listing_url: null,
+    default_material: null,
+    primary_color: null,
+    accent_color: null,
+    preferred_printer_id: null,
+    estimated_print_time_s: null,
+    estimated_filament_g: null,
+    booth_price: 12.5,
+    etsy_price: 14.5,
+    packaging_cost: null,
+    handling_minutes: null,
+    target_margin_pct: null,
+    pricing_notes: null,
+    notes: null,
+    can_sell_level: "green",
+    can_sell_label: "Ready",
+    ready_to_list: false,
+  },
+  batch_id: 11,
+  snapshots: {
+    direct: {
+      id: 21,
+      batch_id: 11,
+      channel: "direct",
+      created_at: "2026-07-25 12:00:00",
+      quote: { ...sampleQuote, channel: "direct" },
+    },
+    etsy: {
+      id: 22,
+      batch_id: 11,
+      channel: "etsy",
+      created_at: "2026-07-25 12:00:00",
+      quote: sampleQuote,
+    },
+  },
+};
+
 function apiApp(): Hono {
   const app = new Hono();
   app.route("/api/price-quotes", priceQuotes);
@@ -68,10 +147,19 @@ async function post(body: string): Promise<Response> {
   });
 }
 
+async function postSave(body: string): Promise<Response> {
+  return apiApp().request("/api/price-quotes/save-to-product", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+  });
+}
+
 describe("price quote routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     mockCalculatePriceQuote.mockReturnValue(sampleQuote);
+    mockSaveProductPricing.mockReturnValue(sampleSavedPricing);
   });
 
   it("forwards a valid request exactly and returns the quote", async () => {
@@ -156,5 +244,82 @@ describe("price quote routes", () => {
         body: JSON.stringify(validBody),
       }),
     ).rejects.toBe(unexpected);
+  });
+
+  it("saves valid product pricing and returns the saved payload", async () => {
+    const res = await postSave(JSON.stringify(validSaveBody));
+
+    expect(res.status).toBe(201);
+    expect(mockSaveProductPricing).toHaveBeenCalledWith(validSaveBody);
+    expect(await res.json()).toEqual({ saved: sampleSavedPricing, image_warnings: [] });
+  });
+
+  it("returns 400 for invalid save JSON", async () => {
+    const res = await postSave("{");
+
+    expect(res.status).toBe(400);
+    expect(mockSaveProductPricing).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for unknown save fields", async () => {
+    const res = await postSave(JSON.stringify({ ...validSaveBody, channel: "etsy" }));
+
+    expect(res.status).toBe(400);
+    expect(mockSaveProductPricing).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for empty save job_ids", async () => {
+    const res = await postSave(JSON.stringify({ ...validSaveBody, job_ids: [] }));
+
+    expect(res.status).toBe(400);
+    expect(mockSaveProductPricing).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["sellable_units", "3"],
+    ["batch_labor_minutes", "12"],
+    ["per_unit_labor_minutes", "2.5"],
+    ["packaging_cost_per_unit", "0.75"],
+    ["extra_cost", "1.25"],
+    ["target_margin_pct", "0.45"],
+    ["product_id", "7"],
+  ])("returns 400 for invalid save %s values", async (field, value) => {
+    const res = await postSave(JSON.stringify({ ...validSaveBody, [field]: value }));
+
+    expect(res.status).toBe(400);
+    expect(mockSaveProductPricing).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when both product selectors are provided", async () => {
+    const res = await postSave(
+      JSON.stringify({
+        ...validSaveBody,
+        new_product: { name: "Controller Stand", designer: "PrintWorks" },
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(mockSaveProductPricing).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 when neither product selector is provided", async () => {
+    const body = { ...validSaveBody };
+    delete (body as Partial<typeof validSaveBody>).product_id;
+
+    const res = await postSave(JSON.stringify(body));
+
+    expect(res.status).toBe(400);
+    expect(mockSaveProductPricing).not.toHaveBeenCalled();
+  });
+
+  it("maps SavedProductPricingValidationError to 400", async () => {
+    mockSaveProductPricing.mockImplementation(() => {
+      throw new MockSavedProductPricingValidationError("Unknown product_id: 999");
+    });
+
+    const res = await postSave(JSON.stringify(validSaveBody));
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "Unknown product_id: 999" });
   });
 });

@@ -14,6 +14,7 @@ function product(overrides: Partial<ProductSummary>): ProductSummary {
   return {
     id: 1,
     name: "Test Product",
+    designer: null,
     category_id: null,
     category_label: null,
     status_id: "idea",
