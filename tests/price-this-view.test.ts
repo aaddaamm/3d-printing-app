@@ -8,8 +8,10 @@ import {
   invalidatePriceQuoteRequests,
   isCurrentPriceQuoteRequest,
   priceThisDraftToRequest,
+  suggestedProductName,
   togglePriceJob,
 } from "../frontend/components/price-this-helpers.js";
+import type { Job } from "../frontend/components/jobs-view-types.js";
 
 describe("Price-this draft state", () => {
   it("preserves unique initial job IDs in first-seen order", () => {
@@ -64,6 +66,25 @@ describe("Price-this draft state", () => {
       extra_cost: 6.5,
       channel: "etsy",
     });
+  });
+});
+
+describe("Price-this suggested product names", () => {
+  it("prefers the first selected job's design title, then title, then a fallback", () => {
+    const designTitleJob: Job & { title?: string } = {
+      id: 12,
+      designTitle: "Green Ranger Dagger",
+      title: "ignored",
+    };
+    const titleFallbackJob: Job & { title?: string } = {
+      id: 12,
+      designTitle: " ",
+      title: "Maker Coin",
+    };
+
+    expect(suggestedProductName([designTitleJob])).toBe("Green Ranger Dagger");
+    expect(suggestedProductName([titleFallbackJob])).toBe("Maker Coin");
+    expect(suggestedProductName([undefined])).toBe("New product");
   });
 });
 

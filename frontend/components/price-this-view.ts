@@ -6,6 +6,7 @@ import { calculatePriceQuote, type PriceQuoteResult } from "../lib/api.js";
 import { copyTextToClipboard } from "../lib/copy-format.js";
 import { Badge } from "./atoms.js";
 import { fmtCurrency, fmtDate, fmtTime, fmtWeight } from "./helpers.js";
+import { SavePriceToProductModal } from "./save-price-to-product-modal.js";
 import type { Job } from "./jobs-view-types.js";
 import {
   beginPriceQuoteRequest,
@@ -124,7 +125,15 @@ function ResultMetric({
   </div>`;
 }
 
-function PriceResult({ quote, onCopy }: { quote: PriceQuoteResult; onCopy: () => void }) {
+function PriceResult({
+  quote,
+  onCopy,
+  onSave,
+}: {
+  quote: PriceQuoteResult;
+  onCopy: () => void;
+  onSave: () => void;
+}) {
   const breakdown = quote.breakdown;
   return html`<div class="price-this-result">
     <div class="price-this-result-hero">
@@ -133,7 +142,10 @@ function PriceResult({ quote, onCopy }: { quote: PriceQuoteResult; onCopy: () =>
         <strong>${fmtCurrency(breakdown.suggestedPrice)}</strong>
         <small>per sellable unit</small>
       </div>
-      <button class="price-this-copy" type="button" onClick=${onCopy}>Copy price summary</button>
+      <div class="price-this-result-actions">
+        <button class="price-this-copy" type="button" onClick=${onCopy}>Copy price summary</button>
+        <button class="btn-primary" type="button" onClick=${onSave}>Save to Product</button>
+      </div>
     </div>
 
     <div class="price-this-result-grid">
@@ -227,6 +239,7 @@ export function PriceThisView({
   const [candidateQuery, setCandidateQuery] = useState("");
   const [quote, setQuote] = useState<PriceQuoteResult | null>(null);
   const [calculating, setCalculating] = useState(false);
+  const [saveModalOpen, setSaveModalOpen] = useState(false);
   const quoteRequestState = useRef(initialPriceQuoteRequestState());
 
   const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
@@ -250,6 +263,7 @@ export function PriceThisView({
     setDraft(next);
     setQuote(null);
     setCalculating(false);
+    setSaveModalOpen(false);
   };
   const updateNumber = (field: NumericDraftField, value: number) => {
     replaceDraft({ ...draft, [field]: value });
@@ -464,11 +478,24 @@ export function PriceThisView({
             </p>`
           : null}
         ${quote
-          ? html`<${PriceResult} quote=${quote} onCopy=${copySummary} />`
+          ? html`<${PriceResult}
+              quote=${quote}
+              onCopy=${copySummary}
+              onSave=${() => quote && setSaveModalOpen(true)}
+            />`
           : html`<div class="price-this-result-empty">
               Your manufacturing cost and recommended unit price will appear here.
             </div>`}
       </section>
     </form>
+
+    ${saveModalOpen && quote
+      ? html`<${SavePriceToProductModal}
+          draft=${draft}
+          selectedJobs=${selectedJobs}
+          navigate=${navigate}
+          onClose=${() => setSaveModalOpen(false)}
+        />`
+      : null}
   </main>`;
 }

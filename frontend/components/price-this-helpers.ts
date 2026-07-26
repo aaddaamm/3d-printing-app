@@ -1,4 +1,4 @@
-import type { PriceQuoteRequest, PriceQuoteResult } from "../lib/api.js";
+import type { PriceQuoteRequest, PriceQuoteResult, SaveProductPricingRequest } from "../lib/api.js";
 import type { Job } from "./jobs-view-types.js";
 
 export type PriceThisDraft = {
@@ -10,6 +10,18 @@ export type PriceThisDraft = {
   extraCost: number;
   channel: "direct" | "etsy";
 };
+
+export type ExistingOrNewProductSelection =
+  | { mode: "existing"; productId: number }
+  | {
+      mode: "new";
+      name: string;
+      designer: string;
+      sourceId: string;
+      licenseId: string;
+      modelUrl: string;
+      notes: string;
+    };
 
 export type PriceQuoteRequestState = {
   generation: number;
@@ -92,6 +104,48 @@ export function priceThisDraftToRequest(draft: PriceThisDraft): PriceQuoteReques
   };
 }
 
+export function suggestedProductName(jobs: Array<Job | undefined>): string {
+  for (const job of jobs) {
+    const designTitle = job?.designTitle?.trim();
+    if (designTitle) return designTitle;
+
+    const title = (job as (Job & { title?: string }) | undefined)?.title?.trim();
+    if (title) return title;
+  }
+
+  return "New product";
+}
+
+export function buildSaveProductPricingRequest(
+  draft: PriceThisDraft,
+  selection: ExistingOrNewProductSelection,
+): SaveProductPricingRequest {
+  const request: SaveProductPricingRequest = {
+    job_ids: [...draft.selectedJobIds],
+    sellable_units: draft.sellableUnits,
+    batch_labor_minutes: draft.batchLaborMinutes,
+    per_unit_labor_minutes: draft.perUnitLaborMinutes,
+    packaging_cost_per_unit: draft.packagingCostPerUnit,
+    extra_cost: draft.extraCost,
+  };
+
+  if (selection.mode === "existing") {
+    return { ...request, product_id: selection.productId };
+  }
+
+  return {
+    ...request,
+    new_product: {
+      name: selection.name.trim(),
+      designer: trimNullableText(selection.designer),
+      source_id: trimNullableText(selection.sourceId),
+      license_id: trimNullableText(selection.licenseId),
+      model_url: trimNullableText(selection.modelUrl),
+      notes: trimNullableText(selection.notes),
+    },
+  };
+}
+
 export function parsePriceJobIds(search: string): number[] {
   const values = new URLSearchParams(search).get("jobIds")?.split(",") ?? [];
   const jobIds: number[] = [];
@@ -148,4 +202,9 @@ export function formatPriceQuoteForClipboard(quote: PriceQuoteResult): string {
 
 function formatMoney(value: number): string {
   return `$${value.toFixed(2)}`;
+}
+
+function trimNullableText(value: string): string | null {
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }
