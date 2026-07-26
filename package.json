@@ -52,7 +52,7 @@
     "concurrently": "^10.0.3",
     "eslint": "^10.0.3",
     "eslint-config-prettier": "^10.1.8",
-    "happy-dom": "^20.11.1",
+    "happy-dom": "17.0.0",
     "prettier": "^3.8.1",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
