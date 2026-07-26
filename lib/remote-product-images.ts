@@ -6,7 +6,7 @@ const SOURCE_IMAGE_HOSTS = new Set(["makerworld.bblmw.com"]);
 const HTML_BYTE_LIMIT = 1024 * 1024;
 const IMAGE_BYTE_LIMIT = 10 * 1024 * 1024;
 const MAX_REDIRECTS = 3;
-const FETCH_TIMEOUT_MS = 10_000;
+const OPERATION_TIMEOUT_MS = 10_000;
 const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308]);
 const IMAGE_CONTENT_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 
@@ -21,6 +21,60 @@ type ResolvedAddress = {
   address: string;
   family: number;
 };
+
+type OperationDeadline = {
+  signal: AbortSignal;
+  wait<T>(operation: PromiseLike<T>): Promise<T>;
+  dispose(): void;
+};
+
+class RemoteOperationTimeoutError extends Error {
+  constructor() {
+    super("MakerWorld operation timed out after 10 seconds");
+    this.name = "RemoteOperationTimeoutError";
+  }
+}
+
+function createOperationDeadline(): OperationDeadline {
+  const controller = new AbortController();
+  const timeoutError = new RemoteOperationTimeoutError();
+  const timer = setTimeout(() => controller.abort(timeoutError), OPERATION_TIMEOUT_MS);
+  timer.unref();
+
+  return {
+    signal: controller.signal,
+    wait<T>(operation: PromiseLike<T>): Promise<T> {
+      if (controller.signal.aborted)
+        return Promise.reject(controller.signal.reason ?? timeoutError);
+      return new Promise<T>((resolve, reject) => {
+        const onAbort = () => {
+          controller.signal.removeEventListener("abort", onAbort);
+          reject(controller.signal.reason ?? timeoutError);
+        };
+        controller.signal.addEventListener("abort", onAbort, { once: true });
+        Promise.resolve(operation).then(
+          (value) => {
+            controller.signal.removeEventListener("abort", onAbort);
+            resolve(value);
+          },
+          (error: unknown) => {
+            controller.signal.removeEventListener("abort", onAbort);
+            reject(error);
+          },
+        );
+      });
+    },
+    dispose(): void {
+      clearTimeout(timer);
+    },
+  };
+}
+
+function isTimeoutError(error: unknown): boolean {
+  if (error instanceof RemoteOperationTimeoutError) return true;
+  const name = (error as { name?: unknown } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError";
+}
 
 function decodeHtmlEntities(value: string): string {
   return value.replace(/&(?:amp|quot|apos|lt|gt|#\d+|#x[\da-f]+);/gi, (entity): string => {
@@ -56,16 +110,70 @@ function attributes(tag: string): Map<string, string> {
   return result;
 }
 
+function tagEnd(html: string, start: number): number {
+  let quote: '"' | "'" | null = null;
+  for (let index = start + 1; index < html.length; index += 1) {
+    const character = html[index];
+    if (quote) {
+      if (character === quote) quote = null;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === ">") {
+      return index;
+    }
+  }
+  return -1;
+}
+
+function withoutFragment(url: URL): URL {
+  const normalized = new URL(url.href);
+  normalized.hash = "";
+  return normalized;
+}
+
 export function extractOpenGraphImage(html: string, pageUrl: URL): URL | null {
-  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
-    const values = attributes(match[0]);
+  let cursor = 0;
+  let ignoredContext: "script" | "style" | null = null;
+
+  while (cursor < html.length) {
+    const start = html.indexOf("<", cursor);
+    if (start < 0) break;
+    if (html.startsWith("<!--", start)) {
+      const commentEnd = html.indexOf("-->", start + 4);
+      if (commentEnd < 0) return null;
+      cursor = commentEnd + 3;
+      continue;
+    }
+
+    const end = tagEnd(html, start);
+    if (end < 0) return null;
+    const tag = html.slice(start, end + 1);
+    cursor = end + 1;
+    const identity = /^<\s*(\/?)\s*([a-z][\w:-]*)/i.exec(tag);
+    if (!identity) continue;
+    const closing = identity[1] === "/";
+    const name = identity[2]!.toLowerCase();
+
+    if (ignoredContext) {
+      if (closing && name === ignoredContext) ignoredContext = null;
+      continue;
+    }
+    if (!closing && (name === "script" || name === "style")) {
+      ignoredContext = name;
+      continue;
+    }
+    if (closing || name !== "meta") continue;
+
+    const values = attributes(tag);
     if (values.get("property")?.trim().toLowerCase() !== "og:image") continue;
     const content = values.get("content")?.trim();
-    if (!content) return null;
+    if (!content) continue;
     try {
-      return new URL(decodeHtmlEntities(content), pageUrl);
+      const url = new URL(decodeHtmlEntities(content), pageUrl);
+      if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+      return withoutFragment(url);
     } catch {
-      return null;
+      continue;
     }
   }
   return null;
@@ -138,6 +246,17 @@ function parseIpv6(address: string): number[] | null {
   return [...left, ...Array<number>(omitted).fill(0), ...right];
 }
 
+function ipv6InCidr(groups: number[], base: number[], bits: number): boolean {
+  const completeGroups = Math.floor(bits / 16);
+  for (let index = 0; index < completeGroups; index += 1) {
+    if (groups[index] !== base[index]) return false;
+  }
+  const remaining = bits % 16;
+  if (remaining === 0) return true;
+  const mask = (0xffff << (16 - remaining)) & 0xffff;
+  return (groups[completeGroups]! & mask) === (base[completeGroups]! & mask);
+}
+
 function isPublicIpv6(address: string): boolean {
   const groups = parseIpv6(address);
   if (!groups) return false;
@@ -148,20 +267,17 @@ function isPublicIpv6(address: string): boolean {
     return isPublicIpv4(ipv4);
   }
 
-  // Globally routable unicast currently occupies 2000::/3. Fixed provider hosts do not need
-  // transition, local, multicast, or other special-purpose IPv6 ranges.
+  // Fixed provider hosts only need ordinary global unicast. Exclude IETF special allocations
+  // (including deprecated ORCHID and ORCHIDv2), transition space, and documentation/test space.
   if ((groups[0]! & 0xe000) !== 0x2000) return false;
-  if (groups[0] === 0x2001 && groups[1] === 0x0db8) return false;
-  if (groups[0] === 0x2001 && groups[1] === 0x0002 && groups[2] === 0) return false;
-  if (
-    groups[0] === 0x2001 &&
-    (groups[1]! & 0xfff0) === 0x0010 &&
-    (groups[1] === 0x0010 || groups[1] === 0x0020)
-  ) {
-    return false;
-  }
-  if (groups[0] === 0x3fff && (groups[1]! & 0xf000) === 0) return false;
-  return true;
+  const blocked: Array<[number[], number]> = [
+    [[0x2001, 0x0000, 0, 0, 0, 0, 0, 0], 23],
+    [[0x2001, 0x0db8, 0, 0, 0, 0, 0, 0], 32],
+    [[0x2002, 0, 0, 0, 0, 0, 0, 0], 16],
+    [[0x3ffe, 0, 0, 0, 0, 0, 0, 0], 16],
+    [[0x3fff, 0, 0, 0, 0, 0, 0, 0], 20],
+  ];
+  return !blocked.some(([base, bits]) => ipv6InCidr(groups, base, bits));
 }
 
 function isPublicAddress(address: string): boolean {
@@ -185,11 +301,39 @@ function validateUrl(url: URL, stage: FetchStage): void {
   }
 }
 
-async function validateDns(url: URL, lookup: RemoteImageDependencies["lookup"]): Promise<void> {
+function canonicalSupportedUrl(value: string, stage: FetchStage): string | null {
+  try {
+    const url = withoutFragment(new URL(value));
+    validateUrl(url, stage);
+    return url.href;
+  } catch {
+    return null;
+  }
+}
+
+export function canonicalSupportedModelUrl(value: string): string | null {
+  return canonicalSupportedUrl(value, "page");
+}
+
+export function canonicalSupportedImageUrl(value: string): string | null {
+  return canonicalSupportedUrl(value, "image");
+}
+
+async function validateDns(
+  url: URL,
+  lookup: RemoteImageDependencies["lookup"],
+  deadline: OperationDeadline,
+): Promise<void> {
   let addresses: ResolvedAddress[];
   try {
-    addresses = (await lookup(url.hostname, { all: true, verbatim: true })) as ResolvedAddress[];
+    // This preflight is defense-in-depth for the fixed three-host provider allowlist. Global Fetch
+    // performs a separate DNS resolution that cannot be pinned here, so this is not a generic
+    // DNS-rebinding-safe SSRF transport and must not be reused as one.
+    addresses = (await deadline.wait(
+      lookup(url.hostname, { all: true, verbatim: true }),
+    )) as ResolvedAddress[];
   } catch (error: unknown) {
+    if (isTimeoutError(error)) throw error;
     throw new Error(`Could not resolve the MakerWorld host: ${String(error)}`, { cause: error });
   }
   if (addresses.length === 0 || addresses.some(({ address }) => !isPublicAddress(address))) {
@@ -201,13 +345,20 @@ function contentType(response: Response): string {
   return (response.headers.get("Content-Type") ?? "").split(";", 1)[0]!.trim().toLowerCase();
 }
 
+function cancelResponseBody(response: Response): void {
+  if (!response.body) return;
+  void response.body.cancel().catch(() => undefined);
+}
+
 async function readBoundedBody(
   response: Response,
   limit: number,
   label: string,
+  deadline: OperationDeadline,
 ): Promise<Uint8Array> {
   const declaredLength = response.headers.get("Content-Length");
   if (declaredLength && /^\d+$/.test(declaredLength) && BigInt(declaredLength) > BigInt(limit)) {
+    cancelResponseBody(response);
     throw new Error(`${label} exceeds the ${limit === HTML_BYTE_LIMIT ? "1 MiB" : "10 MiB"} limit`);
   }
   if (!response.body) return new Uint8Array();
@@ -215,21 +366,30 @@ async function readBoundedBody(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let total = 0;
+  let canceled = false;
   try {
     for (;;) {
-      const { done, value } = await reader.read();
+      const { done, value } = await deadline.wait(reader.read());
       if (done) break;
       total += value.byteLength;
       if (total > limit) {
-        await reader.cancel();
+        canceled = true;
+        void reader.cancel().catch(() => undefined);
         throw new Error(
           `${label} exceeds the ${limit === HTML_BYTE_LIMIT ? "1 MiB" : "10 MiB"} limit`,
         );
       }
       chunks.push(value);
     }
+  } catch (error: unknown) {
+    if (!canceled) void reader.cancel().catch(() => undefined);
+    throw error;
   } finally {
-    reader.releaseLock();
+    try {
+      reader.releaseLock();
+    } catch {
+      // A deadline may expire while a synthetic or non-cooperative stream still has a pending read.
+    }
   }
 
   const bytes = new Uint8Array(total);
@@ -245,33 +405,36 @@ async function fetchWithPolicy(
   initialUrl: URL,
   stage: FetchStage,
   dependencies: RemoteImageDependencies,
+  deadline: OperationDeadline,
 ): Promise<{ response: Response; finalUrl: URL }> {
-  let url = initialUrl;
+  let url = withoutFragment(initialUrl);
   for (let redirects = 0; ; redirects += 1) {
     validateUrl(url, stage);
-    await validateDns(url, dependencies.lookup);
+    await validateDns(url, dependencies.lookup, deadline);
 
     let response: Response;
     try {
-      response = await dependencies.fetch(url, {
-        redirect: "manual",
-        credentials: "omit",
-        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-      });
+      response = await deadline.wait(
+        dependencies.fetch(url, {
+          redirect: "manual",
+          credentials: "omit",
+          signal: deadline.signal,
+        }),
+      );
     } catch (error: unknown) {
-      const name = (error as { name?: unknown } | null)?.name;
-      if (name === "TimeoutError" || name === "AbortError") {
-        throw new Error("MakerWorld request timed out after 10 seconds", { cause: error });
+      if (isTimeoutError(error)) {
+        throw new RemoteOperationTimeoutError();
       }
       throw new Error(`MakerWorld request failed: ${String(error)}`, { cause: error });
     }
 
     if (!REDIRECT_STATUSES.has(response.status)) return { response, finalUrl: url };
+    cancelResponseBody(response);
     if (redirects >= MAX_REDIRECTS) throw new Error("MakerWorld response exceeded 3 redirects");
     const location = response.headers.get("Location");
     if (!location) throw new Error("MakerWorld redirect did not include a Location header");
     try {
-      url = new URL(location, url);
+      url = withoutFragment(new URL(location, url));
     } catch (error: unknown) {
       throw new Error("MakerWorld redirect URL is malformed", { cause: error });
     }
@@ -279,7 +442,19 @@ async function fetchWithPolicy(
 }
 
 function requireSuccessfulStatus(response: Response, label: string): void {
-  if (!response.ok) throw new Error(`${label} returned status ${response.status}`);
+  if (response.ok) return;
+  cancelResponseBody(response);
+  throw new Error(`${label} returned status ${response.status}`);
+}
+
+function requireContentType(
+  response: Response,
+  accepted: ReadonlySet<string>,
+  message: string,
+): void {
+  if (accepted.has(contentType(response))) return;
+  cancelResponseBody(response);
+  throw new Error(message);
 }
 
 export async function fetchSupportedSourceImage(
@@ -288,7 +463,7 @@ export async function fetchSupportedSourceImage(
 ): Promise<{ bytes: Uint8Array; sourceUrl: string } | null> {
   let pageUrl: URL;
   try {
-    pageUrl = new URL(modelUrl);
+    pageUrl = withoutFragment(new URL(modelUrl));
   } catch (error: unknown) {
     throw new Error("MakerWorld model URL is malformed", { cause: error });
   }
@@ -296,21 +471,40 @@ export async function fetchSupportedSourceImage(
     fetch: dependencies.fetch ?? globalThis.fetch,
     lookup: dependencies.lookup ?? dnsLookup,
   };
+  const deadline = createOperationDeadline();
 
-  const page = await fetchWithPolicy(pageUrl, "page", resolvedDependencies);
-  requireSuccessfulStatus(page.response, "MakerWorld page");
-  if (contentType(page.response) !== "text/html") {
-    throw new Error("MakerWorld page did not return an HTML content type");
-  }
-  const htmlBytes = await readBoundedBody(page.response, HTML_BYTE_LIMIT, "MakerWorld HTML");
-  const imageUrl = extractOpenGraphImage(new TextDecoder().decode(htmlBytes), page.finalUrl);
-  if (!imageUrl) return null;
+  try {
+    const page = await fetchWithPolicy(pageUrl, "page", resolvedDependencies, deadline);
+    requireSuccessfulStatus(page.response, "MakerWorld page");
+    requireContentType(
+      page.response,
+      new Set(["text/html"]),
+      "MakerWorld page did not return an HTML content type",
+    );
+    const htmlBytes = await readBoundedBody(
+      page.response,
+      HTML_BYTE_LIMIT,
+      "MakerWorld HTML",
+      deadline,
+    );
+    const imageUrl = extractOpenGraphImage(new TextDecoder().decode(htmlBytes), page.finalUrl);
+    if (!imageUrl) return null;
 
-  const image = await fetchWithPolicy(imageUrl, "image", resolvedDependencies);
-  requireSuccessfulStatus(image.response, "MakerWorld image");
-  if (!IMAGE_CONTENT_TYPES.has(contentType(image.response))) {
-    throw new Error("MakerWorld image did not return a supported image content type");
+    const image = await fetchWithPolicy(imageUrl, "image", resolvedDependencies, deadline);
+    requireSuccessfulStatus(image.response, "MakerWorld image");
+    requireContentType(
+      image.response,
+      IMAGE_CONTENT_TYPES,
+      "MakerWorld image did not return a supported image content type",
+    );
+    const bytes = await readBoundedBody(
+      image.response,
+      IMAGE_BYTE_LIMIT,
+      "MakerWorld image",
+      deadline,
+    );
+    return { bytes, sourceUrl: image.finalUrl.href };
+  } finally {
+    deadline.dispose();
   }
-  const bytes = await readBoundedBody(image.response, IMAGE_BYTE_LIMIT, "MakerWorld image");
-  return { bytes, sourceUrl: image.finalUrl.href };
 }

@@ -19,6 +19,7 @@ import {
   fetchProjects,
   patchJsonOrToast,
   postJsonOrToast,
+  refreshProductImages,
   updateBatch,
   updateProduct,
 } from "../frontend/lib/api.js";
@@ -127,6 +128,7 @@ describe("frontend API endpoint contracts", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     vi.unstubAllGlobals();
   });
 
@@ -227,6 +229,21 @@ describe("frontend API endpoint contracts", () => {
       ["/api/batches/3", "PATCH"],
       ["/api/batches/3/projects/1", "POST"],
     ]);
+  });
+
+  it("gives server-side image refresh enough time to finish its bounded operation", async () => {
+    const payload = { product: { id: 2 }, candidates: [], warnings: [] };
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout");
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(refreshProductImages(2)).resolves.toEqual(payload);
+
+    expect(timeoutSpy).toHaveBeenCalledWith(20_000);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/products/2/images/refresh",
+      expect.objectContaining({ method: "POST", body: "{}" }),
+    );
   });
 
   it("returns null when create helpers cannot complete", async () => {

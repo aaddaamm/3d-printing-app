@@ -16,6 +16,8 @@ import {
 } from "../lib/product-image-files.js";
 import { projectProductPhotoPath } from "../lib/product-photo-path.js";
 import {
+  canonicalSupportedImageUrl,
+  canonicalSupportedModelUrl,
   fetchSupportedSourceImage,
   type RemoteImageDependencies,
 } from "../lib/remote-product-images.js";
@@ -169,9 +171,14 @@ function sourceHeroProvenance(
   if (!sourceRef?.startsWith("{")) return null;
   try {
     const parsed = JSON.parse(sourceRef) as Record<string, unknown>;
-    return typeof parsed["modelUrl"] === "string" && typeof parsed["sourceUrl"] === "string"
-      ? { modelUrl: parsed["modelUrl"], sourceUrl: parsed["sourceUrl"] }
-      : null;
+    if (typeof parsed["modelUrl"] !== "string" || typeof parsed["sourceUrl"] !== "string") {
+      return null;
+    }
+    const modelUrl = canonicalSupportedModelUrl(parsed["modelUrl"]);
+    const sourceUrl = canonicalSupportedImageUrl(parsed["sourceUrl"]);
+    if (!modelUrl || !sourceUrl) return null;
+    if (parsed["modelUrl"] !== modelUrl || parsed["sourceUrl"] !== sourceUrl) return null;
+    return { modelUrl, sourceUrl };
   } catch {
     return null;
   }
@@ -214,9 +221,19 @@ function persistedCandidates(
 
     if (row.source_type === "source_hero") {
       const provenance = sourceHeroProvenance(row.source_ref);
-      if (provenance && (provenance.modelUrl !== currentModelUrl || row.is_app_owned !== 1)) {
-        available = false;
-        warning = "This image no longer matches the Product's current source URL.";
+      const currentSourceUrl = currentModelUrl ? canonicalSupportedModelUrl(currentModelUrl) : null;
+      const expectedKey = provenance
+        ? `source_hero:${createHash("sha256").update(provenance.sourceUrl).digest("hex")}`
+        : null;
+      const validSourceHero =
+        provenance !== null &&
+        provenance.modelUrl === currentSourceUrl &&
+        row.is_app_owned === 1 &&
+        candidateKey === expectedKey;
+      available = available && validSourceHero;
+      if (!available) {
+        warning =
+          "This source image has invalid or stale MakerWorld provenance and does not match the Product's current source URL.";
       }
     } else if (row.source_type === "catalog_preview" || row.source_type === "print_cover") {
       const currentSource = currentDerivedCandidates.get(candidateKey);
@@ -582,8 +599,18 @@ function upsertSourceHero(
   sourceUrl: string,
   stored: StoredProductImage,
 ): void {
-  const candidateKey = `source_hero:${createHash("sha256").update(sourceUrl).digest("hex")}`;
-  const sourceRef = JSON.stringify({ modelUrl, sourceUrl });
+  const canonicalModelUrl = canonicalSupportedModelUrl(modelUrl);
+  const canonicalSourceUrl = canonicalSupportedImageUrl(sourceUrl);
+  if (!canonicalModelUrl || !canonicalSourceUrl) {
+    throw new ProductImageValidationError("Invalid MakerWorld source image provenance");
+  }
+  const candidateKey = `source_hero:${createHash("sha256")
+    .update(canonicalSourceUrl)
+    .digest("hex")}`;
+  const sourceRef = JSON.stringify({
+    modelUrl: canonicalModelUrl,
+    sourceUrl: canonicalSourceUrl,
+  });
   db.prepare(
     `INSERT INTO product_photos (
        product_id, path, role, caption, source_type, source_ref, candidate_key,

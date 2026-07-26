@@ -133,6 +133,42 @@ function addPersistedPhoto(
   return addPersistedPhotoAtPath(productId, sourceType, candidateKey, imagePath, filename);
 }
 
+function sourceHeroKey(sourceUrl: string): string {
+  const url = new URL(sourceUrl);
+  url.hash = "";
+  return `source_hero:${createHash("sha256").update(url.href).digest("hex")}`;
+}
+
+function addSourceHero(
+  productId: number,
+  filename: string,
+  modelUrl: string,
+  sourceUrl: string,
+  options: { candidateKey?: string; isAppOwned?: number; sourceRef?: string | null } = {},
+): number {
+  const imagePath = path.join(tempDir, filename);
+  fs.writeFileSync(imagePath, "source hero");
+  const sourceRef =
+    options.sourceRef === undefined ? JSON.stringify({ modelUrl, sourceUrl }) : options.sourceRef;
+  return Number(
+    dbModule!.db
+      .prepare(
+        `INSERT INTO product_photos (
+           product_id, path, role, source_type, source_ref, candidate_key, is_app_owned
+         ) VALUES (?, ?, 'gallery', 'source_hero', ?, ?, ?)
+         RETURNING id`,
+      )
+      .pluck()
+      .get(
+        productId,
+        imagePath,
+        sourceRef,
+        options.candidateKey ?? sourceHeroKey(sourceUrl),
+        options.isAppOwned ?? 1,
+      ),
+  );
+}
+
 async function writeValidCover(taskId: string, color: string): Promise<void> {
   await sharp({
     create: { width: 80, height: 60, channels: 3, background: color },
@@ -166,7 +202,8 @@ describe.sequential("product image model", () => {
   });
 
   it("ranks local candidates deterministically and deduplicates stable candidate keys", () => {
-    const product = productsModule!.createProduct({ name: "Image Dragon" });
+    const modelUrl = "https://makerworld.com/en/models/image-dragon";
+    const product = productsModule!.createProduct({ name: "Image Dragon", model_url: modelUrl });
     seedCatalogPreview(product.id, "a".repeat(64));
     seedSavedBatchCovers(product.id, ["701", "702"]);
 
@@ -176,7 +213,12 @@ describe.sequential("product image model", () => {
         .map((candidate) => candidate.source_type),
     ).toEqual(["catalog_preview", "print_cover", "print_cover", "placeholder"]);
 
-    addPersistedPhoto(product.id, "source_hero", "source_hero:makerworld:dragon", "hero.jpg");
+    addSourceHero(
+      product.id,
+      "hero.jpg",
+      modelUrl,
+      "https://makerworld.bblmw.com/image-dragon.webp",
+    );
     addPersistedPhoto(product.id, "manual_upload", "manual_upload:one", "manual.jpg");
     addPersistedPhoto(product.id, "contact_sheet", "contact_sheet:batch:1", "contact.webp");
 
@@ -204,8 +246,10 @@ describe.sequential("product image model", () => {
   });
 
   it("enriches a MakerWorld Product into app-owned WebP provenance and selects it in Auto mode", async () => {
-    const modelUrl = "https://makerworld.com/en/models/123";
-    const sourceUrl = "https://makerworld.bblmw.com/hero.png";
+    const modelUrl = "https://makerworld.com/en/models/123#files";
+    const canonicalModelUrl = "https://makerworld.com/en/models/123";
+    const sourceUrl = "https://makerworld.bblmw.com/hero.png#preview";
+    const canonicalSourceUrl = "https://makerworld.bblmw.com/hero.png";
     const product = productsModule!.createProduct({ name: "Remote Dragon", model_url: modelUrl });
     const image = new Uint8Array(
       await sharp({
@@ -235,7 +279,7 @@ describe.sequential("product image model", () => {
       main_photo_source_type: "source_hero",
       main_photo_id: expect.any(Number),
     });
-    const expectedKey = `source_hero:${createHash("sha256").update(sourceUrl).digest("hex")}`;
+    const expectedKey = sourceHeroKey(canonicalSourceUrl);
     const candidate = productImagesModule!
       .listProductImageCandidates(product.id)
       .find(({ candidate_key }) => candidate_key === expectedKey);
@@ -258,7 +302,10 @@ describe.sequential("product image model", () => {
       width: 40,
       height: 20,
     });
-    expect(JSON.parse(String(row["source_ref"]))).toEqual({ modelUrl, sourceUrl });
+    expect(JSON.parse(String(row["source_ref"]))).toEqual({
+      modelUrl: canonicalModelUrl,
+      sourceUrl: canonicalSourceUrl,
+    });
     expect(await sharp(String(row["path"])).metadata()).toMatchObject({ format: "webp" });
   });
 
@@ -356,6 +403,67 @@ describe.sequential("product image model", () => {
         .listProductImageCandidates(product.id)
         .find(({ source_type }) => source_type === "source_hero"),
     ).toMatchObject({ available: false, warning: expect.stringMatching(/current source/i) });
+  });
+
+  it("keeps invalid source provenance warning-visible but unavailable to Auto mode", () => {
+    const modelUrl = "https://makerworld.com/en/models/provenance";
+    const otherModelUrl = "https://makerworld.com/en/models/other";
+    const product = productsModule!.createProduct({
+      name: "Provenance Dragon",
+      model_url: modelUrl,
+    });
+    const source = (name: string) => `https://makerworld.bblmw.com/${name}.webp`;
+
+    const invalidIds = [
+      addSourceHero(product.id, "missing.webp", modelUrl, source("missing"), { sourceRef: null }),
+      addSourceHero(product.id, "malformed.webp", modelUrl, source("malformed"), {
+        sourceRef: "{bad json",
+      }),
+      addSourceHero(product.id, "legacy.webp", modelUrl, source("legacy"), {
+        sourceRef: source("legacy"),
+      }),
+      addSourceHero(product.id, "non-owned.webp", modelUrl, source("non-owned"), {
+        isAppOwned: 0,
+      }),
+      addSourceHero(product.id, "mismatch.webp", otherModelUrl, source("mismatch")),
+      addSourceHero(product.id, "unsupported.webp", modelUrl, "https://images.example/hero.webp"),
+      addSourceHero(product.id, "bad-key.webp", modelUrl, source("bad-key"), {
+        candidateKey: "source_hero:not-the-source-hash",
+      }),
+    ];
+    const validId = addSourceHero(product.id, "valid.webp", modelUrl, source("valid"));
+
+    const candidates = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .filter(({ source_type }) => source_type === "source_hero");
+    expect(candidates).toHaveLength(8);
+    expect(candidates.find(({ photo_id }) => photo_id === validId)).toMatchObject({
+      available: true,
+      warning: null,
+    });
+    for (const photoId of invalidIds) {
+      expect(candidates.find((candidate) => candidate.photo_id === photoId)).toMatchObject({
+        available: false,
+        warning: expect.any(String),
+      });
+    }
+
+    dbModule!.db
+      .prepare(
+        `UPDATE products
+         SET main_photo_id = ?, image_selection_mode = 'manual'
+         WHERE id = ?`,
+      )
+      .run(invalidIds[0], product.id);
+    expect(productImagesModule!.refreshAutoProductImage(product.id)).toMatchObject({
+      main_photo_id: invalidIds[0],
+      image_selection_mode: "manual",
+    });
+    expect(productImagesModule!.returnProductImageToAuto(product.id)).toMatchObject({
+      main_photo_id: validId,
+      main_photo_source_type: "source_hero",
+      image_selection_mode: "auto",
+    });
   });
 
   it("returns warnings and fallback candidates for missing and unsupported source URLs", async () => {
@@ -710,7 +818,11 @@ describe.sequential("product image model", () => {
   });
 
   it("selects ephemeral candidates transactionally and preserves Manual mode until Auto return", () => {
-    const product = productsModule!.createProduct({ name: "Locked Dragon" });
+    const modelUrl = "https://makerworld.com/en/models/locked-dragon";
+    const product = productsModule!.createProduct({
+      name: "Locked Dragon",
+      model_url: modelUrl,
+    });
     const catalogFileId = seedCatalogPreview(product.id, "b".repeat(64));
     seedSavedBatchCovers(product.id, ["801"]);
     const catalogCandidate = productImagesModule!
@@ -740,11 +852,11 @@ describe.sequential("product image model", () => {
       source_type: "catalog_preview",
     });
 
-    const heroId = addPersistedPhoto(
+    const heroId = addSourceHero(
       product.id,
-      "source_hero",
-      "source_hero:makerworld:locked-dragon",
       "hero-after-lock.jpg",
+      modelUrl,
+      "https://makerworld.bblmw.com/locked-dragon.webp",
     );
     const refreshed = productImagesModule!.refreshAutoProductImage(product.id);
     expect(refreshed).toMatchObject({
@@ -971,7 +1083,8 @@ describe.sequential("product image model", () => {
     });
     expect(byKey.get("source:https")).toMatchObject({
       url: "https://images.example.test/dragon.png",
-      available: true,
+      available: false,
+      warning: expect.any(String),
     });
   });
 

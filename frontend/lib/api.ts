@@ -473,6 +473,7 @@ export function refreshProductImages(
     `/api/products/${productId}/images/refresh`,
     {},
     "Failed to refresh product images.",
+    { timeoutMs: 20_000 },
   );
 }
 

@@ -1,6 +1,6 @@
 import type { LookupAddress } from "node:dns";
 import sharp from "sharp";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractOpenGraphImage,
   fetchSupportedSourceImage,
@@ -41,6 +41,25 @@ function htmlResponse(html: string, init: ResponseInit = {}): Response {
   });
 }
 
+function observableBodyResponse(init: ResponseInit = {}): {
+  response: Response;
+  cancel: ReturnType<typeof vi.fn>;
+} {
+  const cancel = vi.fn();
+  const response = new Response(
+    new ReadableStream<Uint8Array>({
+      start() {},
+      cancel,
+    }),
+    init,
+  );
+  return { response, cancel };
+}
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("extractOpenGraphImage", () => {
   it("accepts either attribute order, relative URLs, and basic entities", () => {
     const page = new URL("https://makerworld.com/en/models/1/");
@@ -58,22 +77,24 @@ describe("extractOpenGraphImage", () => {
     ).toBe("https://makerworld.bblmw.com/a.webp");
   });
 
-  it("returns null for missing, invalid, and malformed metadata without executing scripts", () => {
+  it("ignores comments and script/style text while continuing past unusable metadata", () => {
+    const html = `
+      <!-- <meta property="og:image" content="https://makerworld.bblmw.com/comment.webp"> -->
+      <script>const tag = '<meta property="og:image" content="https://makerworld.bblmw.com/script.webp">';</script>
+      <style>.x { content: '<meta property="og:image" content="https://makerworld.bblmw.com/style.webp">' }</style>
+      <meta property="description" content="no image">
+      <meta property="og:image" content="">
+      <meta property="og:image" content="http://[bad">
+      <meta property="og:image" content="data:image/png;base64,bad">
+      <meta content="https://makerworld.bblmw.com/later.webp#display" property="og:image">
+    `;
+
+    expect(extractOpenGraphImage(html, new URL("https://makerworld.com/"))?.href).toBe(
+      "https://makerworld.bblmw.com/later.webp",
+    );
     expect(
       extractOpenGraphImage(
-        "<meta property='description' content='no image'>",
-        new URL("https://makerworld.com/"),
-      ),
-    ).toBeNull();
-    expect(
-      extractOpenGraphImage(
-        "<meta property='og:image' content='http://[bad'>",
-        new URL("https://makerworld.com/"),
-      ),
-    ).toBeNull();
-    expect(
-      extractOpenGraphImage(
-        "<script>throw new Error('must not run')</script><meta property=og:image content>",
+        "<script><meta property='og:image' content='https://makerworld.bblmw.com/hidden.webp'>",
         new URL("https://makerworld.com/"),
       ),
     ).toBeNull();
@@ -125,6 +146,40 @@ describe("fetchSupportedSourceImage", () => {
     }
   });
 
+  it("rejects special global-looking IPv6 ranges at their exact boundaries", async () => {
+    const blocked = [
+      "2001::",
+      "2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "2001:10::",
+      "2001:1f:ffff:ffff:ffff:ffff:ffff:ffff",
+      "2001:20::",
+      "2001:2f:ffff:ffff:ffff:ffff:ffff:ffff",
+      "2002::",
+      "2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+      "3ffe::",
+      "3ffe:ffff:ffff:ffff:ffff:ffff:ffff:ffff",
+    ];
+    for (const address of blocked) {
+      await expect(
+        fetchSupportedSourceImage(
+          "https://makerworld.com/model",
+          dependencies(vi.fn(), [{ address, family: 6 }]),
+        ),
+      ).rejects.toThrow("public network");
+    }
+
+    for (const address of ["2000:ffff::1", "2001:200::", "2003::1", "2606:4700:4700::1111"]) {
+      const fetchImpl = vi.fn(async () => htmlResponse("<html></html>"));
+      await expect(
+        fetchSupportedSourceImage(
+          "https://makerworld.com/model",
+          dependencies(fetchImpl, [{ address, family: 6 }]),
+        ),
+      ).resolves.toBeNull();
+      expect(fetchImpl).toHaveBeenCalledOnce();
+    }
+  });
+
   it("rejects a hostname when any returned address is non-public", async () => {
     const deps = dependencies(vi.fn(), [
       { address: "93.184.216.34", family: 4 },
@@ -164,6 +219,84 @@ describe("fetchSupportedSourceImage", () => {
     expect(redirectFetch).toHaveBeenCalledTimes(4);
   });
 
+  it("uses one overall deadline across DNS, redirects, image fetch, and body reads", async () => {
+    vi.useFakeTimers();
+    const wait = <T>(value: T): Promise<T> =>
+      new Promise((resolve) => setTimeout(() => resolve(value), 2_100));
+    const lookup = vi.fn(() => wait(publicAddress)) as unknown as RemoteImageDependencies["lookup"];
+    const fetchImpl = vi.fn((input: string | URL | Request) => {
+      const url = new URL(String(input));
+      if (url.hostname === "makerworld.bblmw.com") {
+        return wait(new Response("image", { headers: { "Content-Type": "image/png" } }));
+      }
+      if (!url.searchParams.has("redirected")) {
+        return wait(
+          new Response(null, {
+            status: 302,
+            headers: { Location: "https://www.makerworld.com/model?redirected=1" },
+          }),
+        );
+      }
+      return wait(
+        htmlResponse('<meta property="og:image" content="https://makerworld.bblmw.com/hero.png">'),
+      );
+    });
+    const operation = fetchSupportedSourceImage("https://makerworld.com/model", {
+      fetch: fetchImpl,
+      lookup,
+    });
+    let outcome = "pending";
+    void operation.then(
+      () => {
+        outcome = "resolved";
+      },
+      () => {
+        outcome = "rejected";
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    expect(outcome).toBe("rejected");
+    await expect(operation).rejects.toThrow(/timed out.*10 seconds/i);
+  });
+
+  it("bounds a DNS lookup that never resolves and clears its deadline timer", async () => {
+    vi.useFakeTimers();
+    const lookup = vi.fn(() => new Promise<never>(() => undefined));
+    const operation = fetchSupportedSourceImage("https://makerworld.com/model", {
+      fetch: vi.fn(),
+      lookup: lookup as unknown as RemoteImageDependencies["lookup"],
+    });
+    let outcome = "pending";
+    void operation.then(
+      () => {
+        outcome = "resolved";
+      },
+      () => {
+        outcome = "rejected";
+      },
+    );
+
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    expect(outcome).toBe("rejected");
+    await expect(operation).rejects.toThrow(/timed out.*10 seconds/i);
+    expect(lookup).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("clears the overall deadline timer after a successful operation", async () => {
+    vi.useFakeTimers();
+    const deps = dependencies(vi.fn(async () => htmlResponse("<html></html>")));
+
+    await expect(
+      fetchSupportedSourceImage("https://makerworld.com/model", deps),
+    ).resolves.toBeNull();
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("rejects oversized bodies, invalid statuses, and invalid content types before buffering", async () => {
     const oversizedHtml = dependencies(
       vi.fn(async () =>
@@ -176,29 +309,28 @@ describe("fetchSupportedSourceImage", () => {
       fetchSupportedSourceImage("https://makerworld.com/model", oversizedHtml),
     ).rejects.toThrow(/1 MiB/i);
 
-    const declaredOversize = dependencies(
-      vi.fn(
-        async () =>
-          new Response("small", {
-            headers: { "Content-Type": "text/html", "Content-Length": "1048577" },
-          }),
-      ),
-    );
+    const declaredBody = observableBodyResponse({
+      headers: { "Content-Type": "text/html", "Content-Length": "1048577" },
+    });
+    const declaredOversize = dependencies(vi.fn(async () => declaredBody.response));
     await expect(
       fetchSupportedSourceImage("https://makerworld.com/model", declaredOversize),
     ).rejects.toThrow(/1 MiB/i);
+    expect(declaredBody.cancel).toHaveBeenCalledOnce();
 
-    const invalidHtmlType = dependencies(
-      vi.fn(async () => new Response("x", { headers: { "Content-Type": "text/plain" } })),
-    );
+    const invalidTypeBody = observableBodyResponse({ headers: { "Content-Type": "text/plain" } });
+    const invalidHtmlType = dependencies(vi.fn(async () => invalidTypeBody.response));
     await expect(
       fetchSupportedSourceImage("https://makerworld.com/model", invalidHtmlType),
     ).rejects.toThrow(/HTML content type/i);
+    expect(invalidTypeBody.cancel).toHaveBeenCalledOnce();
 
-    const failedStatus = dependencies(vi.fn(async () => new Response("no", { status: 503 })));
+    const failedBody = observableBodyResponse({ status: 503 });
+    const failedStatus = dependencies(vi.fn(async () => failedBody.response));
     await expect(
       fetchSupportedSourceImage("https://makerworld.com/model", failedStatus),
     ).rejects.toThrow(/status 503/i);
+    expect(failedBody.cancel).toHaveBeenCalledOnce();
   });
 
   it("rejects invalid or oversized image responses", async () => {
@@ -241,6 +373,20 @@ describe("fetchSupportedSourceImage", () => {
     ).rejects.toThrow(/10 MiB/i);
   });
 
+  it("cancels redirect bodies before rejecting an invalid redirect target", async () => {
+    const redirect = observableBodyResponse({
+      status: 302,
+      headers: { Location: "https://localhost/private" },
+    });
+    await expect(
+      fetchSupportedSourceImage(
+        "https://makerworld.com/model",
+        dependencies(vi.fn(async () => redirect.response)),
+      ),
+    ).rejects.toThrow(/supported MakerWorld/i);
+    expect(redirect.cancel).toHaveBeenCalledOnce();
+  });
+
   it("passes a ten-second abort signal and reports timeout failures", async () => {
     const fetchImpl = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       expect(init?.redirect).toBe("manual");
@@ -250,6 +396,22 @@ describe("fetchSupportedSourceImage", () => {
     await expect(
       fetchSupportedSourceImage("https://makerworld.com/model", dependencies(fetchImpl)),
     ).rejects.toThrow(/timed out/i);
+  });
+
+  it("strips page and image fragments before requests and source identity", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(
+        htmlResponse(
+          '<meta property="og:image" content="https://makerworld.bblmw.com/hero.png#preview">',
+        ),
+      )
+      .mockResolvedValueOnce(new Response("image", { headers: { "Content-Type": "image/png" } }));
+
+    await expect(
+      fetchSupportedSourceImage("https://makerworld.com/model#comments", dependencies(fetchImpl)),
+    ).resolves.toMatchObject({ sourceUrl: "https://makerworld.bblmw.com/hero.png" });
+    expect(fetchImpl.mock.calls.map(([input]) => new URL(String(input)).hash)).toEqual(["", ""]);
   });
 
   it("fetches a valid MakerWorld page and approved CDN image without live network", async () => {
