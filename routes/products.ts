@@ -16,13 +16,21 @@ import {
   SavedProductPricingValidationError,
 } from "../models/saved-product-pricing.js";
 import {
-  listProductImageCandidates,
+  createManualProductPhoto,
+  ensureGeneratedProductImageCandidates,
   returnProductImageToAuto,
   selectProductImage,
 } from "../models/product-images.js";
+import {
+  removeAppOwnedProductImage,
+  storeUploadedProductImage,
+} from "../lib/product-image-files.js";
 import { jsonError, parseJsonBody, requireId, unknownFields } from "../lib/util.js";
 
 export const products = new Hono();
+
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const MAX_MULTIPART_BYTES = 12 * 1024 * 1024;
 
 const PRODUCT_MUTABLE_FIELDS = [
   "name",
@@ -61,6 +69,21 @@ function handleProductError(c: Parameters<typeof jsonError>[0], error: unknown):
 
 function findProduct(id: number) {
   return listProducts().find((product) => product.id === id) ?? null;
+}
+
+function publicUploadedPhoto(photo: ReturnType<typeof createManualProductPhoto>["photo"]) {
+  return {
+    id: photo.id,
+    product_id: photo.product_id,
+    source_type: photo.source_type,
+    source_ref: photo.source_ref,
+    candidate_key: photo.candidate_key,
+    content_type: photo.content_type,
+    width: photo.width,
+    height: photo.height,
+    is_app_owned: photo.is_app_owned,
+    url: `/ui/product-photos/${photo.id}`,
+  };
 }
 
 function handleSavedPricingError(c: Parameters<typeof jsonError>[0], error: unknown): Response {
@@ -125,14 +148,54 @@ products.post("/", async (c) => {
   }
 });
 
-products.get("/:id/image-candidates", (c) => {
+products.get("/:id/image-candidates", async (c) => {
   const idOrError = requireId(c);
   if (idOrError instanceof Response) return idOrError;
   if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
 
   try {
-    return c.json({ candidates: listProductImageCandidates(idOrError) });
+    return c.json(await ensureGeneratedProductImageCandidates(idOrError));
   } catch (error: unknown) {
+    return handleProductError(c, error);
+  }
+});
+
+products.post("/:id/photos", async (c) => {
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
+
+  const declaredLength = c.req.header("Content-Length");
+  if (declaredLength && /^\d+$/.test(declaredLength)) {
+    if (BigInt(declaredLength) > BigInt(MAX_MULTIPART_BYTES)) {
+      return jsonError(c, "Multipart upload exceeds the 12 MiB limit", 413);
+    }
+  }
+
+  let body: Awaited<ReturnType<typeof c.req.parseBody>>;
+  try {
+    body = await c.req.parseBody();
+  } catch {
+    return jsonError(c, "Invalid multipart body", 400);
+  }
+  const photo = body["photo"];
+  if (!(photo instanceof File)) return jsonError(c, "photo must be a multipart File", 400);
+  if (photo.size > MAX_PHOTO_BYTES) {
+    return jsonError(c, "Photo exceeds the 10 MiB limit", 413);
+  }
+
+  let stored;
+  try {
+    stored = await storeUploadedProductImage(idOrError, new Uint8Array(await photo.arrayBuffer()));
+  } catch {
+    return jsonError(c, "Invalid product photo upload", 400);
+  }
+
+  try {
+    const result = createManualProductPhoto(idOrError, stored);
+    return c.json({ product: result.product, photo: publicUploadedPhoto(result.photo) }, 201);
+  } catch (error: unknown) {
+    removeAppOwnedProductImage(stored.path);
     return handleProductError(c, error);
   }
 });

@@ -50,6 +50,7 @@ const IMAGE_CONTENT_TYPES = new Map<string, string>([
   [".png", "image/png"],
   [".webp", "image/webp"],
 ]);
+const SAFE_IMAGE_CONTENT_TYPES = new Set(IMAGE_CONTENT_TYPES.values());
 
 function assertInsideDirectory(root: string, candidate: string): string {
   const resolvedRoot = path.resolve(root);
@@ -161,27 +162,32 @@ async function serveCoverFile(c: Context): Promise<Response> {
   );
 }
 
-function resolveProductPhotoPath(photoId: number): string | null {
-  const row = db
-    .prepare<[number], { path: string | null }>(
-      `SELECT COALESCE(pp.path, cf.path) AS path
-       FROM product_photos pp
-       LEFT JOIN catalog_files cf ON cf.id = pp.file_id
-       WHERE pp.id = ?`,
-    )
-    .get(photoId);
-  return row?.path ?? null;
+function resolveProductPhoto(
+  photoId: number,
+): { path: string | null; content_type: string | null } | null {
+  return (
+    db
+      .prepare<[number], { path: string | null; content_type: string | null }>(
+        `SELECT COALESCE(pp.path, cf.path) AS path, pp.content_type
+         FROM product_photos pp
+         LEFT JOIN catalog_files cf ON cf.id = pp.file_id
+         WHERE pp.id = ?`,
+      )
+      .get(photoId) ?? null
+  );
 }
 
 function serveProductPhotoFile(c: Context): Response {
   const photoId = Number(c.req.param("photoId"));
   if (!Number.isInteger(photoId) || photoId <= 0) return c.json({ error: "Invalid" }, 400);
 
-  const filePath = resolveLocalProductPhotoPath(resolveProductPhotoPath(photoId));
-  if (!filePath) return notFound(c);
+  const photo = resolveProductPhoto(photoId);
+  const filePath = resolveLocalProductPhotoPath(photo?.path ?? null);
+  if (!filePath || !path.isAbsolute(filePath)) return notFound(c);
 
-  const contentType = IMAGE_CONTENT_TYPES.get(path.extname(filePath).toLowerCase());
-  if (!contentType) return notFound(c);
+  const contentType =
+    photo?.content_type ?? IMAGE_CONTENT_TYPES.get(path.extname(filePath).toLowerCase());
+  if (!contentType || !SAFE_IMAGE_CONTENT_TYPES.has(contentType)) return notFound(c);
 
   return binaryResponse(readFileSync(filePath), contentType, "public, max-age=86400");
 }

@@ -10,6 +10,7 @@ coverage/
 *.sqlite-shm
 covers/
 catalog-previews/
+product-images/
 etsy-listing/
 *.numbers
 .env

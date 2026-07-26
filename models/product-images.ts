@@ -3,6 +3,11 @@ import path from "node:path";
 import { catalogPreviewPath, type CatalogPreviewContentType } from "../lib/catalog-preview.js";
 import { localCoverPath } from "../lib/covers.js";
 import { db } from "../lib/db.js";
+import {
+  generateProductContactSheet,
+  type ContactSheetInput,
+  type StoredProductImage,
+} from "../lib/product-image-files.js";
 import { projectProductPhotoPath } from "../lib/product-photo-path.js";
 import { listProducts, ProductValidationError, type ProductSummary } from "./products.js";
 
@@ -40,6 +45,7 @@ type PersistedPhotoRow = {
   source_ref: string | null;
   candidate_key: string | null;
   caption: string | null;
+  content_type: string | null;
   display_order: number;
   is_main: number;
 };
@@ -51,8 +57,22 @@ type CatalogPreviewRow = {
 };
 
 type CoverRow = {
+  batch_id: number;
   task_id: string;
   title: string | null;
+};
+
+export type ProductPhoto = {
+  id: number;
+  product_id: number;
+  path: string;
+  source_type: "manual_upload";
+  source_ref: string;
+  candidate_key: string;
+  content_type: "image/webp";
+  width: number;
+  height: number;
+  is_app_owned: 1;
 };
 
 type CandidateDetails = ProductImageCandidate & {
@@ -141,6 +161,7 @@ function persistedCandidates(
          pp.source_ref,
          pp.candidate_key,
          pp.caption,
+         pp.content_type,
          pp.display_order,
          CASE WHEN p.main_photo_id = pp.id THEN 1 ELSE 0 END AS is_main
        FROM product_photos pp
@@ -187,7 +208,7 @@ function persistedCandidates(
         file_id: row.file_id,
         file_path: row.path,
         source_ref: row.source_ref,
-        content_type: null,
+        content_type: row.content_type,
         display_order: row.display_order,
         is_main: row.is_main === 1,
       },
@@ -235,8 +256,8 @@ function catalogPreviewCandidates(productId: number): CandidateDetails[] {
   });
 }
 
-function printCoverCandidates(productId: number): CandidateDetails[] {
-  const rows = db
+function latestSavedBatchCoverRows(productId: number): CoverRow[] {
+  return db
     .prepare<[number], CoverRow>(
       `WITH latest_saved_batch AS (
          SELECT id
@@ -245,7 +266,7 @@ function printCoverCandidates(productId: number): CandidateDetails[] {
          ORDER BY created_at DESC, id DESC
          LIMIT 1
        )
-       SELECT DISTINCT pt.id AS task_id, pt.title
+       SELECT DISTINCT latest.id AS batch_id, pt.id AS task_id, pt.title
        FROM latest_saved_batch latest
        JOIN product_batch_jobs pbj ON pbj.batch_id = latest.id
        JOIN jobs j ON j.id = pbj.job_id
@@ -253,7 +274,9 @@ function printCoverCandidates(productId: number): CandidateDetails[] {
        ORDER BY pt.id`,
     )
     .all(productId);
+}
 
+function printCoverCandidates(rows: CoverRow[]): CandidateDetails[] {
   return rows.flatMap((row) => {
     let filePath: string;
     try {
@@ -312,9 +335,10 @@ function compareCandidates(left: CandidateDetails, right: CandidateDetails): num
 
 function listCandidateDetails(productId: number): CandidateDetails[] {
   requireProduct(productId);
+  const coverRows = latestSavedBatchCoverRows(productId);
   const derivedCandidates = [
     ...catalogPreviewCandidates(productId),
-    ...printCoverCandidates(productId),
+    ...printCoverCandidates(coverRows),
   ];
   const currentDerivedByKey = new Map(
     derivedCandidates.map((candidate) => [candidate.candidate_key, candidate]),
@@ -349,6 +373,91 @@ function publicCandidate(candidate: CandidateDetails): ProductImageCandidate {
 
 export function listProductImageCandidates(productId: number): ProductImageCandidate[] {
   return listCandidateDetails(productId).map(publicCandidate);
+}
+
+function availableContactSheetInputs(rows: CoverRow[]): ContactSheetInput[] {
+  const unique = new Map<string, ContactSheetInput>();
+  for (const row of rows) {
+    if (unique.has(row.task_id)) continue;
+    let filePath: string;
+    try {
+      filePath = localCoverPath(row.task_id);
+    } catch {
+      continue;
+    }
+    if (!regularFileExists(filePath)) continue;
+    unique.set(row.task_id, {
+      key: `print_cover:${row.task_id}`,
+      label: row.title?.trim() || `Print ${row.task_id}`,
+      path: filePath,
+    });
+  }
+  return [...unique.values()];
+}
+
+function upsertContactSheet(productId: number, batchId: number, stored: StoredProductImage): void {
+  const candidateKey = `contact_sheet:${batchId}:${stored.contentHash}`;
+  db.prepare(
+    `INSERT INTO product_photos (
+       product_id, path, role, caption, source_type, source_ref, candidate_key,
+       is_app_owned, content_type, width, height
+     ) VALUES (?, ?, 'gallery', ?, 'contact_sheet', ?, ?, 1, ?, ?, ?)
+     ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO UPDATE SET
+       path = excluded.path,
+       caption = excluded.caption,
+       source_ref = excluded.source_ref,
+       is_app_owned = excluded.is_app_owned,
+       content_type = excluded.content_type,
+       width = excluded.width,
+       height = excluded.height,
+       updated_at = CURRENT_TIMESTAMP`,
+  ).run(
+    productId,
+    stored.path,
+    `Batch ${batchId} contact sheet`,
+    String(batchId),
+    candidateKey,
+    stored.contentType,
+    stored.width,
+    stored.height,
+  );
+}
+
+export async function ensureGeneratedProductImageCandidates(
+  productId: number,
+): Promise<{ candidates: ProductImageCandidate[]; warnings: string[] }> {
+  requireProduct(productId);
+  const coverRows = latestSavedBatchCoverRows(productId);
+  const batchId = coverRows[0]?.batch_id;
+  const inputs = availableContactSheetInputs(coverRows);
+  if (!batchId || inputs.length < 2) {
+    return { candidates: listProductImageCandidates(productId), warnings: [] };
+  }
+
+  try {
+    const stored = await generateProductContactSheet(productId, batchId, inputs);
+    if (stored) upsertContactSheet(productId, batchId, stored);
+    return { candidates: listProductImageCandidates(productId), warnings: [] };
+  } catch {
+    const warning = `The contact sheet for Batch ${batchId} could not be generated.`;
+    const unavailable: ProductImageCandidate = {
+      candidate_key: `contact_sheet:${batchId}:unavailable`,
+      source_type: "contact_sheet",
+      photo_id: null,
+      url: null,
+      label: `Batch ${batchId} contact sheet`,
+      priority: SOURCE_PRIORITIES.contact_sheet,
+      available: false,
+      warning,
+    };
+    const candidates = [...listProductImageCandidates(productId), unavailable].sort(
+      (left, right) =>
+        left.priority - right.priority ||
+        Number(right.available) - Number(left.available) ||
+        left.candidate_key.localeCompare(right.candidate_key),
+    );
+    return { candidates, warnings: [warning] };
+  }
 }
 
 function materializeCandidate(productId: number, candidate: CandidateDetails): number | null {
@@ -395,6 +504,71 @@ function materializeCandidate(productId: number, candidate: CandidateDetails): n
 
 function summaryAfterUpdate(productId: number): ProductSummary {
   return requireProduct(productId);
+}
+
+const createManualProductPhotoTransaction = db.transaction(
+  (
+    productId: number,
+    stored: StoredProductImage,
+  ): { product: ProductSummary; photo: ProductPhoto } => {
+    requireProduct(productId);
+    if (
+      stored.contentType !== "image/webp" ||
+      !/^[a-f0-9]{64}$/.test(stored.contentHash) ||
+      !Number.isInteger(stored.width) ||
+      stored.width <= 0 ||
+      !Number.isInteger(stored.height) ||
+      stored.height <= 0 ||
+      !stored.path
+    ) {
+      throw new ProductImageValidationError("Invalid stored product image");
+    }
+    const candidateKey = `manual_upload:${stored.contentHash}`;
+    db.prepare(
+      `INSERT INTO product_photos (
+         product_id, path, role, caption, source_type, source_ref, candidate_key,
+         is_app_owned, content_type, width, height
+       ) VALUES (?, ?, 'gallery', 'Uploaded photo', 'manual_upload', ?, ?, 1, ?, ?, ?)
+       ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO UPDATE SET
+         path = excluded.path,
+         source_ref = excluded.source_ref,
+         is_app_owned = excluded.is_app_owned,
+         content_type = excluded.content_type,
+         width = excluded.width,
+         height = excluded.height,
+         updated_at = CURRENT_TIMESTAMP`,
+    ).run(
+      productId,
+      stored.path,
+      stored.contentHash,
+      candidateKey,
+      stored.contentType,
+      stored.width,
+      stored.height,
+    );
+    const photo = db
+      .prepare<[number, string], ProductPhoto>(
+        `SELECT id, product_id, path, source_type, source_ref, candidate_key,
+                content_type, width, height, is_app_owned
+         FROM product_photos
+         WHERE product_id = ? AND candidate_key = ?`,
+      )
+      .get(productId, candidateKey);
+    if (!photo) throw new ProductImageValidationError("Failed to persist uploaded photo");
+    db.prepare(
+      `UPDATE products
+       SET main_photo_id = ?, image_selection_mode = 'manual', updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+    ).run(photo.id, productId);
+    return { product: summaryAfterUpdate(productId), photo };
+  },
+);
+
+export function createManualProductPhoto(
+  productId: number,
+  stored: StoredProductImage,
+): { product: ProductSummary; photo: ProductPhoto } {
+  return createManualProductPhotoTransaction(productId, stored);
 }
 
 const selectProductImageTransaction = db.transaction(

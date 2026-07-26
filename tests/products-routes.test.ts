@@ -2,16 +2,19 @@ import { Hono } from "hono";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
+  mockCreateManualProductPhoto,
   mockCreateProduct,
   mockCreateProductFromJob,
   mockCreateProductFromProject,
-  mockListProductImageCandidates,
+  mockEnsureGeneratedProductImageCandidates,
   mockListProductPricingHistory,
   mockListProducts,
   mockListProductsToPrintNext,
   mockListSalesCompanionProducts,
+  mockRemoveAppOwnedProductImage,
   mockReturnProductImageToAuto,
   mockSelectProductImage,
+  mockStoreUploadedProductImage,
   mockUpdateProduct,
   MockProductImageValidationError,
   MockProductValidationError,
@@ -21,16 +24,19 @@ const {
   class ProductImageValidationError extends ProductValidationError {}
   class SavedProductPricingValidationError extends Error {}
   return {
+    mockCreateManualProductPhoto: vi.fn(),
     mockCreateProduct: vi.fn(),
     mockCreateProductFromJob: vi.fn(),
     mockCreateProductFromProject: vi.fn(),
-    mockListProductImageCandidates: vi.fn(),
+    mockEnsureGeneratedProductImageCandidates: vi.fn(),
     mockListProductPricingHistory: vi.fn(),
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockListSalesCompanionProducts: vi.fn(),
+    mockRemoveAppOwnedProductImage: vi.fn(),
     mockReturnProductImageToAuto: vi.fn(),
     mockSelectProductImage: vi.fn(),
+    mockStoreUploadedProductImage: vi.fn(),
     mockUpdateProduct: vi.fn(),
     MockProductImageValidationError: ProductImageValidationError,
     MockProductValidationError: ProductValidationError,
@@ -56,9 +62,15 @@ vi.mock("../models/saved-product-pricing.js", () => ({
 
 vi.mock("../models/product-images.js", () => ({
   ProductImageValidationError: MockProductImageValidationError,
-  listProductImageCandidates: mockListProductImageCandidates,
+  createManualProductPhoto: mockCreateManualProductPhoto,
+  ensureGeneratedProductImageCandidates: mockEnsureGeneratedProductImageCandidates,
   returnProductImageToAuto: mockReturnProductImageToAuto,
   selectProductImage: mockSelectProductImage,
+}));
+
+vi.mock("../lib/product-image-files.js", () => ({
+  removeAppOwnedProductImage: mockRemoveAppOwnedProductImage,
+  storeUploadedProductImage: mockStoreUploadedProductImage,
 }));
 
 import { products } from "../routes/products.js";
@@ -204,12 +216,42 @@ describe("product routes", () => {
         priced_at: "2026-07-25 12:00:00",
       },
     ]);
-    mockListProductImageCandidates.mockReturnValue(sampleCandidates);
+    mockEnsureGeneratedProductImageCandidates.mockResolvedValue({
+      candidates: sampleCandidates,
+      warnings: [],
+    });
     mockListProductPricingHistory.mockReturnValue(samplePricingHistory);
     mockCreateProduct.mockReturnValue(sampleProduct);
     mockCreateProductFromJob.mockReturnValue({ ...sampleProduct, name: "Dragon Egg" });
     mockCreateProductFromProject.mockReturnValue({ ...sampleProduct, name: "Cubee Dragons" });
     mockReturnProductImageToAuto.mockReturnValue(sampleProduct);
+    mockStoreUploadedProductImage.mockResolvedValue({
+      path: "/tmp/product-images/1/uploads/upload.webp",
+      contentType: "image/webp",
+      width: 640,
+      height: 480,
+      contentHash: "a".repeat(64),
+    });
+    mockCreateManualProductPhoto.mockReturnValue({
+      product: {
+        ...sampleProduct,
+        main_photo_id: 14,
+        main_photo_source_type: "manual_upload",
+        image_selection_mode: "manual",
+      },
+      photo: {
+        id: 14,
+        product_id: 1,
+        path: "/tmp/product-images/1/uploads/upload.webp",
+        source_type: "manual_upload",
+        source_ref: "a".repeat(64),
+        candidate_key: `manual_upload:${"a".repeat(64)}`,
+        content_type: "image/webp",
+        width: 640,
+        height: 480,
+        is_app_owned: 1,
+      },
+    });
     mockSelectProductImage.mockReturnValue({
       ...sampleProduct,
       main_photo_id: 12,
@@ -305,8 +347,104 @@ describe("product routes", () => {
     const res = await apiApp().request("/api/products/1/image-candidates");
 
     expect(res.status).toBe(200);
-    expect(mockListProductImageCandidates).toHaveBeenCalledWith(1);
-    expect(await res.json()).toEqual({ candidates: sampleCandidates });
+    expect(mockEnsureGeneratedProductImageCandidates).toHaveBeenCalledWith(1);
+    expect(await res.json()).toEqual({ candidates: sampleCandidates, warnings: [] });
+  });
+
+  it("uploads, normalizes, and transactionally selects a Manual product photo", async () => {
+    const form = new FormData();
+    form.set("photo", new File(["image bytes"], "dragon.png", { type: "image/png" }));
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(201);
+    expect(mockStoreUploadedProductImage).toHaveBeenCalledWith(1, expect.any(Uint8Array));
+    expect(mockCreateManualProductPhoto).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ contentType: "image/webp" }),
+    );
+    const body = (await res.json()) as { product: object; photo: Record<string, unknown> };
+    expect(body).toEqual(
+      expect.objectContaining({
+        product: expect.objectContaining({ image_selection_mode: "manual" }),
+        photo: expect.objectContaining({
+          source_type: "manual_upload",
+          is_app_owned: 1,
+          url: "/ui/product-photos/14",
+        }),
+      }),
+    );
+    expect(body.photo).not.toHaveProperty("path");
+  });
+
+  it("rejects multipart uploads over the declared and actual size limits", async () => {
+    const declared = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      headers: {
+        "Content-Type": "multipart/form-data; boundary=unused",
+        "Content-Length": String(12 * 1024 * 1024 + 1),
+      },
+      body: "",
+    });
+    expect(declared.status).toBe(413);
+
+    const form = new FormData();
+    form.set("photo", new File([new Uint8Array(10 * 1024 * 1024 + 1)], "large.png"));
+    const actual = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+    expect(actual.status).toBe(413);
+    expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
+  });
+
+  it("requires a multipart File in the photo field", async () => {
+    const form = new FormData();
+    form.set("photo", "not a file");
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
+  });
+
+  it("removes only the stored owned upload when the database transaction fails", async () => {
+    mockCreateManualProductPhoto.mockImplementation(() => {
+      throw new Error("database failed");
+    });
+    const form = new FormData();
+    form.set("photo", new File(["image bytes"], "dragon.png", { type: "image/png" }));
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(500);
+    expect(mockRemoveAppOwnedProductImage).toHaveBeenCalledWith(
+      "/tmp/product-images/1/uploads/upload.webp",
+    );
+  });
+
+  it("maps invalid uploaded image bytes to 400 without database cleanup", async () => {
+    mockStoreUploadedProductImage.mockRejectedValue(new Error("Invalid image"));
+    const form = new FormData();
+    form.set("photo", new File(["bad"], "bad.png", { type: "image/png" }));
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockCreateManualProductPhoto).not.toHaveBeenCalled();
+    expect(mockRemoveAppOwnedProductImage).not.toHaveBeenCalled();
   });
 
   it("selects Manual candidates and returns the Product", async () => {
@@ -375,6 +513,12 @@ describe("product routes", () => {
     mockListProducts.mockReturnValue([]);
 
     const listRes = await apiApp().request("/api/products/99/image-candidates");
+    const uploadForm = new FormData();
+    uploadForm.set("photo", new File(["bytes"], "photo.png"));
+    const uploadRes = await apiApp().request("/api/products/99/photos", {
+      method: "POST",
+      body: uploadForm,
+    });
     const selectRes = await apiApp().request("/api/products/99/image-selection", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -382,8 +526,9 @@ describe("product routes", () => {
     });
 
     expect(listRes.status).toBe(404);
+    expect(uploadRes.status).toBe(404);
     expect(selectRes.status).toBe(404);
-    expect(mockListProductImageCandidates).not.toHaveBeenCalled();
+    expect(mockEnsureGeneratedProductImageCandidates).not.toHaveBeenCalled();
     expect(mockReturnProductImageToAuto).not.toHaveBeenCalled();
   });
 

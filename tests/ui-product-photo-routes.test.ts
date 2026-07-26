@@ -32,15 +32,15 @@ async function loadFreshModules(): Promise<void> {
   productId = productsModule.createProduct({ name: "Photo Route Product" }).id;
 }
 
-function insertPhoto(storedPath: string): number {
+function insertPhoto(storedPath: string, contentType: string | null = "image/png"): number {
   return Number(
     dbModule!.db
       .prepare(
-        `INSERT INTO product_photos (product_id, path, role)
-         VALUES (?, ?, 'gallery') RETURNING id`,
+        `INSERT INTO product_photos (product_id, path, role, content_type)
+         VALUES (?, ?, 'gallery', ?) RETURNING id`,
       )
       .pluck()
-      .get(productId, storedPath),
+      .get(productId, storedPath, contentType),
   );
 }
 
@@ -66,13 +66,13 @@ describe.sequential("product photo UI routes", () => {
     productId = 0;
   });
 
-  it("serves relative and absolute regular image files with safe content types", async () => {
-    const relativeFile = path.join(tempDir, "relative-photo.JPEG");
-    const absoluteFile = path.join(tempDir, "absolute-photo.png");
+  it("serves relative and absolute regular files with their recorded safe content types", async () => {
+    const relativeFile = path.join(tempDir, "relative-photo.data");
+    const absoluteFile = path.join(tempDir, "absolute-photo.data");
     fs.writeFileSync(relativeFile, "relative bytes");
     fs.writeFileSync(absoluteFile, "absolute bytes");
-    const relativeId = insertPhoto(path.relative(process.cwd(), relativeFile));
-    const absoluteId = insertPhoto(absoluteFile);
+    const relativeId = insertPhoto(path.relative(process.cwd(), relativeFile), "image/jpeg");
+    const absoluteId = insertPhoto(absoluteFile, "image/webp");
 
     const relativeRes = await app().request(`/ui/product-photos/${relativeId}`);
     expect(relativeRes.status).toBe(200);
@@ -81,7 +81,7 @@ describe.sequential("product photo UI routes", () => {
 
     const absoluteRes = await app().request(`/ui/product-photos/${absoluteId}`);
     expect(absoluteRes.status).toBe(200);
-    expect(absoluteRes.headers.get("content-type")).toBe("image/png");
+    expect(absoluteRes.headers.get("content-type")).toBe("image/webp");
     expect(await absoluteRes.text()).toBe("absolute bytes");
   });
 
@@ -91,7 +91,7 @@ describe.sequential("product photo UI routes", () => {
     const fifoPath = path.join(tempDir, "fifo.png");
     const targetPath = path.join(tempDir, "target.webp");
     const symlinkPath = path.join(tempDir, "symlink.webp");
-    const unsupportedPath = path.join(tempDir, "photo.txt");
+    const unsupportedPath = path.join(tempDir, "photo.png");
     fs.mkdirSync(directoryPath);
     execFileSync("mkfifo", [fifoPath]);
     fs.writeFileSync(targetPath, "target bytes");
@@ -102,7 +102,7 @@ describe.sequential("product photo UI routes", () => {
       insertPhoto(directoryPath),
       insertPhoto(fifoPath),
       insertPhoto(symlinkPath),
-      insertPhoto(unsupportedPath),
+      insertPhoto(unsupportedPath, "text/plain"),
     ];
 
     for (const photoId of ids) {

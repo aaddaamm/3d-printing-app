@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type DbModule = typeof import("../lib/db.js");
@@ -12,6 +13,7 @@ let tempDir = "";
 let dbPath = "";
 let coversDir = "";
 let previewsDir = "";
+let imagesDir = "";
 let dbModule: DbModule | null = null;
 let productImagesModule: ProductImagesModule | null = null;
 let productsModule: ProductsModule | null = null;
@@ -28,6 +30,7 @@ async function loadFreshModules(): Promise<void> {
   process.env.BAMBU_DB = dbPath;
   process.env.BAMBU_COVERS_DIR = coversDir;
   process.env.CATALOG_PREVIEWS_DIR = previewsDir;
+  process.env.PRODUCT_IMAGES_DIR = imagesDir;
   dbModule = await import("../lib/db.js");
   productsModule = await import("../models/products.js");
   productImagesModule = await import("../models/product-images.js");
@@ -126,12 +129,21 @@ function addPersistedPhoto(
   return addPersistedPhotoAtPath(productId, sourceType, candidateKey, imagePath, filename);
 }
 
+async function writeValidCover(taskId: string, color: string): Promise<void> {
+  await sharp({
+    create: { width: 80, height: 60, channels: 3, background: color },
+  })
+    .png()
+    .toFile(path.join(coversDir, `${taskId}.png`));
+}
+
 describe.sequential("product image model", () => {
   beforeEach(async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "product-images-model-"));
     dbPath = path.join(tempDir, "test.sqlite");
     coversDir = path.join(tempDir, "covers");
     previewsDir = path.join(tempDir, "previews");
+    imagesDir = path.join(tempDir, "product-images");
     await loadFreshModules();
   });
 
@@ -142,6 +154,7 @@ describe.sequential("product image model", () => {
     delete process.env.BAMBU_DB;
     delete process.env.BAMBU_COVERS_DIR;
     delete process.env.CATALOG_PREVIEWS_DIR;
+    delete process.env.PRODUCT_IMAGES_DIR;
     dbModule = null;
     productImagesModule = null;
     productsModule = null;
@@ -177,6 +190,150 @@ describe.sequential("product image model", () => {
       candidates.length,
     );
     expect(candidates.filter((candidate) => candidate.available).length).toBe(candidates.length);
+  });
+
+  it("lazily generates and upserts a contact sheet for the latest multi-cover Batch", async () => {
+    const product = productsModule!.createProduct({ name: "Contact Sheet Dragon" });
+    const batchId = seedSavedBatchCovers(product.id, ["711", "712"]);
+    await writeValidCover("711", "#aa0000");
+    await writeValidCover("712", "#0000aa");
+
+    const first = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+    const second = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+
+    expect(first.warnings).toEqual([]);
+    expect(first.candidates.map(({ source_type }) => source_type)).toEqual([
+      "contact_sheet",
+      "print_cover",
+      "print_cover",
+      "placeholder",
+    ]);
+    expect(second.candidates).toEqual(first.candidates);
+    const contact = first.candidates[0]!;
+    expect(contact).toMatchObject({
+      photo_id: expect.any(Number),
+      available: true,
+      warning: null,
+    });
+    expect(contact.candidate_key.startsWith(`contact_sheet:${batchId}:`)).toBe(true);
+    expect(contact.candidate_key.split(":").at(-1)).toMatch(/^[a-f0-9]{64}$/);
+    const row = dbModule!.db
+      .prepare(
+        `SELECT source_type, source_ref, candidate_key, is_app_owned, content_type, width, height, path
+         FROM product_photos WHERE id = ?`,
+      )
+      .get(contact.photo_id) as Record<string, unknown>;
+    expect(row).toMatchObject({
+      source_type: "contact_sheet",
+      source_ref: String(batchId),
+      candidate_key: contact.candidate_key,
+      is_app_owned: 1,
+      content_type: "image/webp",
+      width: expect.any(Number),
+      height: expect.any(Number),
+      path: expect.stringContaining(imagesDir),
+    });
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(1);
+  });
+
+  it("returns a warning candidate and cover fallback when contact-sheet decoding fails", async () => {
+    const product = productsModule!.createProduct({ name: "Fallback Dragon" });
+    const batchId = seedSavedBatchCovers(product.id, ["721", "722"]);
+    await writeValidCover("721", "#00aa00");
+
+    const result = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+
+    expect(result.warnings).toEqual([expect.stringMatching(/contact sheet/i)]);
+    expect(
+      result.candidates.find(({ source_type }) => source_type === "contact_sheet"),
+    ).toMatchObject({
+      candidate_key: `contact_sheet:${batchId}:unavailable`,
+      available: false,
+      warning: expect.stringMatching(/contact sheet/i),
+    });
+    expect(
+      result.candidates.find(({ candidate_key }) => candidate_key === "print_cover:721"),
+    ).toMatchObject({ available: true });
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(0);
+  });
+
+  it("skips contact-sheet generation for a single available cover", async () => {
+    const product = productsModule!.createProduct({ name: "Single Cover Dragon" });
+    seedSavedBatchCovers(product.id, ["731"]);
+    await writeValidCover("731", "#444444");
+
+    const result = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+
+    expect(result.warnings).toEqual([]);
+    expect(result.candidates.some(({ source_type }) => source_type === "contact_sheet")).toBe(
+      false,
+    );
+  });
+
+  it("transactionally inserts a Manual upload and selects it as the main photo", () => {
+    const product = productsModule!.createProduct({ name: "Uploaded Dragon" });
+    const storedPath = path.join(
+      imagesDir,
+      String(product.id),
+      "uploads",
+      `${"a".repeat(64)}.webp`,
+    );
+    fs.mkdirSync(path.dirname(storedPath), { recursive: true });
+    fs.writeFileSync(storedPath, "webp");
+    const stored = {
+      path: storedPath,
+      contentType: "image/webp" as const,
+      width: 640,
+      height: 480,
+      contentHash: "a".repeat(64),
+    };
+
+    const result = productImagesModule!.createManualProductPhoto(product.id, stored);
+
+    expect(result.product).toMatchObject({
+      main_photo_id: result.photo.id,
+      main_photo_source_type: "manual_upload",
+      image_selection_mode: "manual",
+    });
+    expect(result.photo).toMatchObject({
+      product_id: product.id,
+      path: storedPath,
+      source_type: "manual_upload",
+      source_ref: stored.contentHash,
+      candidate_key: `manual_upload:${stored.contentHash}`,
+      content_type: "image/webp",
+      width: 640,
+      height: 480,
+      is_app_owned: 1,
+    });
+
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_manual_upload_selection
+      BEFORE UPDATE OF main_photo_id ON products
+      BEGIN
+        SELECT RAISE(ABORT, 'manual selection failure');
+      END;
+    `);
+    const secondStored = { ...stored, contentHash: "b".repeat(64) };
+    expect(() => productImagesModule!.createManualProductPhoto(product.id, secondStored)).toThrow(
+      /manual selection failure/i,
+    );
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(1);
   });
 
   it("selects ephemeral candidates transactionally and preserves Manual mode until Auto return", () => {
