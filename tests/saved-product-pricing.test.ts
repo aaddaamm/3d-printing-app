@@ -17,6 +17,10 @@ type SavedResult = {
 };
 type SavedHistoryItem = {
   batch_id: number;
+  created_at: string;
+  sellable_units: number;
+  job_ids: number[];
+  notes: string | null;
   snapshots: { direct: SavedSnapshot; etsy: SavedSnapshot };
 };
 type SavedProductPricingModule = {
@@ -140,6 +144,31 @@ function validInput(overrides: Record<string, unknown> = {}) {
     extra_cost: 4.5,
     ...overrides,
   };
+}
+
+type SnapshotJsonColumn = "input_json" | "assumptions_json" | "warnings_json" | "breakdown_json";
+
+function mutateSnapshotJson(
+  batchId: number,
+  channel: "direct" | "etsy",
+  column: SnapshotJsonColumn,
+  mutate: (value: Record<string, unknown>) => void,
+): void {
+  const raw = dbModule!.db
+    .prepare(`SELECT ${column} FROM product_price_snapshots WHERE batch_id = ? AND channel = ?`)
+    .pluck()
+    .get(batchId, channel) as string;
+  const value = JSON.parse(raw) as Record<string, unknown>;
+  mutate(value);
+  dbModule!.db
+    .prepare(`UPDATE product_price_snapshots SET ${column} = ? WHERE batch_id = ? AND channel = ?`)
+    .run(JSON.stringify(value), batchId, channel);
+}
+
+function expectHistoryRejected(productId: number): void {
+  expect(() => savedPricingModule!.listProductPricingHistory(productId)).toThrowError(
+    savedPricingModule!.SavedProductPricingValidationError,
+  );
 }
 
 describe.sequential("saved product pricing model", () => {
@@ -399,5 +428,122 @@ describe.sequential("saved product pricing model", () => {
     expect(() => savedPricingModule!.listProductPricingHistory(saved.product.id)).toThrow(
       /invalid JSON/i,
     );
+  });
+
+  it("rejects conflicting Direct and Etsy job identity", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Conflicting jobs" } }),
+    );
+    mutateSnapshotJson(saved.batch_id, "etsy", "input_json", (input) => {
+      input["job_ids"] = [...(input["job_ids"] as number[])].reverse();
+      input["attempts"] = [...(input["attempts"] as unknown[])].reverse();
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("rejects conflicting Direct and Etsy quantities", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({
+        new_product: { name: "Conflicting quantities" },
+        per_unit_labor_minutes: 0,
+        packaging_cost_per_unit: 0,
+      }),
+    );
+    mutateSnapshotJson(saved.batch_id, "etsy", "input_json", (input) => {
+      input["sellable_units"] = 4;
+    });
+    mutateSnapshotJson(saved.batch_id, "etsy", "breakdown_json", (breakdown) => {
+      breakdown["sellableUnits"] = 4;
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it.each(["batch_labor_minutes", "extra_cost"] as const)(
+    "rejects stored %s input that no longer agrees with its breakdown",
+    (field) => {
+      const saved = savedPricingModule!.saveProductPricing(
+        validInput({ new_product: { name: `Conflicting ${field}` } }),
+      );
+      for (const channel of ["direct", "etsy"] as const) {
+        mutateSnapshotJson(saved.batch_id, channel, "input_json", (input) => {
+          input[field] = Number(input[field]) + 1;
+        });
+      }
+
+      expectHistoryRejected(saved.product.id);
+    },
+  );
+
+  it("rejects a breakdown quantity that conflicts with its immutable input", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Conflicting breakdown quantity" } }),
+    );
+    mutateSnapshotJson(saved.batch_id, "direct", "breakdown_json", (breakdown) => {
+      breakdown["sellableUnits"] = 4;
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it.each([
+    ["target margin at the hard limit", "direct", "target_margin_pct", 0.95],
+    ["target margin plus fee at the hard limit", "etsy", "target_margin_pct", 0.84],
+    ["a platform fee on Direct pricing", "direct", "platform_fee_pct", 0.01],
+  ] as const)("rejects %s", (_name, channel, field, value) => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Invalid margin or fee" } }),
+    );
+    mutateSnapshotJson(saved.batch_id, channel, "assumptions_json", (assumptions) => {
+      assumptions[field] = value;
+    });
+    dbModule!.db
+      .prepare(`UPDATE product_price_snapshots SET ${field} = ? WHERE batch_id = ? AND channel = ?`)
+      .run(value, saved.batch_id, channel);
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it.each([
+    ["assumption", "labor_hourly_rate"],
+    ["breakdown", "total_cost"],
+  ] as const)("rejects a scalar-vs-JSON %s mismatch", (_name, column) => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Scalar mismatch" } }),
+    );
+    dbModule!.db
+      .prepare(
+        `UPDATE product_price_snapshots SET ${column} = ${column} + 1
+         WHERE batch_id = ? AND channel = 'direct'`,
+      )
+      .run(saved.batch_id);
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("keeps historical input identity after mutable Batch and link changes", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Immutable identity" } }),
+    );
+    const original = savedPricingModule!.listProductPricingHistory(saved.product.id);
+
+    dbModule!.db
+      .prepare(
+        `UPDATE product_batches
+         SET planned_quantity = 99, completed_quantity = 99
+         WHERE id = ?`,
+      )
+      .run(saved.batch_id);
+    dbModule!.db
+      .prepare("DELETE FROM product_batch_jobs WHERE batch_id = ? AND job_id = ?")
+      .run(saved.batch_id, successfulJobId);
+    dbModule!.db.prepare("DELETE FROM jobs WHERE id = ?").run(failedJobId);
+
+    expect(savedPricingModule!.listProductPricingHistory(saved.product.id)).toEqual(original);
+    expect(original[0]).toMatchObject({
+      sellable_units: 3,
+      job_ids: [successfulJobId, failedJobId],
+    });
   });
 });

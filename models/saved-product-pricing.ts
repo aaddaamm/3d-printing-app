@@ -81,6 +81,26 @@ type SnapshotRow = {
   id: number;
   batch_id: number;
   channel: SnapshotChannel;
+  target_margin_pct: number;
+  platform_fee_pct: number;
+  fixed_fee_per_order: number;
+  labor_hourly_rate: number;
+  material_cost: number;
+  machine_cost: number;
+  production_loss_cost: number;
+  batch_labor_cost: number;
+  per_unit_labor_cost: number;
+  packaging_cost: number;
+  extra_cost: number;
+  subtotal_cost: number;
+  buffer_cost: number;
+  total_cost: number;
+  unit_cost: number;
+  minimum_viable_price: number;
+  suggested_price: number;
+  profit_per_unit: number;
+  profit_per_batch: number;
+  estimated_margin_pct: number;
   input_json: string;
   assumptions_json: string;
   warnings_json: string;
@@ -91,12 +111,16 @@ type SnapshotRow = {
 type BatchHistoryRow = {
   id: number;
   created_at: string;
-  planned_quantity: number;
   notes: string | null;
 };
 
 type StoredSnapshotInput = PriceQuoteRequest & {
   attempts: QuoteAttempt[];
+};
+
+type ValidatedSnapshot = {
+  input: StoredSnapshotInput;
+  snapshot: SavedPriceSnapshot;
 };
 
 const insertBatchStatement = db.prepare(`
@@ -194,17 +218,41 @@ const insertSnapshotStatement = db.prepare(`
   )
 `);
 
-const getSnapshotStatement = db.prepare<[number, SnapshotChannel], SnapshotRow>(`
+const SNAPSHOT_SELECT = `
   SELECT
     id,
     batch_id,
     channel,
+    target_margin_pct,
+    platform_fee_pct,
+    fixed_fee_per_order,
+    labor_hourly_rate,
+    material_cost,
+    machine_cost,
+    production_loss_cost,
+    batch_labor_cost,
+    per_unit_labor_cost,
+    packaging_cost,
+    extra_cost,
+    subtotal_cost,
+    buffer_cost,
+    total_cost,
+    unit_cost,
+    minimum_viable_price,
+    suggested_price,
+    profit_per_unit,
+    profit_per_batch,
+    estimated_margin_pct,
     input_json,
     assumptions_json,
     warnings_json,
     breakdown_json,
     created_at
   FROM product_price_snapshots
+`;
+
+const getSnapshotStatement = db.prepare<[number, SnapshotChannel], SnapshotRow>(`
+  ${SNAPSHOT_SELECT}
   WHERE batch_id = ? AND channel = ?
 `);
 
@@ -295,32 +343,17 @@ export function listProductPricingHistory(productId: number): SavedProductPricin
   const normalizedProductId = normalizePositiveInteger(productId, "product_id");
   const batches = db
     .prepare<[number], BatchHistoryRow>(
-      `SELECT id, created_at, planned_quantity, notes
+      `SELECT id, created_at, notes
        FROM product_batches
        WHERE product_id = ? AND source_type = 'price_quote'
        ORDER BY created_at DESC, id DESC`,
     )
     .all(normalizedProductId);
-  const getJobIds = db.prepare<[number], { job_id: number }>(
-    `SELECT job_id
-     FROM product_batch_jobs
-     WHERE batch_id = ?
-     ORDER BY rowid`,
-  );
-  const getSnapshots = db.prepare<[number], SnapshotRow>(
-    `SELECT
-       id,
-       batch_id,
-       channel,
-       input_json,
-       assumptions_json,
-       warnings_json,
-       breakdown_json,
-       created_at
-     FROM product_price_snapshots
-     WHERE batch_id = ?
-     ORDER BY id`,
-  );
+  const getSnapshots = db.prepare<[number], SnapshotRow>(`
+    ${SNAPSHOT_SELECT}
+    WHERE batch_id = ?
+    ORDER BY id
+  `);
 
   return batches.map((batch) => {
     const snapshots = getSnapshots.all(batch.id);
@@ -332,15 +365,19 @@ export function listProductPricingHistory(productId: number): SavedProductPricin
       );
     }
 
+    const direct = snapshotFromRow(directRows[0]!);
+    const etsy = snapshotFromRow(etsyRows[0]!);
+    validateSnapshotPair(batch.id, direct, etsy);
+
     return {
       batch_id: batch.id,
       created_at: batch.created_at,
-      sellable_units: batch.planned_quantity,
-      job_ids: getJobIds.all(batch.id).map(({ job_id }) => job_id),
+      sellable_units: direct.input.sellable_units,
+      job_ids: direct.input.job_ids,
       notes: batch.notes,
       snapshots: {
-        direct: snapshotFromRow(directRows[0]!),
-        etsy: snapshotFromRow(etsyRows[0]!),
+        direct: direct.snapshot,
+        etsy: etsy.snapshot,
       },
     };
   });
@@ -400,10 +437,10 @@ function insertSnapshot(
       `Price snapshot not found after insert for Batch ${batchId}: ${quote.channel}`,
     );
   }
-  return snapshotFromRow(row);
+  return snapshotFromRow(row).snapshot;
 }
 
-function snapshotFromRow(row: SnapshotRow): SavedPriceSnapshot {
+function snapshotFromRow(row: SnapshotRow): ValidatedSnapshot {
   try {
     const input = JSON.parse(row.input_json) as unknown;
     const assumptions = JSON.parse(row.assumptions_json) as unknown;
@@ -418,18 +455,22 @@ function snapshotFromRow(row: SnapshotRow): SavedPriceSnapshot {
     ) {
       throw new Error("invalid saved quote JSON");
     }
+    validateSnapshotRecord(row, input, assumptions, breakdown);
 
     return {
-      id: row.id,
-      batch_id: row.batch_id,
-      channel: row.channel,
-      created_at: row.created_at,
-      quote: {
+      input,
+      snapshot: {
+        id: row.id,
+        batch_id: row.batch_id,
         channel: row.channel,
-        assumptions,
-        attempts: input.attempts,
-        warnings,
-        breakdown,
+        created_at: row.created_at,
+        quote: {
+          channel: row.channel,
+          assumptions,
+          attempts: input.attempts,
+          warnings,
+          breakdown,
+        },
       },
     };
   } catch (error) {
@@ -438,6 +479,140 @@ function snapshotFromRow(row: SnapshotRow): SavedPriceSnapshot {
       `Saved pricing snapshot ${row.id} contains invalid JSON`,
     );
   }
+}
+
+function validateSnapshotRecord(
+  row: SnapshotRow,
+  input: StoredSnapshotInput,
+  assumptions: PriceQuoteResult["assumptions"],
+  breakdown: PriceQuoteResult["breakdown"],
+): void {
+  const inputJobIds = input.job_ids;
+  const attemptJobIds = input.attempts.map((attempt) => attempt.job_id);
+  const hasValidMargin =
+    assumptions.target_margin_pct < 0.95 &&
+    assumptions.target_margin_pct + assumptions.platform_fee_pct < 0.95;
+  const hasValidChannelFees =
+    row.channel === "etsy" ||
+    (assumptions.platform_fee_pct === 0 && assumptions.fixed_fee_per_order === 0);
+  const requestedMarginMatches =
+    input.target_margin_pct === undefined ||
+    input.target_margin_pct === assumptions.target_margin_pct;
+  const inputCostsMatch =
+    breakdown.sellableUnits === input.sellable_units &&
+    breakdown.batchLaborCost ===
+      round2((input.batch_labor_minutes * assumptions.labor_hourly_rate) / 60) &&
+    breakdown.perUnitLaborCost ===
+      round2(
+        (input.sellable_units * input.per_unit_labor_minutes * assumptions.labor_hourly_rate) / 60,
+      ) &&
+    breakdown.packagingCost === round2(input.sellable_units * input.packaging_cost_per_unit) &&
+    breakdown.extraCost === round2(input.extra_cost);
+  const resolvedJobsMatch = assumptions.resolved_rates.every((rate) =>
+    inputJobIds.includes(rate.job_id),
+  );
+
+  if (
+    !deepEqual(inputJobIds, attemptJobIds) ||
+    !hasValidMargin ||
+    !hasValidChannelFees ||
+    !requestedMarginMatches ||
+    !inputCostsMatch ||
+    !resolvedJobsMatch ||
+    !snapshotScalarsMatchJson(row, assumptions, breakdown)
+  ) {
+    throw new Error("invalid saved quote invariants");
+  }
+}
+
+function snapshotScalarsMatchJson(
+  row: SnapshotRow,
+  assumptions: PriceQuoteResult["assumptions"],
+  breakdown: PriceQuoteResult["breakdown"],
+): boolean {
+  return (
+    row.target_margin_pct === assumptions.target_margin_pct &&
+    row.platform_fee_pct === assumptions.platform_fee_pct &&
+    row.fixed_fee_per_order === assumptions.fixed_fee_per_order &&
+    row.labor_hourly_rate === assumptions.labor_hourly_rate &&
+    row.material_cost === breakdown.materialCost &&
+    row.machine_cost === breakdown.machineCost &&
+    row.production_loss_cost === breakdown.productionLossCost &&
+    row.batch_labor_cost === breakdown.batchLaborCost &&
+    row.per_unit_labor_cost === breakdown.perUnitLaborCost &&
+    row.packaging_cost === breakdown.packagingCost &&
+    row.extra_cost === breakdown.extraCost &&
+    row.subtotal_cost === breakdown.subtotalCost &&
+    row.buffer_cost === breakdown.bufferCost &&
+    row.total_cost === breakdown.totalCost &&
+    row.unit_cost === breakdown.unitCost &&
+    row.minimum_viable_price === breakdown.minimumViablePrice &&
+    row.suggested_price === breakdown.suggestedPrice &&
+    row.profit_per_unit === breakdown.profitPerUnit &&
+    row.profit_per_batch === breakdown.profitPerBatch &&
+    row.estimated_margin_pct === breakdown.estimatedMarginPct
+  );
+}
+
+function validateSnapshotPair(
+  batchId: number,
+  direct: ValidatedSnapshot,
+  etsy: ValidatedSnapshot,
+): void {
+  const directInput = { ...direct.input, channel: undefined };
+  const etsyInput = { ...etsy.input, channel: undefined };
+  const directQuote = direct.snapshot.quote;
+  const etsyQuote = etsy.snapshot.quote;
+  const sharedAssumptionsMatch =
+    directQuote.assumptions.labor_hourly_rate === etsyQuote.assumptions.labor_hourly_rate &&
+    directQuote.assumptions.failure_buffer_pct === etsyQuote.assumptions.failure_buffer_pct &&
+    directQuote.assumptions.overhead_buffer_pct === etsyQuote.assumptions.overhead_buffer_pct &&
+    deepEqual(directQuote.assumptions.resolved_rates, etsyQuote.assumptions.resolved_rates);
+  const manufacturingFields = [
+    "materialCost",
+    "machineCost",
+    "productionLossCost",
+    "batchLaborCost",
+    "perUnitLaborCost",
+    "packagingCost",
+    "extraCost",
+    "subtotalCost",
+    "bufferCost",
+    "totalCost",
+    "unitCost",
+  ] as const;
+  const manufacturingCostsMatch = manufacturingFields.every(
+    (field) => directQuote.breakdown[field] === etsyQuote.breakdown[field],
+  );
+
+  if (
+    !deepEqual(directInput, etsyInput) ||
+    !deepEqual(directQuote.warnings, etsyQuote.warnings) ||
+    !sharedAssumptionsMatch ||
+    !manufacturingCostsMatch
+  ) {
+    throw new SavedProductPricingValidationError(
+      `Saved pricing Batch ${batchId} contains conflicting direct and etsy snapshots`,
+    );
+  }
+}
+
+function deepEqual(left: unknown, right: unknown): boolean {
+  if (left === right) return true;
+  if (Array.isArray(left) && Array.isArray(right)) {
+    return (
+      left.length === right.length && left.every((value, index) => deepEqual(value, right[index]))
+    );
+  }
+  if (isRecord(left) && isRecord(right)) {
+    const leftKeys = Object.keys(left);
+    const rightKeys = Object.keys(right);
+    return (
+      leftKeys.length === rightKeys.length &&
+      leftKeys.every((key) => key in right && deepEqual(left[key], right[key]))
+    );
+  }
+  return false;
 }
 
 function isStoredSnapshotInput(
@@ -463,7 +638,7 @@ function isStoredSnapshotInput(
   }
   if (
     value["target_margin_pct"] !== undefined &&
-    !isNonnegativeNumber(value["target_margin_pct"])
+    (!isNonnegativeNumber(value["target_margin_pct"]) || value["target_margin_pct"] >= 0.95)
   ) {
     return false;
   }
@@ -548,6 +723,10 @@ function isPositiveInteger(value: unknown): value is number {
 
 function isNonnegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }
 
 function normalizeSaveRequest(input: SaveProductPricingRequest): NormalizedSaveRequest {
