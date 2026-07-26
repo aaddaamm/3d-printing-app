@@ -231,6 +231,7 @@ Override target with `VITE_API_PROXY_TARGET` if needed.
 | ------------------------------- | ------------------------------ | ----------------------------------------------------------- |
 | `PORT`                          | `3000`                         | Server port                                                 |
 | `BAMBU_DB`                      | `./bambu_print_history.sqlite` | SQLite database path                                        |
+| `PRODUCT_IMAGES_DIR`            | `./product-images`             | App-owned Product image/contact-sheet storage root          |
 | `SYNC_INTERVAL_HOURS`           | `0`                            | Shared fallback sync interval for configured providers      |
 | `SYNC_PROVIDERS`                | _(auto)_                       | Comma-separated scheduled providers, e.g. `bambu,moonraker` |
 | `BAMBU_SYNC_INTERVAL_HOURS`     | legacy value                   | Bambu-specific scheduled sync interval                      |
@@ -252,13 +253,33 @@ gate in the local-first mode.
 
 ### Products
 
-| Method  | Path                       | Description                    |
-| ------- | -------------------------- | ------------------------------ |
-| `GET`   | `/api/products`            | Product catalog summaries      |
-| `POST`  | `/api/products`            | Create a product               |
-| `GET`   | `/api/products/print-next` | Products queued for restock    |
-| `GET`   | `/api/products/:id`        | Product detail/summary fields  |
-| `PATCH` | `/api/products/:id`        | Update product workflow fields |
+| Method  | Path                              | Description                              |
+| ------- | --------------------------------- | ---------------------------------------- |
+| `GET`   | `/api/products`                   | Product catalog summaries                |
+| `POST`  | `/api/products`                   | Create a product                         |
+| `GET`   | `/api/products/print-next`        | Products queued for restock              |
+| `GET`   | `/api/products/sales-companion`   | Explicitly published Product price rows  |
+| `GET`   | `/api/products/:id`               | Product detail/summary fields            |
+| `PATCH` | `/api/products/:id`               | Update product workflow fields           |
+| `GET`   | `/api/products/:id/pricing-history` | Immutable saved Direct/Etsy history    |
+| `GET`   | `/api/products/:id/image-candidates` | Ranked Auto image candidates           |
+| `POST`  | `/api/products/:id/images/refresh` | Refresh best-effort generated/remote candidates |
+| `POST`  | `/api/products/:id/image-selection` | Switch between Auto and Manual image selection |
+| `POST`  | `/api/products/:id/photos`        | Upload a manual Product photo            |
+
+`POST /api/price-quotes/save-to-product` is the Save-to-Product bridge from Price-this. One successful save creates one `price_quote` Batch plus exactly one immutable Direct snapshot and one immutable Etsy snapshot from the same manufacturing inputs. `/api/products/:id/pricing-history` keeps those saved values even after later rate/profile changes.
+
+Products stay private by default. They appear in `/api/products/sales-companion` only after explicitly setting `sales_companion_visible` to `true`; this local visibility flag is the future publication boundary, not hosted publishing.
+
+Product images use deterministic Auto ranking: manual upload, best-effort public MakerWorld source image, catalog/3MF preview, generated contact sheet from the latest saved Batch, best single cached print cover, then placeholder. Choosing a candidate or uploading a photo switches the Product to Manual until the user returns it to Auto.
+
+`PRODUCT_IMAGES_DIR` defaults to `./product-images` and is reserved for PrintWorks-owned generated/uploaded Product media. Catalog files/previews and cached print covers remain in their own stores and are never moved into that directory.
+
+Public source enrichment is best-effort and currently limited to fixed MakerWorld page/image hosts over HTTPS; authenticated Cubee pages are intentionally unsupported. The DNS preflight is defense-in-depth for that fixed provider allowlist, not a generic DNS-rebinding-safe fetch transport.
+
+If a DB write fails after a content-addressed image file is created, PrintWorks retains the safe orphan for later reference-aware garbage collection instead of trying inline deletion. Follow-up cleanup remains tracked in issue #47.
+
+Hosted Sales Companion publication, cloud image sync, and native Mac packaging remain deferred.
 
 ### Batches
 

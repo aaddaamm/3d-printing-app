@@ -167,6 +167,8 @@ Remote image fetching must:
 - verify an accepted image content type;
 - re-encode accepted content before serving it locally.
 
+The current DNS preflight is defense-in-depth for a fixed MakerWorld allowlist only. Because the subsequent global Fetch resolution cannot be pinned, this adapter is not a generic DNS-rebinding-safe SSRF transport and must not be generalized beyond the fixed provider contract.
+
 ## Multi-plate contact sheets
 
 When no better design-level candidate exists, generate a contact sheet from the latest saved Batch.
@@ -192,7 +194,7 @@ Product detail supports uploading a finished-item photo from the Mac or an iPhon
 - Create a `product_photos` row with manual-upload provenance.
 - Set it as `main_photo_id` and switch the Product to Manual mode transactionally.
 
-Replacing an image does not delete historical imported print covers or catalog previews. App-owned orphan cleanup is a separate safe maintenance operation.
+Replacing an image does not delete historical imported print covers or catalog previews. If a database write fails after an app-owned content-addressed file is written, PrintWorks retains the safe orphan for later reference-aware garbage collection rather than attempting inline deletion. Follow-up cleanup remains tracked separately in issue #47.
 
 ## Product detail UX
 
@@ -318,6 +320,12 @@ Existing Products default to private and Auto image mode. Existing `main_photo_i
 6. Add Sales Companion visibility and publication-ready local query contract.
 
 Each step must leave the local app usable and independently testable.
+
+## Task 11 completion proof
+
+Task 11 closes the local Product foundation with a repeatable isolated smoke flow: seed one finished attempt and one failed attempt, save them to a new Product, assert HTTP 201 plus immutable Direct/Etsy snapshots with one shared unit cost and different suggested prices, verify Product pricing history, verify the Product stays private until `sales_companion_visible` is explicitly enabled, and verify local print-cover/placeholder image fallback without any live MakerWorld dependency.
+
+Operator-facing docs must also state the Save-to-Product workflow, immutable history semantics, explicit Sales Companion visibility boundary, Auto/Manual image ranking, `PRODUCT_IMAGES_DIR` ownership boundary, best-effort MakerWorld-only enrichment, authenticated Cubee exclusion, retained safe orphans tracked by issue #47, and that hosted/cloud publication plus native Mac packaging remain deferred.
 
 ## Out of scope
 

@@ -1,16 +1,19 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { existsSync } from "node:fs";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
+import sharp from "sharp";
 
 type SmokeContext = {
   tempDir: string;
   dbPath: string;
   port: number;
   origin: string;
+  coversDir: string;
+  productImagesDir: string;
   jobId: number | null;
+  failedJobId: number | null;
   projectId: number | null;
 };
 
@@ -20,7 +23,23 @@ type UiDataResponse = {
   jobs?: Array<{ cover_url?: string | null }>;
 };
 
-const SOURCE_DB = process.env["BAMBU_DB"] ?? "./bambu_print_history.sqlite";
+type SavedQuote = {
+  channel?: string;
+  attempts?: Array<{ status?: string; production_loss_cost?: number }>;
+  breakdown?: { unitCost?: number; suggestedPrice?: number };
+};
+
+type SavedProductPricingResponse = {
+  saved?: {
+    product?: { id?: number; name?: string; sales_companion_visible?: boolean };
+    batch_id?: number;
+    snapshots?: {
+      direct?: { quote?: SavedQuote };
+      etsy?: { quote?: SavedQuote };
+    };
+  };
+};
+
 const GATES: Array<{ command: string; args: string[]; label: string }> = [
   { command: "npm", args: ["run", "typecheck"], label: "npm run typecheck" },
   { command: "npm", args: ["run", "lint"], label: "npm run lint" },
@@ -57,82 +76,133 @@ function randomPort(): number {
   return 31_000 + Math.floor(Math.random() * 10_000);
 }
 
-function prepareSmokeData(dbPath: string): Pick<SmokeContext, "jobId" | "projectId"> {
-  const db = new Database(dbPath);
+async function prepareSmokeData(
+  ctx: SmokeContext,
+): Promise<Pick<SmokeContext, "jobId" | "failedJobId" | "projectId">> {
+  const db = new Database(ctx.dbPath);
   try {
-    const job = db
-      .prepare<[], { id: number }>(
-        `SELECT id
-         FROM jobs
-         WHERE total_weight_g IS NOT NULL
-           AND total_time_s IS NOT NULL
-         ORDER BY startTime DESC, id DESC
-         LIMIT 1`,
-      )
-      .get();
-    if (!job) return { jobId: null, projectId: null };
+    db.exec(`
+      DELETE FROM machine_rates;
+      DELETE FROM material_rates;
+      INSERT INTO machine_rates
+        (device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer, machine_rate_per_hr)
+      VALUES
+        ('P1S', 0, 1, 0, 0, 2),
+        ('Snapmaker U1', 0, 1, 0, 0, 4);
+      INSERT INTO material_rates (filament_type, cost_per_g, waste_buffer_pct, rate_per_g)
+      VALUES ('PLA', 0.02, 0, 0.02), ('PETG', 0.03, 0, 0.03);
+      UPDATE labor_config
+      SET hourly_rate = 30, failure_buffer_pct = 0.1, overhead_buffer_pct = 0.05
+      WHERE id = 1;
+      UPDATE pricing_profiles
+      SET target_margin_pct = 0.4, platform_fee_pct = 0, fixed_fee_per_order = 0,
+          minimum_price = NULL
+      WHERE id = 'booth';
+      UPDATE pricing_profiles
+      SET target_margin_pct = 0.5, platform_fee_pct = 0.12, fixed_fee_per_order = 0.45,
+          minimum_price = NULL
+      WHERE id = 'etsy';
+    `);
 
-    const project = db
-      .prepare<[], { id: number }>(
-        `SELECT p.id
-         FROM projects p
-         JOIN jobs j ON j.project_id = p.id
-         GROUP BY p.id
-         HAVING COUNT(j.id) > 0
-         ORDER BY MAX(j.startTime) DESC, p.id DESC
-         LIMIT 1`,
-      )
-      .get();
-    if (project) return { jobId: job.id, projectId: project.id };
+    const projectId = Number(
+      db
+        .prepare(
+          "INSERT INTO projects (name, created_at) VALUES ('Smoke Fixture Project', CURRENT_TIMESTAMP) RETURNING id",
+        )
+        .pluck()
+        .get(),
+    );
+    const insertJob = db.prepare(
+      `INSERT INTO jobs (
+         provider, session_id, print_run, deviceModel, status, designTitle,
+         total_weight_g, total_time_s, project_id, startTime
+       ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+       RETURNING id`,
+    );
+    const jobId = Number(
+      insertJob
+        .pluck()
+        .get("bambu", "smoke-finished", "P1S", "finish", "Smoke Widget", 50, 3600, projectId),
+    );
+    const failedJobId = Number(
+      insertJob
+        .pluck()
+        .get(
+          "moonraker",
+          "smoke-failed",
+          "Snapmaker U1",
+          "cancelled",
+          "Smoke Widget retry",
+          20,
+          1800,
+          projectId,
+        ),
+    );
+    const finishedTaskId = "1001";
+    const failedTaskId = "1002";
+    const insertTask = db.prepare(
+      `INSERT INTO print_tasks
+         (id, provider, session_id, title, status, deviceModel, weight, costTime, raw_json)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}')`,
+    );
+    insertTask.run(
+      finishedTaskId,
+      "bambu",
+      "smoke-finished",
+      "Smoke Widget body",
+      "finish",
+      "P1S",
+      50,
+      3600,
+    );
+    insertTask.run(
+      failedTaskId,
+      "moonraker",
+      "smoke-failed",
+      "Smoke Widget retry",
+      "cancelled",
+      "Snapmaker U1",
+      20,
+      1800,
+    );
+    db.prepare(
+      `INSERT INTO job_filaments (task_id, filament_type, weight_g)
+       VALUES (?, 'PLA', 50), (?, 'PETG', 20)`,
+    ).run(finishedTaskId, failedTaskId);
 
-    const projectResult = db
-      .prepare("INSERT INTO projects (name, created_at) VALUES (?, CURRENT_TIMESTAMP)")
-      .run("Smoke Test Project");
-    const projectId = Number(projectResult.lastInsertRowid);
-    const projectJobs = db
-      .prepare<[], { id: number }>(
-        `SELECT id
-         FROM jobs
-         WHERE total_weight_g IS NOT NULL
-           AND total_time_s IS NOT NULL
-         ORDER BY startTime DESC, id DESC
-         LIMIT 2`,
-      )
-      .all();
-    if (projectJobs.length === 0) {
-      throw new Error("Smoke test could not find jobs to attach to a temporary project.");
-    }
+    await mkdir(ctx.coversDir, { recursive: true });
+    await Promise.all([
+      sharp({
+        create: { width: 80, height: 60, channels: 3, background: "#2563eb" },
+      })
+        .png()
+        .toFile(path.join(ctx.coversDir, `${finishedTaskId}.png`)),
+      sharp({
+        create: { width: 80, height: 60, channels: 3, background: "#dc2626" },
+      })
+        .png()
+        .toFile(path.join(ctx.coversDir, `${failedTaskId}.png`)),
+    ]);
 
-    const assign = db.prepare("UPDATE jobs SET project_id = ? WHERE id = ?");
-    const assignAll = db.transaction((ids: number[]) => {
-      for (const id of ids) assign.run(projectId, id);
-    });
-    assignAll(projectJobs.map(({ id }) => id));
-    return { jobId: job.id, projectId };
+    return { jobId, failedJobId, projectId };
   } finally {
     db.close();
   }
 }
 
 async function createTempDb(): Promise<SmokeContext> {
-  if (!existsSync(SOURCE_DB)) throw new Error(`Source DB not found: ${SOURCE_DB}`);
-
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "printworks-smoke-"));
-  const dbPath = path.join(tempDir, "smoke.sqlite");
-  const source = new Database(SOURCE_DB, { readonly: true });
-  try {
-    await source.backup(dbPath);
-  } finally {
-    source.close();
-  }
-
   const port = randomPort();
   return {
     tempDir,
-    dbPath,
+    dbPath: path.join(tempDir, "smoke.sqlite"),
     port,
     origin: `http://127.0.0.1:${port}`,
-    ...prepareSmokeData(dbPath),
+    coversDir: path.join(tempDir, "covers"),
+    productImagesDir: path.join(tempDir, "product-images"),
+    jobId: null,
+    failedJobId: null,
+    projectId: null,
   };
 }
 
@@ -144,6 +214,8 @@ function startServer(ctx: SmokeContext): ChildProcessWithoutNullStreams {
       HOST: "127.0.0.1",
       PORT: String(ctx.port),
       BAMBU_DB: ctx.dbPath,
+      BAMBU_COVERS_DIR: ctx.coversDir,
+      PRODUCT_IMAGES_DIR: ctx.productImagesDir,
       SYNC_INTERVAL_HOURS: "0",
       BAMBU_SYNC_INTERVAL_HOURS: "0",
       MOONRAKER_SYNC_INTERVAL_HOURS: "0",
@@ -227,6 +299,184 @@ async function assertCoverRoute(origin: string): Promise<void> {
     throw new Error(`Cover route failed ${response.status} for ${localCoverPath}`);
   }
   pass(`cover route serves ${localCoverPath}`);
+}
+
+async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> {
+  logStep("saved Product pricing, visibility, and image fallback smoke");
+  const jobId = ctx.jobId;
+  const failedJobId = ctx.failedJobId;
+  if (jobId === null || failedJobId === null) throw new Error("Smoke attempts were not seeded");
+
+  const saveResponse = await fetch(`${ctx.origin}/api/price-quotes/save-to-product`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_ids: [jobId, failedJobId],
+      sellable_units: 1,
+      batch_labor_minutes: 10,
+      per_unit_labor_minutes: 2,
+      packaging_cost_per_unit: 0.75,
+      extra_cost: 1.25,
+      target_margin_pct: 0.45,
+      new_product: {
+        name: "Smoke Saved Product",
+        designer: "Smoke Fixture",
+        notes: "Generated by the isolated smoke test.",
+      },
+      notes: "Finished production plus one failed attempt.",
+    }),
+  });
+  const saveText = await saveResponse.text();
+  const saved = parseJsonResponse<SavedProductPricingResponse>(
+    saveText,
+    `${ctx.origin}/api/price-quotes/save-to-product`,
+  );
+  if (saveResponse.status !== 201) {
+    throw new Error(`Save to Product failed ${saveResponse.status}: ${saveText}`);
+  }
+
+  const productId = Number(saved.saved?.product?.id);
+  const batchId = Number(saved.saved?.batch_id);
+  const direct = saved.saved?.snapshots?.direct?.quote;
+  const etsy = saved.saved?.snapshots?.etsy?.quote;
+  if (
+    !Number.isInteger(productId) ||
+    productId <= 0 ||
+    !Number.isInteger(batchId) ||
+    batchId <= 0
+  ) {
+    throw new Error("Save to Product did not return Product and Batch ids");
+  }
+  if (direct?.channel !== "direct" || etsy?.channel !== "etsy") {
+    throw new Error("Save to Product did not return Direct and Etsy snapshots");
+  }
+
+  const directUnitCost = Number(direct.breakdown?.unitCost);
+  const etsyUnitCost = Number(etsy.breakdown?.unitCost);
+  const directPrice = Number(direct.breakdown?.suggestedPrice);
+  const etsyPrice = Number(etsy.breakdown?.suggestedPrice);
+  if (!(directUnitCost > 0) || directUnitCost !== etsyUnitCost) {
+    throw new Error("Direct and Etsy snapshots did not preserve one shared positive unit cost");
+  }
+  if (!(directPrice > 0) || !(etsyPrice > 0) || directPrice === etsyPrice) {
+    throw new Error("Direct and Etsy snapshots did not produce distinct positive suggestions");
+  }
+  const finishedAttempt = direct.attempts?.find(({ status }) => status === "finish");
+  const failedAttempt = direct.attempts?.find(({ status }) => status === "cancelled");
+  if (!finishedAttempt || !failedAttempt || !(Number(failedAttempt.production_loss_cost) > 0)) {
+    throw new Error("Saved snapshots did not retain the finished and failed production attempts");
+  }
+  if (saved.saved?.product?.sales_companion_visible !== false) {
+    throw new Error("A newly saved Product was not private by default");
+  }
+  pass(
+    `saved private product ${productId}; shared unit cost $${directUnitCost.toFixed(2)}, Direct $${directPrice.toFixed(2)}, Etsy $${etsyPrice.toFixed(2)}`,
+  );
+
+  const privateCompanion = await fetchJson<{ products?: Array<{ id?: number }> }>(
+    `${ctx.origin}/api/products/sales-companion`,
+  );
+  if (!Array.isArray(privateCompanion.products)) {
+    throw new Error("Sales Companion API did not return products[]");
+  }
+  if (privateCompanion.products.some(({ id }) => id === productId)) {
+    throw new Error("Private Product appeared in the Sales Companion response");
+  }
+  pass("saved Product remains absent from Sales Companion before explicit opt-in");
+
+  const history = await fetchJson<{
+    history?: Array<{
+      batch_id?: number;
+      snapshots?: { direct?: { quote?: SavedQuote }; etsy?: { quote?: SavedQuote } };
+    }>;
+  }>(`${ctx.origin}/api/products/${productId}/pricing-history`);
+  const savedHistory = history.history?.find((entry) => entry.batch_id === batchId);
+  if (
+    !savedHistory ||
+    savedHistory.snapshots?.direct?.quote?.breakdown?.unitCost !== directUnitCost ||
+    savedHistory.snapshots?.direct?.quote?.breakdown?.suggestedPrice !== directPrice ||
+    savedHistory.snapshots?.etsy?.quote?.breakdown?.suggestedPrice !== etsyPrice
+  ) {
+    throw new Error("Product pricing history did not reproduce the immutable saved snapshots");
+  }
+  pass("Product pricing history returns the saved Direct and Etsy values");
+
+  const imageResult = await fetchJson<{
+    candidates?: Array<{
+      source_type?: string;
+      available?: boolean;
+      url?: string | null;
+    }>;
+    warnings?: string[];
+  }>(`${ctx.origin}/api/products/${productId}/image-candidates`);
+  if (!Array.isArray(imageResult.candidates)) {
+    throw new Error("Product image candidate API did not return candidates[]");
+  }
+  const coverCandidate = imageResult.candidates.find(
+    ({ source_type, available, url }) =>
+      source_type === "print_cover" && available === true && typeof url === "string",
+  );
+  const placeholder = imageResult.candidates.find(
+    ({ source_type, available }) => source_type === "placeholder" && available === true,
+  );
+  if (!coverCandidate?.url || !placeholder) {
+    throw new Error("Generated local covers did not produce print-cover and placeholder fallbacks");
+  }
+  const coverResponse = await fetch(`${ctx.origin}${coverCandidate.url}`);
+  const coverBytes = new Uint8Array(await coverResponse.arrayBuffer());
+  if (
+    !coverResponse.ok ||
+    coverBytes[0] !== 0x89 ||
+    coverBytes[1] !== 0x50 ||
+    coverBytes[2] !== 0x4e ||
+    coverBytes[3] !== 0x47
+  ) {
+    throw new Error("Generated print-cover candidate was not served as PNG");
+  }
+  pass("generated local covers provide print-cover and placeholder image fallbacks");
+
+  const updated = await fetchJson<{ product?: { sales_companion_visible?: boolean } }>(
+    `${ctx.origin}/api/products/${productId}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sales_companion_visible: true }),
+    },
+  );
+  if (updated.product?.sales_companion_visible !== true) {
+    throw new Error("Explicit Sales Companion visibility update did not persist");
+  }
+
+  const visibleCompanion = await fetchJson<{ products?: JsonRecord[] }>(
+    `${ctx.origin}/api/products/sales-companion`,
+  );
+  const visible = visibleCompanion.products?.find(({ id }) => id === productId);
+  const expectedPublicKeys = [
+    "direct_margin_pct",
+    "direct_price",
+    "etsy_margin_pct",
+    "etsy_price",
+    "id",
+    "identification_image_url",
+    "name",
+    "priced_at",
+    "production_loss_cost",
+    "unit_cost",
+  ];
+  if (
+    !visible ||
+    JSON.stringify(Object.keys(visible).sort()) !== JSON.stringify(expectedPublicKeys)
+  ) {
+    throw new Error("Visible Sales Companion Product did not use the minimal public row contract");
+  }
+  if (
+    visible["unit_cost"] !== directUnitCost ||
+    visible["direct_price"] !== directPrice ||
+    visible["etsy_price"] !== etsyPrice
+  ) {
+    throw new Error("Sales Companion row did not use the latest saved pricing snapshots");
+  }
+  pass("explicit opt-in publishes only the minimal Sales Companion pricing row");
 }
 
 async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
@@ -348,12 +598,15 @@ async function main(): Promise<void> {
   try {
     logStep("prepare isolated smoke database");
     ctx = await createTempDb();
-    pass(`copied DB to ${ctx.dbPath}`);
+    pass(`created temporary DB path ${ctx.dbPath}`);
 
     server = startServer(ctx);
     await waitForHealth(ctx.origin);
+    Object.assign(ctx, await prepareSmokeData(ctx));
+    pass("seeded deterministic finished/failed attempts and local cover fixtures");
     await assertHtml(ctx.origin);
     await assertCoverRoute(ctx.origin);
+    await runSavedProductFoundationSmoke(ctx);
     await runWorkflowSmoke(ctx);
 
     console.log("\n✓ Smoke orchestration passed");
