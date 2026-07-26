@@ -345,22 +345,35 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
   }
 }
 
-function composeAbortSignals(signals: AbortSignal[]): AbortSignal {
+export function composeAbortSignals(signals: AbortSignal[], useNativeAny = true): AbortSignal {
   const abortSignalWithAny = AbortSignal as typeof AbortSignal & {
     any?: (signals: AbortSignal[]) => AbortSignal;
   };
-  if (typeof abortSignalWithAny.any === "function") return abortSignalWithAny.any(signals);
+  if (useNativeAny && typeof abortSignalWithAny.any === "function") {
+    return abortSignalWithAny.any(signals);
+  }
 
   const controller = new AbortController();
+  const listeners = new Map<AbortSignal, () => void>();
+  const cleanup = () => {
+    for (const [signal, listener] of listeners) {
+      signal.removeEventListener("abort", listener);
+    }
+    listeners.clear();
+  };
   const abortFrom = (signal: AbortSignal) => {
-    if (!controller.signal.aborted) controller.abort(signal.reason);
+    if (controller.signal.aborted) return;
+    cleanup();
+    controller.abort(signal.reason);
   };
   for (const signal of signals) {
     if (signal.aborted) {
       abortFrom(signal);
-      break;
+      return controller.signal;
     }
-    signal.addEventListener("abort", () => abortFrom(signal), { once: true });
+    const listener = () => abortFrom(signal);
+    listeners.set(signal, listener);
+    signal.addEventListener("abort", listener, { once: true });
   }
   return controller.signal;
 }
@@ -492,8 +505,12 @@ export async function fetchSalesCompanionProducts(): Promise<SalesCompanionProdu
   return data.products;
 }
 
-export async function fetchProduct(id: number): Promise<ProductSummary> {
-  const data = await fetchJson<ProductResponse>(`/api/products/${id}`, "Failed to load product.");
+export async function fetchProduct(id: number, options?: RequestInit): Promise<ProductSummary> {
+  const data = await fetchJson<ProductResponse>(
+    `/api/products/${id}`,
+    "Failed to load product.",
+    options,
+  );
   return data.product;
 }
 

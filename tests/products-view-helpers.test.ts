@@ -6,9 +6,15 @@ import {
 } from "../frontend/components/batch-price-breakdown.js";
 import { initialBatchDetailForm } from "../frontend/components/batch-detail-view.js";
 import {
+  applyProductReconciliation,
   beginProductDetailRequest,
+  beginProductReconciliationMount,
+  beginProductReconciliationRequest,
   initialProductDetailForm,
   initialProductDetailRequestState,
+  initialProductReconciliationState,
+  invalidateProductReconciliation,
+  isCurrentProductReconciliation,
   mergeProductFormResponse,
   mergeProductImageResponse,
   rejectProductDetailRequest,
@@ -141,6 +147,28 @@ it("clears Product detail state on an id change and rejects stale responses", ()
   });
 });
 
+it("accepts only the latest same-Product reconciliation generation", () => {
+  const mounted = beginProductReconciliationMount(initialProductReconciliationState(), 4);
+  const first = beginProductReconciliationRequest(mounted.state, 4);
+  const second = beginProductReconciliationRequest(first.state, 4);
+
+  expect(isCurrentProductReconciliation(second.state, first.requestGeneration, 4)).toBe(false);
+  expect(isCurrentProductReconciliation(second.state, second.requestGeneration, 4)).toBe(true);
+  expect(isCurrentProductReconciliation(second.state, second.requestGeneration, 5)).toBe(false);
+
+  const nextProduct = beginProductReconciliationMount(second.state, 5);
+  expect(isCurrentProductReconciliation(nextProduct.state, second.requestGeneration, 4)).toBe(
+    false,
+  );
+  expect(
+    isCurrentProductReconciliation(
+      invalidateProductReconciliation(nextProduct.state),
+      nextProduct.state.generation,
+      5,
+    ),
+  ).toBe(false);
+});
+
 it("merges form and image responses without either stale summary overwriting the other", () => {
   const original = product({
     id: 4,
@@ -149,6 +177,7 @@ it("merges form and image responses without either stale summary overwriting the
     main_photo_path: "/old.webp",
     main_photo_source_type: "print_cover",
     image_selection_mode: "auto",
+    ready_to_list: false,
   });
   const formResponse = product({
     id: 4,
@@ -158,6 +187,7 @@ it("merges form and image responses without either stale summary overwriting the
     main_photo_path: "/old.webp",
     main_photo_source_type: "print_cover",
     image_selection_mode: "auto",
+    ready_to_list: true,
   });
   const imageResponse = product({
     id: 4,
@@ -167,6 +197,19 @@ it("merges form and image responses without either stale summary overwriting the
     main_photo_path: "/manual.webp",
     main_photo_source_type: "manual_upload",
     image_selection_mode: "manual",
+    ready_to_list: true,
+  });
+  const authoritative = product({
+    id: 4,
+    name: "Saved name",
+    notes: "Saved notes",
+    main_photo_id: 22,
+    main_photo_path: "/manual.webp",
+    main_photo_source_type: "manual_upload",
+    image_selection_mode: "manual",
+    can_sell_level: "green",
+    can_sell_label: "Ready to sell",
+    ready_to_list: true,
   });
 
   const formThenImage = mergeProductImageResponse(
@@ -187,7 +230,9 @@ it("merges form and image responses without either stale summary overwriting the
       main_photo_path: "/manual.webp",
       main_photo_source_type: "manual_upload",
       image_selection_mode: "manual",
+      ready_to_list: false,
     });
+    expect(applyProductReconciliation(merged, authoritative)).toEqual(authoritative);
   }
 });
 
@@ -197,6 +242,7 @@ it("ignores Product response merges for a different current Product", () => {
 
   expect(mergeProductImageResponse(current, other)).toBe(current);
   expect(mergeProductFormResponse(current, other)).toBe(current);
+  expect(applyProductReconciliation(current, other)).toBe(current);
   expect(mergeProductImageResponse(null, other)).toBeNull();
   expect(mergeProductFormResponse(null, other)).toBeNull();
 });

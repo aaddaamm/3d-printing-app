@@ -72,15 +72,19 @@ export function candidateWarningId(candidateKey: string): string {
 }
 
 export type ProductImageRequest = {
+  kind: "bootstrap" | "action";
   mountGeneration: number;
   operationGeneration: number;
+  actionGeneration: number;
   productId: number;
 };
 
 export type ProductImageRequestState = {
   mountGeneration: number;
-  operationGeneration: number;
-  completedOperationGeneration: number;
+  bootstrapGeneration: number;
+  completedBootstrapGeneration: number;
+  actionGeneration: number;
+  completedActionGeneration: number;
   activeActionGeneration: number | null;
   productId: number | null;
   active: boolean;
@@ -89,8 +93,10 @@ export type ProductImageRequestState = {
 export function initialProductImageRequestState(): ProductImageRequestState {
   return {
     mountGeneration: 0,
-    operationGeneration: 0,
-    completedOperationGeneration: 0,
+    bootstrapGeneration: 0,
+    completedBootstrapGeneration: 0,
+    actionGeneration: 0,
+    completedActionGeneration: 0,
     activeActionGeneration: null,
     productId: null,
     active: false,
@@ -106,8 +112,10 @@ export function beginProductImagePanelMount(
     mountGeneration,
     state: {
       mountGeneration,
-      operationGeneration: 0,
-      completedOperationGeneration: 0,
+      bootstrapGeneration: 0,
+      completedBootstrapGeneration: 0,
+      actionGeneration: 0,
+      completedActionGeneration: 0,
       activeActionGeneration: null,
       productId,
       active: true,
@@ -122,12 +130,14 @@ export function beginProductImageRequest(state: ProductImageRequestState): {
   if (!state.active || state.productId === null) {
     throw new Error("Cannot begin a Product image request without an active Product.");
   }
-  const operationGeneration = state.operationGeneration + 1;
+  const operationGeneration = state.bootstrapGeneration + 1;
   return {
-    state: { ...state, operationGeneration },
+    state: { ...state, bootstrapGeneration: operationGeneration },
     request: {
+      kind: "bootstrap",
       mountGeneration: state.mountGeneration,
       operationGeneration,
+      actionGeneration: 0,
       productId: state.productId,
     },
   };
@@ -141,7 +151,10 @@ export function isCurrentProductImageRequest(
     state.active &&
     state.mountGeneration === request.mountGeneration &&
     state.productId === request.productId &&
-    state.operationGeneration === request.operationGeneration
+    (request.kind === "action"
+      ? state.actionGeneration === request.operationGeneration
+      : state.bootstrapGeneration === request.operationGeneration &&
+        state.actionGeneration === request.actionGeneration)
   );
 }
 
@@ -149,11 +162,24 @@ export function tryBeginProductImageAction(state: ProductImageRequestState): {
   state: ProductImageRequestState;
   request: ProductImageRequest;
 } | null {
-  if (state.activeActionGeneration !== null) return null;
-  const started = beginProductImageRequest(state);
+  if (!state.active || state.productId === null || state.activeActionGeneration !== null) {
+    return null;
+  }
+  const operationGeneration = state.actionGeneration + 1;
+  const request: ProductImageRequest = {
+    kind: "action",
+    mountGeneration: state.mountGeneration,
+    operationGeneration,
+    actionGeneration: operationGeneration,
+    productId: state.productId,
+  };
   return {
-    request: started.request,
-    state: { ...started.state, activeActionGeneration: started.request.operationGeneration },
+    request,
+    state: {
+      ...state,
+      actionGeneration: operationGeneration,
+      activeActionGeneration: operationGeneration,
+    },
   };
 }
 
@@ -162,6 +188,7 @@ export function finishProductImageAction(
   request: ProductImageRequest,
 ): ProductImageRequestState {
   if (
+    request.kind !== "action" ||
     state.mountGeneration !== request.mountGeneration ||
     state.productId !== request.productId ||
     state.activeActionGeneration !== request.operationGeneration
@@ -176,7 +203,17 @@ export function resolveProductImageRequest(
   request: ProductImageRequest,
 ): ProductImageRequestState {
   if (!isCurrentProductImageRequest(state, request)) return state;
-  return { ...state, completedOperationGeneration: request.operationGeneration };
+  return request.kind === "action"
+    ? { ...state, completedActionGeneration: request.operationGeneration }
+    : { ...state, completedBootstrapGeneration: request.operationGeneration };
+}
+
+export function shouldInvokeProductImageRefresh(
+  state: ProductImageRequestState,
+  mountGeneration: number,
+  productId: number,
+): boolean {
+  return state.active && state.mountGeneration === mountGeneration && state.productId === productId;
 }
 
 export function invalidateProductImageRequests(
@@ -259,20 +296,26 @@ export function ProductImagePanel({
         const items = await fetchProductImageCandidates(product.id, {
           signal: list.controller.signal,
         });
-        if (!isCurrentProductImageRequest(requestState.current, list.request)) return;
-        requestState.current = resolveProductImageRequest(requestState.current, list.request);
-        setCandidates(items);
+        if (isCurrentProductImageRequest(requestState.current, list.request)) {
+          requestState.current = resolveProductImageRequest(requestState.current, list.request);
+          setCandidates(items);
+        }
       } catch (error: unknown) {
-        if (!isCurrentProductImageRequest(requestState.current, list.request)) return;
-        const message = requestErrorMessage(error, "Failed to load product image candidates.");
-        setStatusMessage(message);
-        toast(message, "error");
+        if (isCurrentProductImageRequest(requestState.current, list.request)) {
+          const message = requestErrorMessage(error, "Failed to load product image candidates.");
+          setStatusMessage(message);
+          toast(message, "error");
+        }
       } finally {
         controllers.current.delete(list.controller);
         if (isCurrentMount(mounted.mountGeneration, product.id)) setLoadingCandidates(false);
       }
 
-      if (!isCurrentProductImageRequest(requestState.current, list.request)) return;
+      if (
+        !shouldInvokeProductImageRefresh(requestState.current, mounted.mountGeneration, product.id)
+      ) {
+        return;
+      }
       setRefreshing(true);
       const refresh = beginRequest();
       try {

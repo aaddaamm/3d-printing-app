@@ -14,6 +14,7 @@ import {
   isCurrentProductImageRequest,
   resolveProductImageRequest,
   selectableCandidates,
+  shouldInvokeProductImageRefresh,
   tryBeginProductImageAction,
 } from "../frontend/components/product-image-panel.js";
 import type { ProductImageCandidate } from "../frontend/lib/api.js";
@@ -81,33 +82,46 @@ it("makes an older request stale as soon as a newer request starts, even when ne
   expect(resolveProductImageRequest(newer.state, older.request)).toBe(newer.state);
 });
 
-it("lets a user action invalidate either bootstrap phase and blocks synchronous duplicates", () => {
+it("keeps bootstrap invocation separate from user-action currency", () => {
   const mounted = beginProductImagePanelMount(initialProductImageRequestState(), 7);
   const list = beginProductImageRequest(mounted.state);
-  const selection = tryBeginProductImageAction(list.state);
+  const selection = tryBeginProductImageAction(list.state)!;
 
-  expect(selection).not.toBeNull();
-  expect(isCurrentProductImageRequest(selection!.state, list.request)).toBe(false);
-  expect(tryBeginProductImageAction(selection!.state)).toBeNull();
+  expect(isCurrentProductImageRequest(selection.state, list.request)).toBe(false);
+  expect(isCurrentProductImageRequest(selection.state, selection.request)).toBe(true);
+  expect(tryBeginProductImageAction(selection.state)).toBeNull();
+  expect(shouldInvokeProductImageRefresh(selection.state, mounted.mountGeneration, 7)).toBe(true);
 
-  const afterFailedSelection = finishProductImageAction(selection!.state, selection!.request);
-  expect(isCurrentProductImageRequest(afterFailedSelection, list.request)).toBe(false);
+  const afterSelection = finishProductImageAction(selection.state, selection.request);
+  const refresh = beginProductImageRequest(afterSelection);
 
-  const refresh = beginProductImageRequest(afterFailedSelection);
-  const upload = tryBeginProductImageAction(refresh.state);
-  expect(upload).not.toBeNull();
-  expect(isCurrentProductImageRequest(upload!.state, refresh.request)).toBe(false);
+  // Refresh is still invoked, but it neither becomes current nor invalidates the selection.
+  expect(isCurrentProductImageRequest(refresh.state, refresh.request)).toBe(false);
+  expect(isCurrentProductImageRequest(refresh.state, selection.request)).toBe(true);
 });
 
-it("invalidates requests on Product changes and unmount", () => {
+it("prevents a slower local list from overwriting refresh", () => {
   const mounted = beginProductImagePanelMount(initialProductImageRequestState(), 7);
-  const selection = tryBeginProductImageAction(mounted.state)!;
-  const nextProduct = beginProductImagePanelMount(selection.state, 8);
-  expect(isCurrentProductImageRequest(nextProduct.state, selection.request)).toBe(false);
+  const list = beginProductImageRequest(mounted.state);
+  const refresh = beginProductImageRequest(list.state);
+
+  expect(isCurrentProductImageRequest(refresh.state, list.request)).toBe(false);
+  expect(isCurrentProductImageRequest(refresh.state, refresh.request)).toBe(true);
+});
+
+it("invalidates bootstrap and actions on Product changes and unmount", () => {
+  const mounted = beginProductImagePanelMount(initialProductImageRequestState(), 7);
+  const list = beginProductImageRequest(mounted.state);
+  const nextProduct = beginProductImagePanelMount(list.state, 8);
+  expect(isCurrentProductImageRequest(nextProduct.state, list.request)).toBe(false);
+  expect(shouldInvokeProductImageRefresh(nextProduct.state, mounted.mountGeneration, 7)).toBe(
+    false,
+  );
 
   const upload = tryBeginProductImageAction(nextProduct.state)!;
   const unmounted = invalidateProductImageRequests(upload.state);
   expect(isCurrentProductImageRequest(unmounted, upload.request)).toBe(false);
+  expect(shouldInvokeProductImageRefresh(unmounted, nextProduct.mountGeneration, 8)).toBe(false);
 });
 
 it("connects stable unavailable-warning IDs to independently rendered warning text", () => {

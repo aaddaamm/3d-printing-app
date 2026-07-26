@@ -132,6 +132,69 @@ export function rejectProductDetailRequest(
   };
 }
 
+export type ProductReconciliationState = {
+  mountGeneration: number;
+  generation: number;
+  productId: number | null;
+  active: boolean;
+};
+
+export function initialProductReconciliationState(): ProductReconciliationState {
+  return { mountGeneration: 0, generation: 0, productId: null, active: false };
+}
+
+export function beginProductReconciliationMount(
+  state: ProductReconciliationState,
+  productId: number,
+): { state: ProductReconciliationState; mountGeneration: number } {
+  const mountGeneration = state.mountGeneration + 1;
+  return {
+    mountGeneration,
+    state: {
+      ...state,
+      mountGeneration,
+      generation: state.generation + 1,
+      productId,
+      active: true,
+    },
+  };
+}
+
+export function beginProductReconciliationRequest(
+  state: ProductReconciliationState,
+  productId: number,
+): { state: ProductReconciliationState; requestGeneration: number } {
+  if (!state.active || state.productId !== productId) {
+    throw new Error("Cannot reconcile an inactive Product detail.");
+  }
+  const requestGeneration = state.generation + 1;
+  return {
+    requestGeneration,
+    state: { ...state, generation: requestGeneration },
+  };
+}
+
+export function isCurrentProductReconciliation(
+  state: ProductReconciliationState,
+  requestGeneration: number,
+  productId: number,
+): boolean {
+  return state.active && state.productId === productId && state.generation === requestGeneration;
+}
+
+export function invalidateProductReconciliation(
+  state: ProductReconciliationState,
+): ProductReconciliationState {
+  return { ...state, active: false };
+}
+
+export function applyProductReconciliation(
+  current: ProductSummary | null,
+  authoritative: ProductSummary,
+): ProductSummary | null {
+  return current?.id === authoritative.id ? authoritative : current;
+}
+
 export function mergeProductImageResponse(
   current: ProductSummary | null,
   response: ProductSummary,
@@ -153,6 +216,13 @@ export function mergeProductFormResponse(
   if (!current || current.id !== response.id) return current;
   return {
     ...response,
+    category_label: current.category_label,
+    status_label: current.status_label,
+    source_label: current.source_label,
+    license_label: current.license_label,
+    can_sell_level: current.can_sell_level,
+    can_sell_label: current.can_sell_label,
+    ready_to_list: current.ready_to_list,
     main_photo_id: current.main_photo_id,
     main_photo_path: current.main_photo_path,
     main_photo_source_type: current.main_photo_source_type,
@@ -251,11 +321,17 @@ export function ProductDetailView({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const requestState = useRef(initialProductDetailRequestState());
+  const reconciliationState = useRef(initialProductReconciliationState());
+  const reconciliationControllers = useRef(new Set<AbortController>());
 
   useEffect(() => {
     let cancelled = false;
     const started = beginProductDetailRequest(requestState.current, productId);
     requestState.current = started.state;
+    reconciliationState.current = beginProductReconciliationMount(
+      reconciliationState.current,
+      productId,
+    ).state;
     setProduct(null);
     setForm(null);
     setLoadError(null);
@@ -295,8 +371,44 @@ export function ProductDetailView({
       });
     return () => {
       cancelled = true;
+      reconciliationState.current = invalidateProductReconciliation(reconciliationState.current);
+      for (const controller of reconciliationControllers.current) controller.abort();
+      reconciliationControllers.current.clear();
     };
   }, [productId]);
+
+  const reconcileProduct = async (id: number) => {
+    if (!reconciliationState.current.active || reconciliationState.current.productId !== id) {
+      return;
+    }
+    const started = beginProductReconciliationRequest(reconciliationState.current, id);
+    reconciliationState.current = started.state;
+    const controller = new AbortController();
+    reconciliationControllers.current.add(controller);
+    try {
+      const authoritative = await fetchProduct(id, { signal: controller.signal });
+      if (
+        !isCurrentProductReconciliation(reconciliationState.current, started.requestGeneration, id)
+      ) {
+        return;
+      }
+      const reconciled = applyProductReconciliation(requestState.current.product, authoritative);
+      if (!reconciled) return;
+      requestState.current = { ...requestState.current, product: reconciled };
+      setProduct((current) => applyProductReconciliation(current, authoritative));
+    } catch (error: unknown) {
+      if (
+        !isCurrentProductReconciliation(reconciliationState.current, started.requestGeneration, id)
+      ) {
+        return;
+      }
+      const message =
+        error instanceof Error ? error.message : "Failed to reconcile the latest Product details.";
+      toast(message, "error");
+    } finally {
+      reconciliationControllers.current.delete(controller);
+    }
+  };
 
   const setField = (field: keyof DetailFormState, value: string) => {
     setForm((current) => (current ? { ...current, [field]: value } : current));
@@ -349,6 +461,7 @@ export function ProductDetailView({
       requestState.current = { ...requestState.current, product: merged, form: updatedForm };
       setProduct((current) => mergeProductFormResponse(current, updated));
       setForm(updatedForm);
+      void reconcileProduct(updated.id);
       toast("Product updated.", "success");
     } finally {
       if (
@@ -366,6 +479,7 @@ export function ProductDetailView({
     if (!merged) return;
     requestState.current = { ...requestState.current, product: merged };
     setProduct((current) => mergeProductImageResponse(current, updated));
+    void reconcileProduct(updated.id);
   };
 
   if (requestState.current.productId !== productId || loading) {

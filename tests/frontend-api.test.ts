@@ -3,6 +3,7 @@ import { toast } from "../frontend/components/toast.js";
 import {
   addProjectJobsToBatch,
   calculatePriceQuote,
+  composeAbortSignals,
   createBatch,
   createProduct,
   createProductFromJob,
@@ -283,6 +284,21 @@ describe("frontend API endpoint contracts", () => {
     await expect(refresh).rejects.toThrow("Failed to refresh product images. (network error)");
     expect(fetchMock.mock.calls[0]?.[1]?.signal).not.toBe(caller.signal);
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+
+  it("removes fallback abort listeners from every signal after the first abort", () => {
+    const first = new AbortController();
+    const second = new AbortController();
+    const firstRemove = vi.spyOn(first.signal, "removeEventListener");
+    const secondRemove = vi.spyOn(second.signal, "removeEventListener");
+
+    const composed = composeAbortSignals([first.signal, second.signal], false);
+    first.abort("cancelled");
+
+    expect(composed.aborted).toBe(true);
+    expect(composed.reason).toBe("cancelled");
+    expect(firstRemove).toHaveBeenCalledWith("abort", expect.any(Function));
+    expect(secondRemove).toHaveBeenCalledWith("abort", expect.any(Function));
   });
 
   it("returns null when create helpers cannot complete", async () => {
