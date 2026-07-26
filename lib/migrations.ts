@@ -21,10 +21,12 @@ function safeIdentifier(identifier: string, kind: "table" | "column"): string {
   return identifier;
 }
 
-const SAFE_COLUMN_DEFINITION_RE =
+const SAFE_BASE_COLUMN_DEFINITION_RE =
   /^(?:INTEGER|REAL|TEXT|BLOB|NUMERIC)(?:\s+(?:NOT\s+NULL|UNIQUE|PRIMARY\s+KEY))*?(?:\s+DEFAULT\s+(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*'))?(?:\s+REFERENCES\s+[A-Za-z_][A-Za-z0-9_]*\s*\([A-Za-z_][A-Za-z0-9_]*\))?$/i;
+const SAFE_SIMPLE_CHECK_RE =
+  /^CHECK\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s+IN\s*\(\s*(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*')(?:\s*,\s*(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*'))*\s*\)\s*\)$/i;
 
-function assertSafeColumnDefinition(definition: string): void {
+function assertSafeColumnDefinition(definition: string, columnName?: string): void {
   const trimmed = definition.trim();
   if (!trimmed) throw new Error("Column definition must not be empty");
   if (/[;\0]/.test(trimmed)) {
@@ -33,7 +35,22 @@ function assertSafeColumnDefinition(definition: string): void {
   if (/--|\/\*/.test(trimmed)) {
     throw new Error(`Unsafe column definition comments are not allowed: ${definition}`);
   }
-  if (!SAFE_COLUMN_DEFINITION_RE.test(trimmed)) {
+
+  const match = trimmed.match(/^(.*?)(?:\s+(CHECK\s*\(.+\)))?$/i);
+  const baseDefinition = match?.[1]?.trim() ?? "";
+  const checkDefinition = match?.[2]?.trim();
+
+  if (!SAFE_BASE_COLUMN_DEFINITION_RE.test(baseDefinition)) {
+    throw new Error(`Unsafe or unsupported column definition: ${definition}`);
+  }
+
+  if (!checkDefinition) return;
+
+  const checkMatch = checkDefinition.match(SAFE_SIMPLE_CHECK_RE);
+  if (!checkMatch) {
+    throw new Error(`Unsafe or unsupported column definition: ${definition}`);
+  }
+  if (columnName && checkMatch[1] !== columnName) {
     throw new Error(`Unsafe or unsupported column definition: ${definition}`);
   }
 }
@@ -78,7 +95,7 @@ export function addColumnIfMissing(
   if (columnExists(db, tableName, columnName)) return;
   const safeTableName = safeIdentifier(tableName, "table");
   const safeColumnName = safeIdentifier(columnName, "column");
-  assertSafeColumnDefinition(columnDefinition);
+  assertSafeColumnDefinition(columnDefinition, columnName);
   db.exec(`ALTER TABLE ${safeTableName} ADD COLUMN ${safeColumnName} ${columnDefinition}`);
 }
 

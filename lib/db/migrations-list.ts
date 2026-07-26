@@ -940,6 +940,100 @@ const DB_MIGRATIONS: Migration[] = [
         .run(80, "custom_commission");
     },
   },
+  {
+    id: 20,
+    description: "add saved product pricing snapshots and image selection schema",
+    up(database) {
+      addColumnIfMissing(
+        database,
+        "products",
+        "sales_companion_visible",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (sales_companion_visible IN (0, 1))",
+      );
+      addColumnIfMissing(
+        database,
+        "products",
+        "image_selection_mode",
+        "TEXT NOT NULL DEFAULT 'auto' CHECK (image_selection_mode IN ('auto', 'manual'))",
+      );
+      database.exec(`
+        UPDATE products
+        SET image_selection_mode = 'manual'
+        WHERE main_photo_id IS NOT NULL
+      `);
+
+      addColumnIfMissing(
+        database,
+        "product_batches",
+        "source_type",
+        "TEXT NOT NULL DEFAULT 'planned' CHECK (source_type IN ('planned', 'price_quote'))",
+      );
+      addColumnIfMissing(database, "product_batches", "extra_cost", "REAL NOT NULL DEFAULT 0");
+
+      addColumnIfMissing(
+        database,
+        "product_photos",
+        "source_type",
+        "TEXT NOT NULL DEFAULT 'manual_upload'",
+      );
+      addColumnIfMissing(database, "product_photos", "source_ref", "TEXT");
+      addColumnIfMissing(database, "product_photos", "candidate_key", "TEXT");
+      addColumnIfMissing(
+        database,
+        "product_photos",
+        "is_app_owned",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (is_app_owned IN (0, 1))",
+      );
+      addColumnIfMissing(database, "product_photos", "content_type", "TEXT");
+      addColumnIfMissing(database, "product_photos", "width", "INTEGER");
+      addColumnIfMissing(database, "product_photos", "height", "INTEGER");
+
+      database.exec(`CREATE TABLE IF NOT EXISTS product_price_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        batch_id INTEGER NOT NULL REFERENCES product_batches(id) ON DELETE CASCADE,
+        channel TEXT NOT NULL CHECK (channel IN ('direct', 'etsy')),
+        snapshot_version INTEGER NOT NULL DEFAULT 1,
+        target_margin_pct REAL NOT NULL,
+        platform_fee_pct REAL NOT NULL,
+        fixed_fee_per_order REAL NOT NULL,
+        labor_hourly_rate REAL NOT NULL,
+        material_cost REAL NOT NULL,
+        machine_cost REAL NOT NULL,
+        production_loss_cost REAL NOT NULL,
+        batch_labor_cost REAL NOT NULL,
+        per_unit_labor_cost REAL NOT NULL,
+        packaging_cost REAL NOT NULL,
+        extra_cost REAL NOT NULL,
+        subtotal_cost REAL NOT NULL,
+        buffer_cost REAL NOT NULL,
+        total_cost REAL NOT NULL,
+        unit_cost REAL NOT NULL,
+        minimum_viable_price REAL NOT NULL,
+        suggested_price REAL NOT NULL,
+        profit_per_unit REAL NOT NULL,
+        profit_per_batch REAL NOT NULL,
+        estimated_margin_pct REAL NOT NULL,
+        input_json TEXT NOT NULL,
+        assumptions_json TEXT NOT NULL,
+        warnings_json TEXT NOT NULL,
+        breakdown_json TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (batch_id, channel)
+      )`);
+      database.exec(
+        `CREATE INDEX IF NOT EXISTS idx_products_sales_companion_visible
+          ON products(sales_companion_visible) WHERE sales_companion_visible = 1`,
+      );
+      database.exec(
+        `CREATE INDEX IF NOT EXISTS idx_product_price_snapshots_batch_created
+          ON product_price_snapshots(batch_id, created_at DESC)`,
+      );
+      database.exec(
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_product_photos_candidate
+          ON product_photos(product_id, candidate_key) WHERE candidate_key IS NOT NULL`,
+      );
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

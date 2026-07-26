@@ -111,6 +111,45 @@ describe("migration helpers", () => {
     expect([...database.tables.get("things")!].filter((col) => col === "name")).toHaveLength(1);
   });
 
+  it("accepts simple literal CHECK IN constraints for the added column", () => {
+    const database = fakeDb();
+    database.exec("CREATE TABLE things (id INTEGER PRIMARY KEY)");
+
+    addColumnIfMissing(
+      database,
+      "things",
+      "mode",
+      "TEXT NOT NULL DEFAULT 'auto' CHECK (mode IN ('auto', 'manual'))",
+    );
+
+    expect(columnExists(database, "things", "mode")).toBe(true);
+  });
+
+  it("rejects unsafe or unsupported column definitions", () => {
+    const database = fakeDb();
+    database.exec("CREATE TABLE things (id INTEGER PRIMARY KEY)");
+
+    expect(() =>
+      addColumnIfMissing(
+        database,
+        "things",
+        "mode",
+        "TEXT NOT NULL DEFAULT 'auto' CHECK (other_mode IN ('auto', 'manual'))",
+      ),
+    ).toThrow(/Unsafe or unsupported column definition/i);
+    expect(() =>
+      addColumnIfMissing(
+        database,
+        "things",
+        "mode",
+        "TEXT NOT NULL CHECK (mode IN (lower('auto'), 'manual'))",
+      ),
+    ).toThrow(/Unsafe or unsupported column definition/i);
+    expect(() =>
+      addColumnIfMissing(database, "things", "mode", "TEXT; DROP TABLE things"),
+    ).toThrow(/Unsafe column definition/i);
+  });
+
   it("drops columns only when present", () => {
     const database = fakeDb();
     database.exec("CREATE TABLE things (id INTEGER PRIMARY KEY, old_value TEXT)");
