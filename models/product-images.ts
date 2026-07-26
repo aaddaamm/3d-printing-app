@@ -5,10 +5,11 @@ import { localCoverPath } from "../lib/covers.js";
 import { db } from "../lib/db.js";
 import {
   appOwnedProductImageContentHash,
+  createProductContactSheetSnapshot,
   fingerprintProductContactSheetInputs,
   generateProductContactSheet,
-  removeAppOwnedProductImage,
   type ContactSheetInput,
+  type StoredProductContactSheet,
   type StoredProductImage,
 } from "../lib/product-image-files.js";
 import { projectProductPhotoPath } from "../lib/product-photo-path.js";
@@ -368,7 +369,10 @@ function compareCandidates(left: CandidateDetails, right: CandidateDetails): num
   return left.candidate_key.localeCompare(right.candidate_key);
 }
 
-function listCandidateDetails(productId: number): CandidateDetails[] {
+function listCandidateDetails(
+  productId: number,
+  contactSheetContextOverride?: ContactSheetContext | null,
+): CandidateDetails[] {
   requireProduct(productId);
   const coverRows = latestSavedBatchCoverRows(productId);
   const derivedCandidates = [
@@ -378,7 +382,10 @@ function listCandidateDetails(productId: number): CandidateDetails[] {
   const currentDerivedByKey = new Map(
     derivedCandidates.map((candidate) => [candidate.candidate_key, candidate]),
   );
-  const contactSheetContext = currentContactSheetContext(coverRows);
+  const contactSheetContext =
+    contactSheetContextOverride === undefined
+      ? currentContactSheetContext(coverRows)
+      : contactSheetContextOverride;
   const candidates = [
     ...persistedCandidates(productId, currentDerivedByKey, contactSheetContext),
     ...derivedCandidates,
@@ -449,8 +456,7 @@ function currentContactSheetContext(rows: CoverRow[]): ContactSheetContext | nul
 function upsertContactSheet(
   productId: number,
   batchId: number,
-  sourceRef: string,
-  stored: StoredProductImage,
+  stored: StoredProductContactSheet,
 ): void {
   const candidateKey = `contact_sheet:${batchId}:${stored.contentHash}`;
   db.prepare(
@@ -471,7 +477,7 @@ function upsertContactSheet(
     productId,
     stored.path,
     `Batch ${batchId} contact sheet`,
-    sourceRef,
+    `contact_sheet:${batchId}:${stored.sourceFingerprint}`,
     candidateKey,
     stored.contentType,
     stored.width,
@@ -491,21 +497,29 @@ export async function ensureGeneratedProductImageCandidates(
   }
 
   try {
-    const fingerprint = fingerprintProductContactSheetInputs(inputs);
-    const sourceRef = `contact_sheet:${batchId}:${fingerprint}`;
-    const currentCandidates = listCandidateDetails(productId);
+    const snapshot = createProductContactSheetSnapshot(inputs);
+    const contactSheetContext = {
+      batchId,
+      sourceRef: `contact_sheet:${batchId}:${snapshot.fingerprint}`,
+    };
+    const currentCandidates = listCandidateDetails(productId, contactSheetContext);
     if (
       currentCandidates.some(
         ({ source_type, source_ref, available }) =>
-          source_type === "contact_sheet" && source_ref === sourceRef && available,
+          source_type === "contact_sheet" &&
+          source_ref === contactSheetContext.sourceRef &&
+          available,
       )
     ) {
       return { candidates: currentCandidates.map(publicCandidate), warnings: [] };
     }
 
-    const stored = await generateProductContactSheet(productId, batchId, inputs);
-    if (stored) upsertContactSheet(productId, batchId, sourceRef, stored);
-    return { candidates: listProductImageCandidates(productId), warnings: [] };
+    const stored = await generateProductContactSheet(productId, batchId, snapshot);
+    if (stored) upsertContactSheet(productId, batchId, stored);
+    return {
+      candidates: listCandidateDetails(productId, contactSheetContext).map(publicCandidate),
+      warnings: [],
+    };
   } catch {
     // A generated content-addressed file may be shared or concurrently referenced. If its
     // upsert fails, retain the safe orphan for a later reference-aware garbage collector.
@@ -644,18 +658,6 @@ export function createManualProductPhoto(
   stored: StoredProductImage,
 ): { product: ProductSummary; photo: ProductPhoto } {
   return createManualProductPhotoTransaction(productId, stored);
-}
-
-export function removeUnreferencedAppOwnedProductImage(filePath: string): boolean {
-  const referenced = db
-    .prepare<
-      [string],
-      { referenced: number }
-    >("SELECT EXISTS(SELECT 1 FROM product_photos WHERE path = ?) AS referenced")
-    .get(filePath)?.referenced;
-  if (referenced !== 0) return false;
-  removeAppOwnedProductImage(filePath);
-  return true;
 }
 
 const selectProductImageTransaction = db.transaction(

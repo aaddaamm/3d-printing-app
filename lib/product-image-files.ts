@@ -4,6 +4,12 @@ import path from "node:path";
 import sharp, { type OverlayOptions } from "sharp";
 
 export type ContactSheetInput = { key: string; label: string; path: string };
+declare const productContactSheetSnapshotBrand: unique symbol;
+export type ProductContactSheetSnapshot = {
+  readonly fingerprint: string;
+  readonly inputCount: number;
+  readonly [productContactSheetSnapshotBrand]: true;
+};
 export type StoredProductImage = {
   path: string;
   contentType: "image/webp";
@@ -11,6 +17,10 @@ export type StoredProductImage = {
   height: number;
   contentHash: string;
   createdOrRepaired: boolean;
+};
+
+export type StoredProductContactSheet = StoredProductImage & {
+  sourceFingerprint: string;
 };
 
 export class ProductImageFileValidationError extends Error {
@@ -39,6 +49,12 @@ const CELL_PADDING = 16;
 const OWNED_FILE_RE = /^\d+\/(?:uploads|remote|contact-sheets)\/[a-f0-9]{64}\.webp$/;
 
 type OwnedImageKind = "uploads" | "remote" | "contact-sheets";
+type ContactSheetSnapshotInput = { key: string; label: string; bytes: Buffer };
+
+const contactSheetSnapshotData = new WeakMap<
+  ProductContactSheetSnapshot,
+  readonly ContactSheetSnapshotInput[]
+>();
 
 function productImagesRoot(): string {
   return path.resolve(process.env.PRODUCT_IMAGES_DIR ?? "./product-images");
@@ -314,18 +330,38 @@ function readRegularInput(filePath: string): Buffer {
   }
 }
 
-export function fingerprintProductContactSheetInputs(inputs: ContactSheetInput[]): string {
-  const normalizedInputs = normalizedContactSheetInputs(inputs);
+function fingerprintContactSheetSnapshotInputs(
+  inputs: readonly ContactSheetSnapshotInput[],
+): string {
   const fingerprint = createHash("sha256");
-  for (const input of normalizedInputs) {
-    const bytes = readRegularInput(input.path);
+  for (const input of inputs) {
     const key = Buffer.from(input.key);
     const label = Buffer.from(input.label);
     fingerprint.update(String(key.byteLength)).update(":").update(key);
     fingerprint.update(String(label.byteLength)).update(":").update(label);
-    fingerprint.update(sha256(bytes));
+    fingerprint.update(sha256(input.bytes));
   }
   return fingerprint.digest("hex");
+}
+
+export function createProductContactSheetSnapshot(
+  inputs: ContactSheetInput[],
+): ProductContactSheetSnapshot {
+  const snapshotInputs = normalizedContactSheetInputs(inputs).map((input) => ({
+    key: input.key,
+    label: input.label,
+    bytes: Buffer.from(readRegularInput(input.path)),
+  }));
+  const snapshot = Object.freeze({
+    fingerprint: fingerprintContactSheetSnapshotInputs(snapshotInputs),
+    inputCount: snapshotInputs.length,
+  }) as ProductContactSheetSnapshot;
+  contactSheetSnapshotData.set(snapshot, snapshotInputs);
+  return snapshot;
+}
+
+export function fingerprintProductContactSheetInputs(inputs: ContactSheetInput[]): string {
+  return createProductContactSheetSnapshot(inputs).fingerprint;
 }
 
 export function appOwnedProductImageContentHash(
@@ -348,15 +384,18 @@ export function appOwnedProductImageContentHash(
 export async function generateProductContactSheet(
   productId: number,
   batchId: number,
-  inputs: ContactSheetInput[],
-): Promise<StoredProductImage | null> {
+  snapshot: ProductContactSheetSnapshot,
+): Promise<StoredProductContactSheet | null> {
   assertPositiveId(productId, "productId");
   assertPositiveId(batchId, "batchId");
-  const normalizedInputs = normalizedContactSheetInputs(inputs);
-  if (normalizedInputs.length < 2) return null;
+  const snapshotInputs = contactSheetSnapshotData.get(snapshot);
+  if (!snapshotInputs) {
+    throw new ProductImageFileValidationError("Invalid Product contact-sheet snapshot");
+  }
+  if (snapshotInputs.length < 2) return null;
 
-  const columns = Math.min(CONTACT_SHEET_COLUMNS, normalizedInputs.length);
-  const rows = Math.ceil(normalizedInputs.length / columns);
+  const columns = Math.min(CONTACT_SHEET_COLUMNS, snapshotInputs.length);
+  const rows = Math.ceil(snapshotInputs.length / columns);
   const width = columns * CELL_WIDTH;
   const height = rows * CELL_HEIGHT;
   if (Math.max(width, height) > MAX_OUTPUT_EDGE) {
@@ -364,9 +403,8 @@ export async function generateProductContactSheet(
   }
 
   const composites: OverlayOptions[] = [];
-  for (const [index, input] of normalizedInputs.entries()) {
-    const sourceBytes = readRegularInput(input.path);
-    const image = await sharp(sourceBytes, {
+  for (const [index, input] of snapshotInputs.entries()) {
+    const image = await sharp(input.bytes, {
       failOn: "error",
       limitInputPixels: MAX_INPUT_PIXELS,
     })
@@ -410,6 +448,7 @@ export async function generateProductContactSheet(
     height: result.info.height,
     contentHash,
     createdOrRepaired,
+    sourceFingerprint: snapshot.fingerprint,
   };
 }
 

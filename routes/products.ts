@@ -19,7 +19,6 @@ import {
 import {
   createManualProductPhoto,
   ensureGeneratedProductImageCandidates,
-  removeUnreferencedAppOwnedProductImage,
   returnProductImageToAuto,
   selectProductImage,
 } from "../models/product-images.js";
@@ -213,16 +212,8 @@ products.post(
       const result = createManualProductPhoto(idOrError, stored);
       return c.json({ product: result.product, photo: publicUploadedPhoto(result.photo) }, 201);
     } catch (error: unknown) {
-      if (stored.createdOrRepaired) {
-        try {
-          removeUnreferencedAppOwnedProductImage(stored.path);
-        } catch (cleanupError: unknown) {
-          console.error(
-            "Failed to clean up an unreferenced Product image after database failure.",
-            cleanupError,
-          );
-        }
-      }
+      // Content-addressed output is retained as a safe orphan. Inline reference-check/delete
+      // races with another request committing the same path; later GC must prove it unreferenced.
       return handleProductError(c, error);
     }
   },

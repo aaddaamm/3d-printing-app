@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   ProductImageFileSizeError,
   ProductImageFileValidationError,
+  createProductContactSheetSnapshot,
   generateProductContactSheet,
   removeAppOwnedProductImage,
   storeRemoteProductImage,
@@ -121,19 +122,47 @@ describe.sequential("product image files", () => {
     const plateA = { key: "plate:a", label: 'A <plate> & "one"', path: plateAPath };
     const plateB = { key: "plate:b", label: "B's plate", path: plateBPath };
 
-    const first = await generateProductContactSheet(3, 8, [plateA, plateB, plateA]);
-    const second = await generateProductContactSheet(3, 8, [plateB, plateA]);
+    const firstSnapshot = createProductContactSheetSnapshot([plateA, plateB, plateA]);
+    const secondSnapshot = createProductContactSheetSnapshot([plateB, plateA]);
+    const first = await generateProductContactSheet(3, 8, firstSnapshot);
+    const second = await generateProductContactSheet(3, 8, secondSnapshot);
 
     expect(first).not.toBeNull();
-    expect(first).toMatchObject({ createdOrRepaired: true });
+    expect(firstSnapshot.fingerprint).toBe(secondSnapshot.fingerprint);
+    expect(first).toMatchObject({
+      createdOrRepaired: true,
+      sourceFingerprint: firstSnapshot.fingerprint,
+    });
     expect(second).toMatchObject({
       path: first!.path,
       contentHash: first!.contentHash,
+      sourceFingerprint: secondSnapshot.fingerprint,
       createdOrRepaired: false,
     });
     expect(first!.path).toContain(`${path.sep}3${path.sep}contact-sheets${path.sep}`);
     expect(await sharp(first!.path).metadata()).toMatchObject({ format: "webp" });
     expect(Math.max(first!.width, first!.height)).toBeLessThanOrEqual(1600);
+  });
+
+  it("renders only from immutable snapshot bytes after source paths disappear", async () => {
+    const plateAPath = path.join(tempDir, "snapshot-a.png");
+    const plateBPath = path.join(tempDir, "snapshot-b.png");
+    await sharp(await png(100, 80, "#117799")).toFile(plateAPath);
+    await sharp(await png(80, 100, "#991177")).toFile(plateBPath);
+    const snapshot = createProductContactSheetSnapshot([
+      { key: "snapshot:a", label: "Snapshot A", path: plateAPath },
+      { key: "snapshot:b", label: "Snapshot B", path: plateBPath },
+    ]);
+    fs.rmSync(plateAPath);
+    fs.rmSync(plateBPath);
+
+    const stored = await generateProductContactSheet(5, 9, snapshot);
+
+    expect(stored).toMatchObject({
+      sourceFingerprint: snapshot.fingerprint,
+      contentType: "image/webp",
+    });
+    expect((await sharp(stored!.path).metadata()).format).toBe("webp");
   });
 
   it("rejects byte-oversize and symlink contact-sheet inputs", async () => {
@@ -144,18 +173,18 @@ describe.sequential("product image files", () => {
     fs.writeFileSync(oversizedPath, new Uint8Array(MAX_UPLOAD_BYTES + 1));
     fs.symlinkSync(validPath, symlinkPath);
 
-    await expect(
-      generateProductContactSheet(1, 1, [
+    expect(() =>
+      createProductContactSheetSnapshot([
         { key: "oversized", label: "oversized", path: oversizedPath },
         { key: "valid", label: "valid", path: validPath },
       ]),
-    ).rejects.toThrow(/10 MiB/i);
-    await expect(
-      generateProductContactSheet(1, 1, [
+    ).toThrow(/10 MiB/i);
+    expect(() =>
+      createProductContactSheetSnapshot([
         { key: "linked", label: "linked", path: symlinkPath },
         { key: "valid", label: "valid", path: validPath },
       ]),
-    ).rejects.toThrow(/regular|symlink/i);
+    ).toThrow(/regular|symlink/i);
   });
 
   it("skips sheets with fewer than two unique inputs and bounds the cell count", async () => {
@@ -163,18 +192,17 @@ describe.sequential("product image files", () => {
     await sharp(await png(40, 40, "#999999")).toFile(filePath);
     const single = { key: "same", label: "same", path: filePath };
 
-    await expect(generateProductContactSheet(1, 1, [single, single])).resolves.toBeNull();
-    await expect(
-      generateProductContactSheet(
-        1,
-        1,
+    const singleSnapshot = createProductContactSheetSnapshot([single, single]);
+    await expect(generateProductContactSheet(1, 1, singleSnapshot)).resolves.toBeNull();
+    expect(() =>
+      createProductContactSheetSnapshot(
         Array.from({ length: 13 }, (_, index) => ({
           key: String(index),
           label: String(index),
           path: filePath,
         })),
       ),
-    ).rejects.toThrow(/12/);
+    ).toThrow(/12/);
   });
 
   it("removes only regular files contained by the app-owned root", async () => {

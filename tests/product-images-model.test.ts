@@ -425,7 +425,7 @@ describe.sequential("product image model", () => {
     expect(fs.readdirSync(contactDirectory)).toHaveLength(1);
   });
 
-  it("cleans only newly written uploads that have no committed photo reference", async () => {
+  it("retains pre-existing and newly written uploads after database rollback", async () => {
     const product = productsModule!.createProduct({ name: "Cleanup Dragon" });
     const bytes = await sharp({
       create: { width: 32, height: 32, channels: 3, background: "#112233" },
@@ -454,7 +454,7 @@ describe.sequential("product image model", () => {
         .pluck()
         .get(selected.photo.id),
     ).toBe(first.path);
-    expect(productImagesModule!.removeUnreferencedAppOwnedProductImage(first.path)).toBe(false);
+    expect(fs.existsSync(first.path)).toBe(true);
 
     const freshBytes = await sharp({
       create: { width: 33, height: 33, channels: 3, background: "#445566" },
@@ -466,8 +466,13 @@ describe.sequential("product image model", () => {
     expect(() => productImagesModule!.createManualProductPhoto(product.id, fresh)).toThrow(
       /forced database failure/i,
     );
-    expect(productImagesModule!.removeUnreferencedAppOwnedProductImage(fresh.path)).toBe(true);
-    expect(fs.existsSync(fresh.path)).toBe(false);
+    expect(fs.existsSync(fresh.path)).toBe(true);
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE path = ?")
+        .pluck()
+        .get(fresh.path),
+    ).toBe(0);
   });
 
   it("transactionally inserts a Manual upload and selects it as the main photo", () => {

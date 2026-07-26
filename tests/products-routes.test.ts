@@ -11,7 +11,6 @@ const {
   mockListProducts,
   mockListProductsToPrintNext,
   mockListSalesCompanionProducts,
-  mockRemoveUnreferencedAppOwnedProductImage,
   mockReturnProductImageToAuto,
   mockSelectProductImage,
   mockStoreUploadedProductImage,
@@ -37,7 +36,6 @@ const {
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockListSalesCompanionProducts: vi.fn(),
-    mockRemoveUnreferencedAppOwnedProductImage: vi.fn(),
     mockReturnProductImageToAuto: vi.fn(),
     mockSelectProductImage: vi.fn(),
     mockStoreUploadedProductImage: vi.fn(),
@@ -70,7 +68,6 @@ vi.mock("../models/product-images.js", () => ({
   ProductImageValidationError: MockProductImageValidationError,
   createManualProductPhoto: mockCreateManualProductPhoto,
   ensureGeneratedProductImageCandidates: mockEnsureGeneratedProductImageCandidates,
-  removeUnreferencedAppOwnedProductImage: mockRemoveUnreferencedAppOwnedProductImage,
   returnProductImageToAuto: mockReturnProductImageToAuto,
   selectProductImage: mockSelectProductImage,
 }));
@@ -466,7 +463,7 @@ describe("product routes", () => {
     expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
   });
 
-  it("removes only the stored owned upload when the database transaction fails", async () => {
+  it("retains a newly created upload as a safe orphan when the database transaction fails", async () => {
     mockCreateManualProductPhoto.mockImplementation(() => {
       throw new Error("database failed");
     });
@@ -479,9 +476,6 @@ describe("product routes", () => {
     });
 
     expect(res.status).toBe(500);
-    expect(mockRemoveUnreferencedAppOwnedProductImage).toHaveBeenCalledWith(
-      "/tmp/product-images/1/uploads/upload.webp",
-    );
   });
 
   it("does not remove a pre-existing content-addressed upload after database failure", async () => {
@@ -505,7 +499,6 @@ describe("product routes", () => {
     });
 
     expect(res.status).toBe(500);
-    expect(mockRemoveUnreferencedAppOwnedProductImage).not.toHaveBeenCalled();
   });
 
   it("maps typed invalid uploaded image bytes to 400 without database cleanup", async () => {
@@ -522,7 +515,6 @@ describe("product routes", () => {
 
     expect(res.status).toBe(400);
     expect(mockCreateManualProductPhoto).not.toHaveBeenCalled();
-    expect(mockRemoveUnreferencedAppOwnedProductImage).not.toHaveBeenCalled();
   });
 
   it("maps typed image size errors to 413 and storage failures to 500", async () => {
@@ -546,13 +538,9 @@ describe("product routes", () => {
     expect(storageRes.status).toBe(500);
   });
 
-  it("does not mask the original database error when cleanup fails", async () => {
-    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+  it("preserves the original database error without attempting inline cleanup", async () => {
     mockCreateManualProductPhoto.mockImplementation(() => {
       throw new MockProductImageValidationError("database validation failed");
-    });
-    mockRemoveUnreferencedAppOwnedProductImage.mockImplementation(() => {
-      throw new Error("cleanup failed");
     });
     const form = new FormData();
     form.set("photo", new File(["bytes"], "photo.png"));
@@ -564,11 +552,6 @@ describe("product routes", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "database validation failed" });
-    expect(log).toHaveBeenCalledWith(
-      "Failed to clean up an unreferenced Product image after database failure.",
-      expect.any(Error),
-    );
-    log.mockRestore();
   });
 
   it("selects Manual candidates and returns the Product", async () => {
