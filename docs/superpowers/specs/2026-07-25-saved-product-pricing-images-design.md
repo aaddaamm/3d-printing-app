@@ -321,12 +321,6 @@ Existing Products default to private and Auto image mode. Existing `main_photo_i
 
 Each step must leave the local app usable and independently testable.
 
-## Task 11 completion proof
-
-Task 11 closes the local Product foundation with a repeatable isolated smoke flow: seed one finished attempt and one failed attempt, save them to a new Product, assert HTTP 201 plus immutable Direct/Etsy snapshots with one shared unit cost and different suggested prices, verify Product pricing history, verify the Product stays private until `sales_companion_visible` is explicitly enabled, and verify local print-cover/placeholder image fallback without any live MakerWorld dependency.
-
-Operator-facing docs must also state the Save-to-Product workflow, immutable history semantics, explicit Sales Companion visibility boundary, Auto/Manual image ranking, `PRODUCT_IMAGES_DIR` ownership boundary, best-effort MakerWorld-only enrichment, authenticated Cubee exclusion, retained safe orphans tracked by issue #47, and that hosted/cloud publication plus native Mac packaging remain deferred.
-
 ## Out of scope
 
 - Hosted Sales Companion deployment, authentication, or cloud database.

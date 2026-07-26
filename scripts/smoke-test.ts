@@ -1,5 +1,7 @@
+import { deepStrictEqual } from "node:assert/strict";
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { createServer, type AddressInfo } from "node:net";
 import os from "node:os";
 import path from "node:path";
 import Database from "better-sqlite3";
@@ -17,16 +19,39 @@ type SmokeContext = {
   projectId: number | null;
 };
 
+type StartedServer = {
+  child: ChildProcessWithoutNullStreams;
+  useProcessGroup: boolean;
+};
+
 type JsonRecord = Record<string, unknown>;
 
 type UiDataResponse = {
   jobs?: Array<{ cover_url?: string | null }>;
 };
 
+type PriceQuoteInput = {
+  job_ids: number[];
+  sellable_units: number;
+  batch_labor_minutes: number;
+  per_unit_labor_minutes: number;
+  packaging_cost_per_unit: number;
+  extra_cost: number;
+  target_margin_pct: number;
+  channel?: "direct" | "etsy";
+};
+
+type PriceQuoteResponse = {
+  quote?: {
+    breakdown?: { unitCost?: unknown; suggestedPrice?: unknown };
+  };
+};
+
 type SavedQuote = {
   channel?: string;
   attempts?: Array<{ status?: string; production_loss_cost?: number }>;
   breakdown?: { unitCost?: number; suggestedPrice?: number };
+  [key: string]: unknown;
 };
 
 type SavedProductPricingResponse = {
@@ -39,6 +64,21 @@ type SavedProductPricingResponse = {
     };
   };
 };
+
+type ProductPricingHistoryResponse = {
+  history?: Array<{
+    batch_id?: number;
+    snapshots?: { direct?: { quote?: SavedQuote }; etsy?: { quote?: SavedQuote } };
+  }>;
+};
+
+// Keep every smoke HTTP request and response-body read under one shared deadline so hangs fail
+// clearly and consistently during local orchestration.
+const HTTP_TIMEOUT_MS = 10_000;
+const GATE_TIMEOUT_MS = 10 * 60_000;
+const HEALTH_WAIT_MS = 30_000;
+const SERVER_EXIT_TIMEOUT_MS = 5_000;
+const LOCAL_HOST = "127.0.0.1";
 
 const GATES: Array<{ command: string; args: string[]; label: string }> = [
   { command: "npm", args: ["run", "typecheck"], label: "npm run typecheck" },
@@ -65,22 +105,87 @@ function runGate(gate: { command: string; args: string[]; label: string }): void
     shell: false,
     stdio: "inherit",
     env: process.env,
+    timeout: GATE_TIMEOUT_MS,
   });
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === "ETIMEDOUT") {
+      throw new Error(`${gate.label} timed out after ${GATE_TIMEOUT_MS}ms`, {
+        cause: result.error,
+      });
+    }
+    throw new Error(`${gate.label} failed to start: ${result.error.message}`, {
+      cause: result.error,
+    });
+  }
+  if (result.signal) {
+    throw new Error(`${gate.label} terminated by signal ${result.signal}`);
+  }
   if (result.status !== 0) {
     throw new Error(`${gate.label} failed with exit code ${result.status ?? "unknown"}`);
   }
   pass(gate.label);
 }
 
-function randomPort(): number {
-  return 31_000 + Math.floor(Math.random() * 10_000);
+async function reserveLocalPort(port: number): Promise<number> {
+  return await new Promise<number>((resolve, reject) => {
+    const server = createServer();
+    server.unref();
+    server.once("error", (error: Error) => {
+      reject(error);
+    });
+    server.listen({ host: LOCAL_HOST, port }, () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close();
+        reject(new Error("Smoke test could not determine a numeric TCP port"));
+        return;
+      }
+      const selectedPort = (address as AddressInfo).port;
+      server.close((error) => {
+        if (error) {
+          reject(new Error(`Smoke test could not release port ${selectedPort}: ${error.message}`));
+          return;
+        }
+        resolve(selectedPort);
+      });
+    });
+  });
+}
+
+async function choosePort(): Promise<number> {
+  const requested = process.env["SMOKE_PORT"];
+  if (!requested) return await reserveLocalPort(0);
+
+  if (!/^\d+$/.test(requested)) {
+    throw new Error(`SMOKE_PORT must be an integer TCP port, received ${JSON.stringify(requested)}`);
+  }
+  const port = Number(requested);
+  if (!Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error(`SMOKE_PORT must be between 1 and 65535, received ${requested}`);
+  }
+  try {
+    return await reserveLocalPort(port);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Requested SMOKE_PORT ${port} is unavailable on ${LOCAL_HOST}: ${message}`, {
+      cause: error,
+    });
+  }
+}
+
+function withDb<T>(dbPath: string, execute: (db: Database.Database) => T): T {
+  const db = new Database(dbPath);
+  try {
+    return execute(db);
+  } finally {
+    db.close();
+  }
 }
 
 async function prepareSmokeData(
   ctx: SmokeContext,
 ): Promise<Pick<SmokeContext, "jobId" | "failedJobId" | "projectId">> {
-  const db = new Database(ctx.dbPath);
-  try {
+  return await withDb(ctx.dbPath, async (db) => {
     db.exec(`
       DELETE FROM machine_rates;
       DELETE FROM material_rates;
@@ -185,19 +290,17 @@ async function prepareSmokeData(
     ]);
 
     return { jobId, failedJobId, projectId };
-  } finally {
-    db.close();
-  }
+  });
 }
 
 async function createTempDb(): Promise<SmokeContext> {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "printworks-smoke-"));
-  const port = randomPort();
+  const port = await choosePort();
   return {
     tempDir,
     dbPath: path.join(tempDir, "smoke.sqlite"),
     port,
-    origin: `http://127.0.0.1:${port}`,
+    origin: `http://${LOCAL_HOST}:${port}`,
     coversDir: path.join(tempDir, "covers"),
     productImagesDir: path.join(tempDir, "product-images"),
     jobId: null,
@@ -206,12 +309,14 @@ async function createTempDb(): Promise<SmokeContext> {
   };
 }
 
-function startServer(ctx: SmokeContext): ChildProcessWithoutNullStreams {
+function startServer(ctx: SmokeContext): StartedServer {
   logStep(`start API server on ${ctx.origin}`);
+  const useProcessGroup = process.platform !== "win32";
   const child = spawn("npx", ["tsx", "api.ts"], {
+    detached: useProcessGroup,
     env: {
       ...process.env,
-      HOST: "127.0.0.1",
+      HOST: LOCAL_HOST,
       PORT: String(ctx.port),
       BAMBU_DB: ctx.dbPath,
       BAMBU_COVERS_DIR: ctx.coversDir,
@@ -227,11 +332,14 @@ function startServer(ctx: SmokeContext): ChildProcessWithoutNullStreams {
 
   child.stdout.on("data", (chunk: Buffer) => process.stdout.write(chunk));
   child.stderr.on("data", (chunk: Buffer) => process.stderr.write(chunk));
-  child.on("exit", (code) => {
+  child.on("exit", (code, signal) => {
     if (code !== null && code !== 0) warn(`API server exited with code ${code}`);
+    if (code === null && signal && signal !== "SIGTERM" && signal !== "SIGKILL") {
+      warn(`API server exited with signal ${signal}`);
+    }
   });
 
-  return child;
+  return { child, useProcessGroup };
 }
 
 function parseJsonResponse<T extends JsonRecord>(text: string, url: string): T {
@@ -244,9 +352,54 @@ function parseJsonResponse<T extends JsonRecord>(text: string, url: string): T {
   }
 }
 
-async function fetchJson<T extends JsonRecord>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
-  const text = await response.text();
+async function withHttpTimeout<T>(
+  label: string,
+  execute: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
+  try {
+    return await execute(controller.signal);
+  } catch (error: unknown) {
+    if (controller.signal.aborted) {
+      throw new Error(`${label} timed out after ${HTTP_TIMEOUT_MS}ms`, { cause: error });
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function fetchText(
+  url: string,
+  init: RequestInit | undefined,
+  label: string,
+): Promise<{ response: Response; text: string }> {
+  return await withHttpTimeout(label, async (signal) => {
+    const response = await fetch(url, { ...init, signal });
+    const text = await response.text();
+    return { response, text };
+  });
+}
+
+async function fetchBytes(
+  url: string,
+  init: RequestInit | undefined,
+  label: string,
+): Promise<{ response: Response; bytes: Uint8Array }> {
+  return await withHttpTimeout(label, async (signal) => {
+    const response = await fetch(url, { ...init, signal });
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    return { response, bytes };
+  });
+}
+
+async function fetchJson<T extends JsonRecord>(
+  url: string,
+  init: RequestInit | undefined,
+  label: string,
+): Promise<T> {
+  const { response, text } = await fetchText(url, init, label);
   const data = parseJsonResponse<T>(text, url);
   if (!response.ok) {
     throw new Error(`${init?.method ?? "GET"} ${url} failed ${response.status}: ${text}`);
@@ -255,11 +408,11 @@ async function fetchJson<T extends JsonRecord>(url: string, init?: RequestInit):
 }
 
 async function waitForHealth(origin: string): Promise<void> {
-  const deadline = Date.now() + 30_000;
+  const deadline = Date.now() + HEALTH_WAIT_MS;
   let lastError: unknown = null;
   while (Date.now() < deadline) {
     try {
-      const health = await fetchJson<{ ok?: unknown }>(`${origin}/health`);
+      const health = await fetchJson<{ ok?: unknown }>(`${origin}/health`, undefined, "GET /health");
       if (health.ok === true) {
         pass("health check");
         return;
@@ -270,12 +423,13 @@ async function waitForHealth(origin: string): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
-  throw lastError instanceof Error ? lastError : new Error("Timed out waiting for /health");
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`Timed out waiting for /health after ${HEALTH_WAIT_MS}ms`);
 }
 
 async function assertHtml(origin: string): Promise<void> {
-  const response = await fetch(`${origin}/ui`);
-  const html = await response.text();
+  const { response, text: html } = await fetchText(`${origin}/ui`, undefined, "GET /ui");
   if (!response.ok || !html.includes("PrintWorks")) {
     throw new Error(`GET /ui failed ${response.status}`);
   }
@@ -283,7 +437,7 @@ async function assertHtml(origin: string): Promise<void> {
 }
 
 async function assertCoverRoute(origin: string): Promise<void> {
-  const data = await fetchJson<UiDataResponse>(`${origin}/ui/data`);
+  const data = await fetchJson<UiDataResponse>(`${origin}/ui/data`, undefined, "GET /ui/data");
   const localCoverPath = data.jobs?.find((job) =>
     job.cover_url?.startsWith("/ui/covers/"),
   )?.cover_url;
@@ -292,13 +446,97 @@ async function assertCoverRoute(origin: string): Promise<void> {
     return;
   }
 
-  const response = await fetch(`${origin}${localCoverPath}`);
-  const bytes = new Uint8Array(await response.arrayBuffer());
+  const { response, bytes } = await fetchBytes(
+    `${origin}${localCoverPath}`,
+    undefined,
+    `GET ${localCoverPath}`,
+  );
   const isPng = bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47;
   if (!response.ok || !isPng) {
     throw new Error(`Cover route failed ${response.status} for ${localCoverPath}`);
   }
   pass(`cover route serves ${localCoverPath}`);
+}
+
+function readSavedBatchState(
+  dbPath: string,
+  productId: number,
+  batchId: number,
+): { batchIds: number[]; channels: string[] } {
+  return withDb(dbPath, (db) => {
+    const batchIds = db
+      .prepare(
+        "SELECT id FROM product_batches WHERE product_id = ? AND source_type = 'price_quote' ORDER BY id",
+      )
+      .pluck()
+      .all(productId) as number[];
+    const channels = db
+      .prepare("SELECT channel FROM product_price_snapshots WHERE batch_id = ? ORDER BY channel")
+      .pluck()
+      .all(batchId) as string[];
+    return {
+      batchIds: batchIds.map((value) => Number(value)),
+      channels: channels.map((value) => String(value)),
+    };
+  });
+}
+
+function mutateSmokePricingInputs(dbPath: string): void {
+  withDb(dbPath, (db) => {
+    db.exec(`
+      UPDATE machine_rates SET machine_rate_per_hr = 9 WHERE device_model = 'P1S';
+      UPDATE machine_rates SET machine_rate_per_hr = 11 WHERE device_model = 'Snapmaker U1';
+      UPDATE material_rates SET rate_per_g = 0.09 WHERE filament_type = 'PLA';
+      UPDATE material_rates SET rate_per_g = 0.12 WHERE filament_type = 'PETG';
+      UPDATE labor_config
+      SET hourly_rate = 75, failure_buffer_pct = 0.25, overhead_buffer_pct = 0.15
+      WHERE id = 1;
+    `);
+  });
+}
+
+async function calculatePriceQuote(
+  origin: string,
+  input: PriceQuoteInput,
+  label: string,
+): Promise<PriceQuoteResponse> {
+  return await fetchJson<PriceQuoteResponse>(
+    `${origin}/api/price-quotes/calculate`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    },
+    label,
+  );
+}
+
+function assertQuoteChanged(
+  label: string,
+  savedUnitCost: number,
+  savedSuggestedPrice: number,
+  fresh: PriceQuoteResponse,
+): { unitCost: number; suggestedPrice: number } {
+  const unitCost = Number(fresh.quote?.breakdown?.unitCost);
+  const suggestedPrice = Number(fresh.quote?.breakdown?.suggestedPrice);
+  if (!Number.isFinite(unitCost) || unitCost <= 0) {
+    throw new Error(`${label} did not return a finite positive unit cost`);
+  }
+  if (!Number.isFinite(suggestedPrice) || suggestedPrice <= 0) {
+    throw new Error(`${label} did not return a finite positive suggested price`);
+  }
+  if (unitCost === savedUnitCost && suggestedPrice === savedSuggestedPrice) {
+    throw new Error(`${label} did not change after mutating deterministic pricing inputs`);
+  }
+  return { unitCost, suggestedPrice };
+}
+
+function assertSavedQuoteUnchanged(label: string, actual: SavedQuote | undefined, expected: SavedQuote): void {
+  try {
+    deepStrictEqual(actual, expected);
+  } catch (error: unknown) {
+    throw new Error(`${label} did not preserve the original saved snapshot`, { cause: error });
+  }
 }
 
 async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> {
@@ -307,26 +545,33 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
   const failedJobId = ctx.failedJobId;
   if (jobId === null || failedJobId === null) throw new Error("Smoke attempts were not seeded");
 
-  const saveResponse = await fetch(`${ctx.origin}/api/price-quotes/save-to-product`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      job_ids: [jobId, failedJobId],
-      sellable_units: 1,
-      batch_labor_minutes: 10,
-      per_unit_labor_minutes: 2,
-      packaging_cost_per_unit: 0.75,
-      extra_cost: 1.25,
-      target_margin_pct: 0.45,
-      new_product: {
-        name: "Smoke Saved Product",
-        designer: "Smoke Fixture",
-        notes: "Generated by the isolated smoke test.",
-      },
-      notes: "Finished production plus one failed attempt.",
-    }),
-  });
-  const saveText = await saveResponse.text();
+  const manufacturingInput: PriceQuoteInput = {
+    job_ids: [jobId, failedJobId],
+    sellable_units: 1,
+    batch_labor_minutes: 10,
+    per_unit_labor_minutes: 2,
+    packaging_cost_per_unit: 0.75,
+    extra_cost: 1.25,
+    target_margin_pct: 0.45,
+  };
+
+  const { response: saveResponse, text: saveText } = await fetchText(
+    `${ctx.origin}/api/price-quotes/save-to-product`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...manufacturingInput,
+        new_product: {
+          name: "Smoke Saved Product",
+          designer: "Smoke Fixture",
+          notes: "Generated by the isolated smoke test.",
+        },
+        notes: "Finished production plus one failed attempt.",
+      }),
+    },
+    "POST /api/price-quotes/save-to-product",
+  );
   const saved = parseJsonResponse<SavedProductPricingResponse>(
     saveText,
     `${ctx.origin}/api/price-quotes/save-to-product`,
@@ -347,7 +592,7 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
   ) {
     throw new Error("Save to Product did not return Product and Batch ids");
   }
-  if (direct?.channel !== "direct" || etsy?.channel !== "etsy") {
+  if (!direct || !etsy || direct.channel !== "direct" || etsy.channel !== "etsy") {
     throw new Error("Save to Product did not return Direct and Etsy snapshots");
   }
 
@@ -373,8 +618,75 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
     `saved private product ${productId}; shared unit cost $${directUnitCost.toFixed(2)}, Direct $${directPrice.toFixed(2)}, Etsy $${etsyPrice.toFixed(2)}`,
   );
 
+  const savedBatchState = readSavedBatchState(ctx.dbPath, productId, batchId);
+  if (savedBatchState.batchIds.length !== 1 || savedBatchState.batchIds[0] !== batchId) {
+    throw new Error("One save did not produce exactly one saved price_quote Batch for the Product");
+  }
+  try {
+    deepStrictEqual(savedBatchState.channels, ["direct", "etsy"]);
+  } catch (error: unknown) {
+    throw new Error("Saved Batch did not persist exactly one Direct and one Etsy snapshot channel", {
+      cause: error,
+    });
+  }
+
+  mutateSmokePricingInputs(ctx.dbPath);
+  const liveDirect = assertQuoteChanged(
+    "Direct live recalculation",
+    directUnitCost,
+    directPrice,
+    await calculatePriceQuote(
+      ctx.origin,
+      { ...manufacturingInput, channel: "direct" },
+      "POST /api/price-quotes/calculate (direct after rate mutation)",
+    ),
+  );
+  const liveEtsy = assertQuoteChanged(
+    "Etsy live recalculation",
+    etsyUnitCost,
+    etsyPrice,
+    await calculatePriceQuote(
+      ctx.origin,
+      { ...manufacturingInput, channel: "etsy" },
+      "POST /api/price-quotes/calculate (etsy after rate mutation)",
+    ),
+  );
+  if (liveDirect.unitCost !== liveEtsy.unitCost) {
+    throw new Error("Fresh Direct and Etsy recalculations no longer shared one manufacturing unit cost");
+  }
+  pass(
+    `live recalculation changed after rate mutation; Direct $${liveDirect.suggestedPrice.toFixed(2)}, Etsy $${liveEtsy.suggestedPrice.toFixed(2)}, saved history unchanged`,
+  );
+
+  const history = await fetchJson<ProductPricingHistoryResponse>(
+    `${ctx.origin}/api/products/${productId}/pricing-history`,
+    undefined,
+    `GET /api/products/${productId}/pricing-history`,
+  );
+  const historyEntries = history.history ?? [];
+  if (historyEntries.length !== 1) {
+    throw new Error(`Expected exactly one saved pricing-history Batch, received ${historyEntries.length}`);
+  }
+  const [savedHistory] = historyEntries;
+  if (savedHistory?.batch_id !== batchId) {
+    throw new Error("Product pricing history did not retain the original saved batch_id");
+  }
+  assertSavedQuoteUnchanged(
+    "Direct pricing history",
+    savedHistory.snapshots?.direct?.quote,
+    direct,
+  );
+  assertSavedQuoteUnchanged(
+    "Etsy pricing history",
+    savedHistory.snapshots?.etsy?.quote,
+    etsy,
+  );
+  pass("Product pricing history remains immutable after deterministic rate changes");
+
   const privateCompanion = await fetchJson<{ products?: Array<{ id?: number }> }>(
     `${ctx.origin}/api/products/sales-companion`,
+    undefined,
+    "GET /api/products/sales-companion (private check)",
   );
   if (!Array.isArray(privateCompanion.products)) {
     throw new Error("Sales Companion API did not return products[]");
@@ -384,23 +696,6 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
   }
   pass("saved Product remains absent from Sales Companion before explicit opt-in");
 
-  const history = await fetchJson<{
-    history?: Array<{
-      batch_id?: number;
-      snapshots?: { direct?: { quote?: SavedQuote }; etsy?: { quote?: SavedQuote } };
-    }>;
-  }>(`${ctx.origin}/api/products/${productId}/pricing-history`);
-  const savedHistory = history.history?.find((entry) => entry.batch_id === batchId);
-  if (
-    !savedHistory ||
-    savedHistory.snapshots?.direct?.quote?.breakdown?.unitCost !== directUnitCost ||
-    savedHistory.snapshots?.direct?.quote?.breakdown?.suggestedPrice !== directPrice ||
-    savedHistory.snapshots?.etsy?.quote?.breakdown?.suggestedPrice !== etsyPrice
-  ) {
-    throw new Error("Product pricing history did not reproduce the immutable saved snapshots");
-  }
-  pass("Product pricing history returns the saved Direct and Etsy values");
-
   const imageResult = await fetchJson<{
     candidates?: Array<{
       source_type?: string;
@@ -408,7 +703,11 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
       url?: string | null;
     }>;
     warnings?: string[];
-  }>(`${ctx.origin}/api/products/${productId}/image-candidates`);
+  }>(
+    `${ctx.origin}/api/products/${productId}/image-candidates`,
+    undefined,
+    `GET /api/products/${productId}/image-candidates`,
+  );
   if (!Array.isArray(imageResult.candidates)) {
     throw new Error("Product image candidate API did not return candidates[]");
   }
@@ -422,8 +721,11 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
   if (!coverCandidate?.url || !placeholder) {
     throw new Error("Generated local covers did not produce print-cover and placeholder fallbacks");
   }
-  const coverResponse = await fetch(`${ctx.origin}${coverCandidate.url}`);
-  const coverBytes = new Uint8Array(await coverResponse.arrayBuffer());
+  const { response: coverResponse, bytes: coverBytes } = await fetchBytes(
+    `${ctx.origin}${coverCandidate.url}`,
+    undefined,
+    `GET ${coverCandidate.url}`,
+  );
   if (
     !coverResponse.ok ||
     coverBytes[0] !== 0x89 ||
@@ -442,6 +744,7 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sales_companion_visible: true }),
     },
+    `PATCH /api/products/${productId}`,
   );
   if (updated.product?.sales_companion_visible !== true) {
     throw new Error("Explicit Sales Companion visibility update did not persist");
@@ -449,6 +752,8 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
 
   const visibleCompanion = await fetchJson<{ products?: JsonRecord[] }>(
     `${ctx.origin}/api/products/sales-companion`,
+    undefined,
+    "GET /api/products/sales-companion (visible check)",
   );
   const visible = visibleCompanion.products?.find(({ id }) => id === productId);
   const expectedPublicKeys = [
@@ -481,11 +786,19 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
 
 async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
   logStep("HTTP workflow smoke");
-  const products = await fetchJson<{ products?: unknown[] }>(`${ctx.origin}/api/products`);
+  const products = await fetchJson<{ products?: unknown[] }>(
+    `${ctx.origin}/api/products`,
+    undefined,
+    "GET /api/products",
+  );
   if (!Array.isArray(products.products)) throw new Error("/api/products did not return products[]");
   pass("products API lists");
 
-  const batches = await fetchJson<{ batches?: unknown[] }>(`${ctx.origin}/api/batches`);
+  const batches = await fetchJson<{ batches?: unknown[] }>(
+    `${ctx.origin}/api/batches`,
+    undefined,
+    "GET /api/batches",
+  );
   if (!Array.isArray(batches.batches)) throw new Error("/api/batches did not return batches[]");
   pass("batches API lists");
 
@@ -496,12 +809,9 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
     return;
   }
 
-  const priceQuote = await fetchJson<{
-    quote?: { breakdown?: { unitCost?: unknown; suggestedPrice?: unknown } };
-  }>(`${ctx.origin}/api/price-quotes/calculate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
+  const priceQuote = await calculatePriceQuote(
+    ctx.origin,
+    {
       job_ids: [jobId],
       sellable_units: 1,
       batch_labor_minutes: 0,
@@ -510,8 +820,9 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
       extra_cost: 0,
       channel: "direct",
       target_margin_pct: 0.4,
-    }),
-  });
+    },
+    "POST /api/price-quotes/calculate (workflow direct)",
+  );
   const quoteUnitCost = Number(priceQuote.quote?.breakdown?.unitCost);
   const quoteSuggestedPrice = Number(priceQuote.quote?.breakdown?.suggestedPrice);
   if (!Number.isFinite(quoteUnitCost) || quoteUnitCost <= 0) {
@@ -527,6 +838,7 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
   const fromJob = await fetchJson<{ product?: { id?: unknown; name?: unknown } }>(
     `${ctx.origin}/api/products/from-job/${jobId}`,
     { method: "POST" },
+    `POST /api/products/from-job/${jobId}`,
   );
   const jobProductId = Number(fromJob.product?.id);
   if (!Number.isInteger(jobProductId) || jobProductId <= 0) {
@@ -537,6 +849,7 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
   const fromProject = await fetchJson<{ product?: { id?: unknown; name?: unknown } }>(
     `${ctx.origin}/api/products/from-project/${projectId}`,
     { method: "POST" },
+    `POST /api/products/from-project/${projectId}`,
   );
   const projectProductId = Number(fromProject.product?.id);
   if (!Number.isInteger(projectProductId) || projectProductId <= 0) {
@@ -546,23 +859,31 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
 
   const createdBatch = await fetchJson<{
     batch?: { id?: unknown; unit_cost?: unknown; suggested_price?: unknown };
-  }>(`${ctx.origin}/api/batches`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      product_id: projectProductId,
-      pricing_profile_id: "booth",
-      planned_quantity: 1,
-      completed_quantity: 1,
-    }),
-  });
+  }>(
+    `${ctx.origin}/api/batches`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        product_id: projectProductId,
+        pricing_profile_id: "booth",
+        planned_quantity: 1,
+        completed_quantity: 1,
+      }),
+    },
+    "POST /api/batches",
+  );
   const batchId = Number(createdBatch.batch?.id);
   if (!Number.isInteger(batchId) || batchId <= 0) throw new Error("Batch create failed");
   pass(`created batch ${batchId}`);
 
   const linkedBatch = await fetchJson<{
     batch?: { total_filament_g?: unknown; total_print_time_s?: unknown; unit_cost?: unknown };
-  }>(`${ctx.origin}/api/batches/${batchId}/projects/${projectId}`, { method: "POST" });
+  }>(
+    `${ctx.origin}/api/batches/${batchId}/projects/${projectId}`,
+    { method: "POST" },
+    `POST /api/batches/${batchId}/projects/${projectId}`,
+  );
   const totalFilament = Number(linkedBatch.batch?.total_filament_g);
   const totalTime = Number(linkedBatch.batch?.total_print_time_s);
   const unitCost = Number(linkedBatch.batch?.unit_cost);
@@ -575,26 +896,68 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
   pass(`linked project jobs to batch; unit cost $${unitCost.toFixed(2)}`);
 }
 
-async function stopServer(child: ChildProcessWithoutNullStreams): Promise<void> {
-  if (child.exitCode !== null) return;
-  child.kill("SIGTERM");
-  await new Promise<void>((resolve) => {
-    const timeout = setTimeout(() => {
-      if (child.exitCode === null) child.kill("SIGKILL");
-      resolve();
-    }, 2_000);
-    child.once("exit", () => {
+async function waitForChildExit(
+  child: ChildProcessWithoutNullStreams,
+  timeoutMs: number,
+): Promise<boolean> {
+  if (child.exitCode !== null || child.signalCode !== null) return true;
+  return await new Promise<boolean>((resolve) => {
+    const onExit = () => {
       clearTimeout(timeout);
-      resolve();
-    });
+      resolve(true);
+    };
+    const timeout = setTimeout(() => {
+      child.off("exit", onExit);
+      resolve(false);
+    }, timeoutMs);
+    child.once("exit", onExit);
   });
+}
+
+function signalServer(server: StartedServer, signal: NodeJS.Signals): void {
+  const { child, useProcessGroup } = server;
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  try {
+    if (useProcessGroup) {
+      if (typeof child.pid !== "number") {
+        throw new Error("Smoke API server did not expose a PID for process-group shutdown");
+      }
+      process.kill(-child.pid, signal);
+      return;
+    }
+
+    if (!child.kill(signal) && child.exitCode === null && child.signalCode === null) {
+      throw new Error(`child.kill(${signal}) returned false`);
+    }
+  } catch (error: unknown) {
+    if (child.exitCode !== null || child.signalCode !== null) return;
+    throw new Error(`Failed to send ${signal} to the smoke API server`, { cause: error });
+  }
+}
+
+async function stopServer(server: StartedServer): Promise<void> {
+  const { child } = server;
+  if (child.exitCode !== null || child.signalCode !== null) return;
+
+  signalServer(server, "SIGTERM");
+  if (await waitForChildExit(child, SERVER_EXIT_TIMEOUT_MS)) return;
+
+  signalServer(server, "SIGKILL");
+  if (await waitForChildExit(child, SERVER_EXIT_TIMEOUT_MS)) return;
+
+  throw new Error(
+    `Smoke API server did not exit within ${SERVER_EXIT_TIMEOUT_MS}ms after SIGTERM/SIGKILL`,
+  );
 }
 
 async function main(): Promise<void> {
   for (const gate of GATES) runGate(gate);
 
   let ctx: SmokeContext | null = null;
-  let server: ChildProcessWithoutNullStreams | null = null;
+  let server: StartedServer | null = null;
+  let mainError: unknown = null;
+
   try {
     logStep("prepare isolated smoke database");
     ctx = await createTempDb();
@@ -610,10 +973,24 @@ async function main(): Promise<void> {
     await runWorkflowSmoke(ctx);
 
     console.log("\n✓ Smoke orchestration passed");
-  } finally {
-    if (server) await stopServer(server);
-    if (ctx) await rm(ctx.tempDir, { recursive: true, force: true });
+  } catch (error: unknown) {
+    mainError = error;
   }
+
+  let stopError: unknown = null;
+  if (server) {
+    try {
+      await stopServer(server);
+    } catch (error: unknown) {
+      stopError = error;
+    }
+  }
+  if (!stopError && ctx) {
+    await rm(ctx.tempDir, { recursive: true, force: true });
+  }
+
+  if (mainError) throw mainError;
+  if (stopError) throw stopError;
 }
 
 main().catch((error: unknown) => {
