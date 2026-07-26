@@ -7,10 +7,12 @@ const {
   mockCreateProductFromJob,
   mockCreateProductFromProject,
   mockEnsureGeneratedProductImageCandidates,
+  mockListProductImageCandidates,
   mockListProductPricingHistory,
   mockListProducts,
   mockListProductsToPrintNext,
   mockListSalesCompanionProducts,
+  mockRefreshProductIdentificationImages,
   mockReturnProductImageToAuto,
   mockSelectProductImage,
   mockStoreUploadedProductImage,
@@ -32,10 +34,12 @@ const {
     mockCreateProductFromJob: vi.fn(),
     mockCreateProductFromProject: vi.fn(),
     mockEnsureGeneratedProductImageCandidates: vi.fn(),
+    mockListProductImageCandidates: vi.fn(),
     mockListProductPricingHistory: vi.fn(),
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockListSalesCompanionProducts: vi.fn(),
+    mockRefreshProductIdentificationImages: vi.fn(),
     mockReturnProductImageToAuto: vi.fn(),
     mockSelectProductImage: vi.fn(),
     mockStoreUploadedProductImage: vi.fn(),
@@ -68,6 +72,8 @@ vi.mock("../models/product-images.js", () => ({
   ProductImageValidationError: MockProductImageValidationError,
   createManualProductPhoto: mockCreateManualProductPhoto,
   ensureGeneratedProductImageCandidates: mockEnsureGeneratedProductImageCandidates,
+  listProductImageCandidates: mockListProductImageCandidates,
+  refreshProductIdentificationImages: mockRefreshProductIdentificationImages,
   returnProductImageToAuto: mockReturnProductImageToAuto,
   selectProductImage: mockSelectProductImage,
 }));
@@ -244,6 +250,11 @@ describe("product routes", () => {
       candidates: sampleCandidates,
       warnings: [],
     });
+    mockListProductImageCandidates.mockReturnValue(sampleCandidates);
+    mockRefreshProductIdentificationImages.mockResolvedValue({
+      product: sampleProduct,
+      warnings: ["MakerWorld source image refresh fell back to generated candidates."],
+    });
     mockListProductPricingHistory.mockReturnValue(samplePricingHistory);
     mockCreateProduct.mockReturnValue(sampleProduct);
     mockCreateProductFromJob.mockReturnValue({ ...sampleProduct, name: "Dragon Egg" });
@@ -374,6 +385,19 @@ describe("product routes", () => {
     expect(res.status).toBe(200);
     expect(mockEnsureGeneratedProductImageCandidates).toHaveBeenCalledWith(1);
     expect(await res.json()).toEqual({ candidates: sampleCandidates, warnings: [] });
+  });
+
+  it("refreshes identification images with warnings in a successful response", async () => {
+    const res = await apiApp().request("/api/products/1/images/refresh", { method: "POST" });
+
+    expect(res.status).toBe(200);
+    expect(mockRefreshProductIdentificationImages).toHaveBeenCalledWith(1);
+    expect(mockListProductImageCandidates).toHaveBeenCalledWith(1);
+    expect(await res.json()).toEqual({
+      product: sampleProduct,
+      candidates: sampleCandidates,
+      warnings: ["MakerWorld source image refresh fell back to generated candidates."],
+    });
   });
 
   it("uploads, normalizes, and transactionally selects a Manual product photo", async () => {
@@ -631,11 +655,16 @@ describe("product routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode: "auto" }),
     });
+    const refreshRes = await apiApp().request("/api/products/99/images/refresh", {
+      method: "POST",
+    });
 
     expect(listRes.status).toBe(404);
     expect(uploadRes.status).toBe(404);
     expect(selectRes.status).toBe(404);
+    expect(refreshRes.status).toBe(404);
     expect(mockEnsureGeneratedProductImageCandidates).not.toHaveBeenCalled();
+    expect(mockRefreshProductIdentificationImages).not.toHaveBeenCalled();
     expect(mockReturnProductImageToAuto).not.toHaveBeenCalled();
   });
 

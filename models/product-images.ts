@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { catalogPreviewPath, type CatalogPreviewContentType } from "../lib/catalog-preview.js";
@@ -9,10 +10,15 @@ import {
   fingerprintProductContactSheetInputs,
   generateProductContactSheet,
   type ContactSheetInput,
+  storeRemoteProductImage,
   type StoredProductContactSheet,
   type StoredProductImage,
 } from "../lib/product-image-files.js";
 import { projectProductPhotoPath } from "../lib/product-photo-path.js";
+import {
+  fetchSupportedSourceImage,
+  type RemoteImageDependencies,
+} from "../lib/remote-product-images.js";
 import { listProducts, ProductValidationError, type ProductSummary } from "./products.js";
 
 export type ProductImageSourceType =
@@ -157,8 +163,23 @@ function previewExtension(contentType: CatalogPreviewContentType): "jpg" | "png"
   return contentType === "image/jpeg" ? "jpg" : "png";
 }
 
+function sourceHeroProvenance(
+  sourceRef: string | null,
+): { modelUrl: string; sourceUrl: string } | null {
+  if (!sourceRef?.startsWith("{")) return null;
+  try {
+    const parsed = JSON.parse(sourceRef) as Record<string, unknown>;
+    return typeof parsed["modelUrl"] === "string" && typeof parsed["sourceUrl"] === "string"
+      ? { modelUrl: parsed["modelUrl"], sourceUrl: parsed["sourceUrl"] }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function persistedCandidates(
   productId: number,
+  currentModelUrl: string | null,
   currentDerivedCandidates: ReadonlyMap<string, CandidateDetails>,
   contactSheetContext: ContactSheetContext | null,
 ): CandidateDetails[] {
@@ -191,7 +212,13 @@ function persistedCandidates(
     let available = projection.available;
     let warning = available ? null : "The saved image file is unavailable.";
 
-    if (row.source_type === "catalog_preview" || row.source_type === "print_cover") {
+    if (row.source_type === "source_hero") {
+      const provenance = sourceHeroProvenance(row.source_ref);
+      if (provenance && (provenance.modelUrl !== currentModelUrl || row.is_app_owned !== 1)) {
+        available = false;
+        warning = "This image no longer matches the Product's current source URL.";
+      }
+    } else if (row.source_type === "catalog_preview" || row.source_type === "print_cover") {
       const currentSource = currentDerivedCandidates.get(candidateKey);
       const matchesCurrentSource =
         currentSource !== undefined &&
@@ -373,7 +400,7 @@ function listCandidateDetails(
   productId: number,
   contactSheetContextOverride?: ContactSheetContext | null,
 ): CandidateDetails[] {
-  requireProduct(productId);
+  const product = requireProduct(productId);
   const coverRows = latestSavedBatchCoverRows(productId);
   const derivedCandidates = [
     ...catalogPreviewCandidates(productId),
@@ -387,7 +414,7 @@ function listCandidateDetails(
       ? currentContactSheetContext(coverRows)
       : contactSheetContextOverride;
   const candidates = [
-    ...persistedCandidates(productId, currentDerivedByKey, contactSheetContext),
+    ...persistedCandidates(productId, product.model_url, currentDerivedByKey, contactSheetContext),
     ...derivedCandidates,
     placeholderCandidate(),
   ];
@@ -547,6 +574,85 @@ export async function ensureGeneratedProductImageCandidates(
     );
     return { candidates, warnings: [warning] };
   }
+}
+
+function upsertSourceHero(
+  productId: number,
+  modelUrl: string,
+  sourceUrl: string,
+  stored: StoredProductImage,
+): void {
+  const candidateKey = `source_hero:${createHash("sha256").update(sourceUrl).digest("hex")}`;
+  const sourceRef = JSON.stringify({ modelUrl, sourceUrl });
+  db.prepare(
+    `INSERT INTO product_photos (
+       product_id, path, role, caption, source_type, source_ref, candidate_key,
+       is_app_owned, content_type, width, height
+     ) VALUES (?, ?, 'gallery', 'MakerWorld source image', 'source_hero', ?, ?, 1, ?, ?, ?)
+     ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO UPDATE SET
+       path = excluded.path,
+       caption = excluded.caption,
+       source_ref = excluded.source_ref,
+       is_app_owned = excluded.is_app_owned,
+       content_type = excluded.content_type,
+       width = excluded.width,
+       height = excluded.height,
+       updated_at = CURRENT_TIMESTAMP`,
+  ).run(
+    productId,
+    stored.path,
+    sourceRef,
+    candidateKey,
+    stored.contentType,
+    stored.width,
+    stored.height,
+  );
+}
+
+function warningMessage(prefix: string, error: unknown): string {
+  const detail = error instanceof Error ? error.message : String(error);
+  return `${prefix}: ${detail}`;
+}
+
+export async function refreshProductIdentificationImages(
+  productId: number,
+  dependencies?: Partial<RemoteImageDependencies>,
+): Promise<{ product: ProductSummary; warnings: string[] }> {
+  const initialProduct = requireProduct(productId);
+  const warnings: string[] = [];
+  const modelUrl = initialProduct.model_url?.trim() || null;
+
+  if (!modelUrl) {
+    warnings.push("The Product does not have a source URL to refresh.");
+  } else {
+    try {
+      const remote = await fetchSupportedSourceImage(modelUrl, dependencies);
+      if (!remote) {
+        warnings.push("The MakerWorld page does not provide a supported source image.");
+      } else {
+        const stored = await storeRemoteProductImage(productId, remote.sourceUrl, remote.bytes);
+        upsertSourceHero(productId, modelUrl, remote.sourceUrl, stored);
+      }
+    } catch (error: unknown) {
+      // Source enrichment is best-effort. A normalized file whose DB upsert fails is retained as
+      // a safe orphan for later reference-aware cleanup, matching upload/contact-sheet behavior.
+      warnings.push(warningMessage("The MakerWorld source image could not be refreshed", error));
+    }
+  }
+
+  try {
+    const generated = await ensureGeneratedProductImageCandidates(productId);
+    warnings.push(...generated.warnings);
+  } catch (error: unknown) {
+    warnings.push(warningMessage("Product image candidates could not be generated", error));
+  }
+
+  const currentProduct = requireProduct(productId);
+  const product =
+    currentProduct.image_selection_mode === "auto"
+      ? refreshAutoProductImage(productId)
+      : currentProduct;
+  return { product, warnings: [...new Set(warnings)] };
 }
 
 function materializeCandidate(productId: number, candidate: CandidateDetails): number | null {

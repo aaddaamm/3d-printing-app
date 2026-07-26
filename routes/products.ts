@@ -19,6 +19,8 @@ import {
 import {
   createManualProductPhoto,
   ensureGeneratedProductImageCandidates,
+  listProductImageCandidates,
+  refreshProductIdentificationImages,
   returnProductImageToAuto,
   selectProductImage,
 } from "../models/product-images.js";
@@ -157,6 +159,19 @@ products.get("/:id/image-candidates", async (c) => {
 
   try {
     return c.json(await ensureGeneratedProductImageCandidates(idOrError));
+  } catch (error: unknown) {
+    return handleProductError(c, error);
+  }
+});
+
+products.post("/:id/images/refresh", async (c) => {
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
+
+  try {
+    const { product, warnings } = await refreshProductIdentificationImages(idOrError);
+    return c.json({ product, candidates: listProductImageCandidates(idOrError), warnings });
   } catch (error: unknown) {
     return handleProductError(c, error);
   }

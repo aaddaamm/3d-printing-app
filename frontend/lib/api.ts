@@ -310,6 +310,11 @@ type SalesCompanionProductsResponse = { products: SalesCompanionProduct[] };
 type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
 type ProductImageCandidatesResponse = { candidates: ProductImageCandidate[] };
+export type ProductImagesRefreshResponse = {
+  product: ProductSummary;
+  candidates: ProductImageCandidate[];
+  warnings: string[];
+};
 type ProductPricingHistoryResponse = { history: SavedProductPricingBatch[] };
 type ProjectsResponse = { projects: ProjectSummary[] };
 type BatchesResponse = { batches: BatchSummary[] };
@@ -459,6 +464,16 @@ export async function fetchProductImageCandidates(
     "Failed to load product image candidates.",
   );
   return data.candidates;
+}
+
+export function refreshProductImages(
+  productId: number,
+): Promise<ProductImagesRefreshResponse | null> {
+  return postJsonOrToast<ProductImagesRefreshResponse>(
+    `/api/products/${productId}/images/refresh`,
+    {},
+    "Failed to refresh product images.",
+  );
 }
 
 export async function setProductImageSelection(

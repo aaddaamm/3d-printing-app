@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -200,6 +201,182 @@ describe.sequential("product image model", () => {
       available: false,
       warning: expect.any(String),
     });
+  });
+
+  it("enriches a MakerWorld Product into app-owned WebP provenance and selects it in Auto mode", async () => {
+    const modelUrl = "https://makerworld.com/en/models/123";
+    const sourceUrl = "https://makerworld.bblmw.com/hero.png";
+    const product = productsModule!.createProduct({ name: "Remote Dragon", model_url: modelUrl });
+    const image = new Uint8Array(
+      await sharp({
+        create: { width: 40, height: 20, channels: 3, background: "#123456" },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(`<meta property="og:image" content="${sourceUrl}">`, {
+          headers: { "Content-Type": "text/html" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(image, { headers: { "Content-Type": "image/png" } }));
+    const lookup = vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]);
+
+    const result = await productImagesModule!.refreshProductIdentificationImages(product.id, {
+      fetch,
+      lookup: lookup as never,
+    });
+
+    expect(result.warnings).toEqual([]);
+    expect(result.product).toMatchObject({
+      image_selection_mode: "auto",
+      main_photo_source_type: "source_hero",
+      main_photo_id: expect.any(Number),
+    });
+    const expectedKey = `source_hero:${createHash("sha256").update(sourceUrl).digest("hex")}`;
+    const candidate = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .find(({ candidate_key }) => candidate_key === expectedKey);
+    expect(candidate).toMatchObject({
+      source_type: "source_hero",
+      available: true,
+      warning: null,
+      photo_id: result.product.main_photo_id,
+    });
+    const row = dbModule!.db
+      .prepare(
+        `SELECT path, source_ref, is_app_owned, content_type, width, height
+         FROM product_photos WHERE id = ?`,
+      )
+      .get(result.product.main_photo_id) as Record<string, unknown>;
+    expect(row).toMatchObject({
+      path: expect.stringContaining(path.join(String(product.id), "remote")),
+      is_app_owned: 1,
+      content_type: "image/webp",
+      width: 40,
+      height: 20,
+    });
+    expect(JSON.parse(String(row["source_ref"]))).toEqual({ modelUrl, sourceUrl });
+    expect(await sharp(String(row["path"])).metadata()).toMatchObject({ format: "webp" });
+  });
+
+  it("does not disturb Manual mode during source enrichment", async () => {
+    const modelUrl = "https://makerworld.com/en/models/234";
+    const sourceUrl = "https://makerworld.bblmw.com/manual-hero.png";
+    const product = productsModule!.createProduct({ name: "Manual Dragon", model_url: modelUrl });
+    const manualId = addPersistedPhoto(
+      product.id,
+      "manual_upload",
+      "manual_upload:locked",
+      "locked.webp",
+    );
+    productImagesModule!.selectProductImage(product.id, "manual_upload:locked");
+    const image = new Uint8Array(
+      await sharp({
+        create: { width: 20, height: 20, channels: 3, background: "#654321" },
+      })
+        .png()
+        .toBuffer(),
+    );
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(`<meta property="og:image" content="${sourceUrl}">`, {
+          headers: { "Content-Type": "text/html" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(image, { headers: { "Content-Type": "image/png" } }));
+
+    const refreshed = await productImagesModule!.refreshProductIdentificationImages(product.id, {
+      fetch,
+      lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    });
+
+    expect(refreshed.product).toMatchObject({
+      image_selection_mode: "manual",
+      main_photo_id: manualId,
+      main_photo_source_type: "manual_upload",
+    });
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .find(({ source_type }) => source_type === "source_hero"),
+    ).toMatchObject({ available: true });
+  });
+
+  it("marks a previous source hero stale after the model URL changes and uses fallback", async () => {
+    const firstModelUrl = "https://makerworld.com/en/models/345";
+    const sourceUrl = "https://makerworld.bblmw.com/old-hero.png";
+    const product = productsModule!.createProduct({
+      name: "Changed Source Dragon",
+      model_url: firstModelUrl,
+    });
+    seedCatalogPreview(product.id, "9".repeat(64));
+    const image = new Uint8Array(
+      await sharp({
+        create: { width: 20, height: 20, channels: 3, background: "#abcdef" },
+      })
+        .png()
+        .toBuffer(),
+    );
+    await productImagesModule!.refreshProductIdentificationImages(product.id, {
+      fetch: vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(`<meta property="og:image" content="${sourceUrl}">`, {
+            headers: { "Content-Type": "text/html" },
+          }),
+        )
+        .mockResolvedValueOnce(new Response(image, { headers: { "Content-Type": "image/png" } })),
+      lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    });
+
+    productsModule!.updateProduct(product.id, {
+      model_url: "https://makerworld.com/en/models/999",
+    });
+    const failedRefresh = await productImagesModule!.refreshProductIdentificationImages(
+      product.id,
+      {
+        fetch: vi.fn(async () => {
+          throw new Error("offline");
+        }),
+        lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+      },
+    );
+
+    expect(failedRefresh.warnings).toEqual([expect.stringMatching(/MakerWorld|source image/i)]);
+    expect(failedRefresh.product).toMatchObject({
+      image_selection_mode: "auto",
+      main_photo_source_type: "catalog_preview",
+    });
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .find(({ source_type }) => source_type === "source_hero"),
+    ).toMatchObject({ available: false, warning: expect.stringMatching(/current source/i) });
+  });
+
+  it("returns warnings and fallback candidates for missing and unsupported source URLs", async () => {
+    const missing = productsModule!.createProduct({ name: "No Source Dragon" });
+    await expect(
+      productImagesModule!.refreshProductIdentificationImages(missing.id),
+    ).resolves.toMatchObject({
+      product: { id: missing.id },
+      warnings: [expect.stringMatching(/source URL/i)],
+    });
+
+    const unsupported = productsModule!.createProduct({
+      name: "Cubee Dragon",
+      model_url: "https://cubee.com/model/1",
+    });
+    const result = await productImagesModule!.refreshProductIdentificationImages(unsupported.id, {
+      fetch: vi.fn(),
+      lookup: vi.fn() as never,
+    });
+    expect(result.warnings).toEqual([expect.stringMatching(/MakerWorld|supported/i)]);
+    expect(result.product.main_photo_id).toBeNull();
   });
 
   it("lazily generates and upserts a contact sheet for the latest multi-cover Batch", async () => {
