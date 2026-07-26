@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { db } from "../lib/db.js";
 import { readyToList, sellabilityForProduct, type SellabilityLevel } from "../lib/product-rules.js";
 import type { ProductImageSourceType } from "./product-images.js";
@@ -51,7 +53,6 @@ export interface CreateProductInput {
   license_id?: string | null;
   model_url?: string | null;
   main_file_id?: number | null;
-  main_photo_id?: number | null;
   etsy_listing_url?: string | null;
   default_material?: string | null;
   primary_color?: string | null;
@@ -83,8 +84,13 @@ export class ProductValidationError extends Error {
 
 type ProductSummaryRow = Omit<
   ProductSummary,
-  "sales_companion_visible" | "can_sell_level" | "can_sell_label" | "ready_to_list"
+  | "main_photo_path"
+  | "sales_companion_visible"
+  | "can_sell_level"
+  | "can_sell_label"
+  | "ready_to_list"
 > & {
+  main_photo_stored_path: string | null;
   sales_companion_visible: number;
   model_url: string | null;
   main_file_id: number | null;
@@ -104,6 +110,11 @@ export type SalesCompanionProduct = {
   priced_at: string;
 };
 
+type SalesCompanionProductRow = Omit<SalesCompanionProduct, "identification_image_url"> & {
+  main_photo_id: number | null;
+  main_photo_stored_path: string | null;
+};
+
 type ProductColumn =
   | "name"
   | "description"
@@ -114,7 +125,6 @@ type ProductColumn =
   | "license_id"
   | "model_url"
   | "main_file_id"
-  | "main_photo_id"
   | "etsy_listing_url"
   | "default_material"
   | "primary_color"
@@ -147,16 +157,7 @@ const PRODUCT_SELECT = `
     psrc.label AS source_label,
     p.license_id,
     pl.label AS license_label,
-    CASE
-      WHEN pp.id IS NULL THEN NULL
-      WHEN COALESCE(pp.path, cf.path) LIKE '/Users/%'
-        OR COALESCE(pp.path, cf.path) LIKE '/Volumes/%'
-        OR COALESCE(pp.path, cf.path) LIKE '/private/%'
-        OR COALESCE(pp.path, cf.path) LIKE '/tmp/%'
-        OR COALESCE(pp.path, cf.path) LIKE '/var/%'
-        THEN '/ui/product-photos/' || pp.id
-      ELSE COALESCE(pp.path, cf.path)
-    END AS main_photo_path,
+    COALESCE(pp.path, cf.path) AS main_photo_stored_path,
     p.main_photo_id,
     pp.source_type AS main_photo_source_type,
     p.image_selection_mode,
@@ -207,7 +208,7 @@ const OPTIONAL_TEXT_FIELDS = [
   "notes",
 ] as const;
 const OPTIONAL_LOOKUP_FIELDS = ["category_id", "source_id", "license_id"] as const;
-const INTEGER_FIELDS = ["main_file_id", "main_photo_id", "preferred_printer_id"] as const;
+const INTEGER_FIELDS = ["main_file_id", "preferred_printer_id"] as const;
 const NON_NEGATIVE_NUMBER_FIELDS = [
   "estimated_filament_g",
   "target_sale_price",
@@ -218,6 +219,35 @@ const NON_NEGATIVE_NUMBER_FIELDS = [
   "target_margin_pct",
 ] as const;
 const RESTOCK_PRIORITIES = new Set(["none", "normal", "high", "urgent"]);
+const EXPLICIT_HTTP_URL_RE = /^https?:\/\//i;
+
+export function projectProductPhotoPath(
+  photoId: number,
+  storedPath: string | null,
+): { url: string | null; available: boolean } {
+  if (!storedPath) return { url: null, available: false };
+  if (EXPLICIT_HTTP_URL_RE.test(storedPath)) {
+    try {
+      const url = new URL(storedPath);
+      if ((url.protocol === "http:" || url.protocol === "https:") && url.hostname) {
+        return { url: storedPath, available: true };
+      }
+    } catch {
+      return { url: null, available: false };
+    }
+    return { url: null, available: false };
+  }
+
+  try {
+    const filePath = path.resolve(storedPath);
+    if (fs.lstatSync(filePath).isFile()) {
+      return { url: `/ui/product-photos/${photoId}`, available: true };
+    }
+  } catch {
+    // Missing and invalid local paths are unavailable.
+  }
+  return { url: null, available: false };
+}
 
 function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
   const sellability = sellabilityForProduct({
@@ -243,7 +273,8 @@ function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
     license_id: row.license_id,
     license_label: row.license_label,
     main_photo_id: row.main_photo_id,
-    main_photo_path: row.main_photo_path,
+    main_photo_path: projectProductPhotoPath(row.main_photo_id ?? 0, row.main_photo_stored_path)
+      .url,
     main_photo_source_type: row.main_photo_source_type,
     image_selection_mode: row.image_selection_mode,
     target_sale_price: row.target_sale_price,
@@ -516,14 +547,14 @@ export function createProduct(input: CreateProductInput): ProductSummary {
     .prepare(
       `INSERT INTO products (
         name, slug, description, designer, status, category_id, status_id, source_id, license_id,
-        model_url, main_file_id, main_photo_id, etsy_listing_url, default_material,
+        model_url, main_file_id, etsy_listing_url, default_material,
         primary_color, accent_color, preferred_printer_id, estimated_print_time_s,
         estimated_filament_g, target_sale_price, booth_price, etsy_price, packaging_cost,
         handling_minutes, target_margin_pct, pricing_notes, notes, is_original_design,
         sales_companion_visible, restock_priority
       ) VALUES (
         @name, @slug, @description, @designer, @status, @category_id, @status_id, @source_id, @license_id,
-        @model_url, @main_file_id, @main_photo_id, @etsy_listing_url, @default_material,
+        @model_url, @main_file_id, @etsy_listing_url, @default_material,
         @primary_color, @accent_color, @preferred_printer_id, @estimated_print_time_s,
         @estimated_filament_g, @target_sale_price, @booth_price, @etsy_price, @packaging_cost,
         @handling_minutes, @target_margin_pct, @pricing_notes, @notes, @is_original_design,
@@ -661,7 +692,7 @@ export function updateProduct(id: number, input: UpdateProductInput): ProductSum
 
 export function listSalesCompanionProducts(): SalesCompanionProduct[] {
   return db
-    .prepare<[], SalesCompanionProduct>(
+    .prepare<[], SalesCompanionProductRow>(
       `WITH complete_batches AS (
          SELECT
            pb.id,
@@ -687,16 +718,8 @@ export function listSalesCompanionProducts(): SalesCompanionProduct[] {
        SELECT
          p.id,
          p.name,
-         CASE
-           WHEN pp.id IS NULL THEN NULL
-           WHEN COALESCE(pp.path, cf.path) LIKE '/Users/%'
-             OR COALESCE(pp.path, cf.path) LIKE '/Volumes/%'
-             OR COALESCE(pp.path, cf.path) LIKE '/private/%'
-             OR COALESCE(pp.path, cf.path) LIKE '/tmp/%'
-             OR COALESCE(pp.path, cf.path) LIKE '/var/%'
-             THEN '/ui/product-photos/' || pp.id
-           ELSE COALESCE(pp.path, cf.path)
-         END AS identification_image_url,
+         p.main_photo_id,
+         COALESCE(pp.path, cf.path) AS main_photo_stored_path,
          direct.unit_cost,
          direct.production_loss_cost,
          direct.suggested_price AS direct_price,
@@ -715,7 +738,12 @@ export function listSalesCompanionProducts(): SalesCompanionProduct[] {
        WHERE p.sales_companion_visible = 1
        ORDER BY p.name COLLATE NOCASE, p.id`,
     )
-    .all();
+    .all()
+    .map(({ main_photo_id, main_photo_stored_path, ...row }) => ({
+      ...row,
+      identification_image_url: projectProductPhotoPath(main_photo_id ?? 0, main_photo_stored_path)
+        .url,
+    }));
 }
 
 export function listProductsToPrintNext(): ProductSummary[] {

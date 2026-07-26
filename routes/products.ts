@@ -34,7 +34,6 @@ const PRODUCT_MUTABLE_FIELDS = [
   "license_id",
   "model_url",
   "main_file_id",
-  "main_photo_id",
   "etsy_listing_url",
   "default_material",
   "primary_color",

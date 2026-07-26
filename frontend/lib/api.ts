@@ -79,7 +79,6 @@ export type ProductInput = Partial<{
   license_id: string | null;
   model_url: string | null;
   main_file_id: number | null;
-  main_photo_id: number | null;
   etsy_listing_url: string | null;
   default_material: string | null;
   primary_color: string | null;

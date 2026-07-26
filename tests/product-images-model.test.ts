@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -94,14 +95,13 @@ function seedSavedBatchCovers(productId: number, taskIds: string[]): number {
   return batchId;
 }
 
-function addPersistedPhoto(
+function addPersistedPhotoAtPath(
   productId: number,
   sourceType: string,
   candidateKey: string,
-  filename: string,
+  imagePath: string,
+  sourceRef = path.basename(imagePath),
 ): number {
-  const imagePath = path.join(tempDir, filename);
-  fs.writeFileSync(imagePath, sourceType);
   return Number(
     dbModule!.db
       .prepare(
@@ -111,8 +111,19 @@ function addPersistedPhoto(
          RETURNING id`,
       )
       .pluck()
-      .get(productId, imagePath, sourceType, filename, candidateKey),
+      .get(productId, imagePath, sourceType, sourceRef, candidateKey),
   );
+}
+
+function addPersistedPhoto(
+  productId: number,
+  sourceType: string,
+  candidateKey: string,
+  filename: string,
+): number {
+  const imagePath = path.join(tempDir, filename);
+  fs.writeFileSync(imagePath, sourceType);
+  return addPersistedPhotoAtPath(productId, sourceType, candidateKey, imagePath, filename);
 }
 
 describe.sequential("product image model", () => {
@@ -223,6 +234,246 @@ describe.sequential("product image model", () => {
       .listProductImageCandidates(product.id)
       .map((candidate) => candidate.candidate_key);
     expect(keys.filter((key) => key === catalogCandidate.candidate_key)).toHaveLength(1);
+  });
+
+  it("marks a materialized old cover stale when a newer saved Batch supplies a cover", () => {
+    const product = productsModule!.createProduct({ name: "Changing Cover Dragon" });
+    seedSavedBatchCovers(product.id, ["901"]);
+    const oldCandidate = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .find((candidate) => candidate.candidate_key === "print_cover:901")!;
+    const oldSelection = productImagesModule!.selectProductImage(
+      product.id,
+      oldCandidate.candidate_key,
+    );
+
+    seedSavedBatchCovers(product.id, ["902"]);
+    const candidates = productImagesModule!.listProductImageCandidates(product.id);
+    expect(
+      candidates.find(({ candidate_key }) => candidate_key === "print_cover:901"),
+    ).toMatchObject({
+      photo_id: oldSelection.main_photo_id,
+      available: false,
+      warning: expect.any(String),
+    });
+    expect(
+      candidates.find(({ candidate_key }) => candidate_key === "print_cover:902"),
+    ).toMatchObject({ photo_id: null, available: true, warning: null });
+
+    const automatic = productImagesModule!.returnProductImageToAuto(product.id);
+    expect(automatic).toMatchObject({
+      image_selection_mode: "auto",
+      main_photo_source_type: "print_cover",
+    });
+    expect(automatic.main_photo_id).not.toBe(oldSelection.main_photo_id);
+    expect(
+      dbModule!.db
+        .prepare("SELECT source_ref FROM product_photos WHERE id = ?")
+        .pluck()
+        .get(automatic.main_photo_id),
+    ).toBe("902");
+  });
+
+  it("keeps unlinked and metadata-stale catalog photos warning-visible but unavailable", () => {
+    const product = productsModule!.createProduct({ name: "Changing Catalog Dragon" });
+    const oldHash = "c".repeat(64);
+    const newHash = "d".repeat(64);
+    const catalogFileId = seedCatalogPreview(product.id, oldHash);
+    const oldCandidate = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .find((candidate) => candidate.source_type === "catalog_preview")!;
+    const oldSelection = productImagesModule!.selectProductImage(
+      product.id,
+      oldCandidate.candidate_key,
+    );
+
+    dbModule!.db.prepare("DELETE FROM product_files WHERE product_id = ?").run(product.id);
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .find(({ candidate_key }) => candidate_key === oldCandidate.candidate_key),
+    ).toMatchObject({ available: false, warning: expect.any(String) });
+
+    dbModule!.db
+      .prepare("INSERT INTO product_files (product_id, file_id) VALUES (?, ?)")
+      .run(product.id, catalogFileId);
+    fs.writeFileSync(path.join(previewsDir, `${newHash}.png`), "new preview");
+    dbModule!.db
+      .prepare("UPDATE catalog_files SET metadata_json = ? WHERE id = ?")
+      .run(JSON.stringify({ preview: { contentType: "image/png", hash: newHash } }), catalogFileId);
+
+    const candidates = productImagesModule!.listProductImageCandidates(product.id);
+    expect(
+      candidates.find(({ candidate_key }) => candidate_key === oldCandidate.candidate_key),
+    ).toMatchObject({
+      photo_id: oldSelection.main_photo_id,
+      available: false,
+      warning: expect.any(String),
+    });
+    const fresh = candidates.find(
+      ({ candidate_key }) => candidate_key === `catalog_preview:${catalogFileId}:${newHash}`,
+    );
+    expect(fresh).toMatchObject({ photo_id: null, available: true, warning: null });
+
+    const automatic = productImagesModule!.returnProductImageToAuto(product.id);
+    expect(automatic).toMatchObject({
+      image_selection_mode: "auto",
+      main_photo_source_type: "catalog_preview",
+    });
+    expect(automatic.main_photo_id).not.toBe(oldSelection.main_photo_id);
+  });
+
+  it("prefers available ephemeral candidates over unavailable persisted duplicate keys", () => {
+    const product = productsModule!.createProduct({ name: "Duplicate Candidate Dragon" });
+    const catalogFileId = seedCatalogPreview(product.id, "e".repeat(64));
+    const key = `catalog_preview:${catalogFileId}:${"e".repeat(64)}`;
+    const persistedPhotoId = addPersistedPhotoAtPath(
+      product.id,
+      "catalog_preview",
+      key,
+      path.join(tempDir, "missing-duplicate.png"),
+      String(catalogFileId),
+    );
+
+    const matches = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .filter(({ candidate_key }) => candidate_key === key);
+    expect(matches).toEqual([
+      expect.objectContaining({ photo_id: null, available: true, warning: null }),
+    ]);
+
+    const selected = productImagesModule!.selectProductImage(product.id, key);
+    expect(selected.main_photo_id).toBe(persistedPhotoId);
+    expect(
+      dbModule!.db
+        .prepare("SELECT path FROM product_photos WHERE id = ?")
+        .pluck()
+        .get(persistedPhotoId),
+    ).toBe(path.join(previewsDir, `${"e".repeat(64)}.png`));
+
+    seedSavedBatchCovers(product.id, ["905"]);
+    const coverKey = "print_cover:905";
+    const persistedCoverId = addPersistedPhotoAtPath(
+      product.id,
+      "print_cover",
+      coverKey,
+      path.join(tempDir, "missing-cover-duplicate.png"),
+      "905",
+    );
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .filter(({ candidate_key }) => candidate_key === coverKey),
+    ).toEqual([expect.objectContaining({ photo_id: null, available: true, warning: null })]);
+    expect(productImagesModule!.selectProductImage(product.id, coverKey).main_photo_id).toBe(
+      persistedCoverId,
+    );
+  });
+
+  it("rejects non-regular files and symlinks for persisted, catalog, and cover candidates", () => {
+    const product = productsModule!.createProduct({ name: "File Policy Dragon" });
+    const regularPath = path.join(tempDir, "regular.png");
+    const directoryPath = path.join(tempDir, "directory.png");
+    const symlinkPath = path.join(tempDir, "symlink.png");
+    const fifoPath = path.join(tempDir, "fifo.png");
+    fs.writeFileSync(regularPath, "regular");
+    fs.mkdirSync(directoryPath);
+    fs.symlinkSync(regularPath, symlinkPath);
+    execFileSync("mkfifo", [fifoPath]);
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:regular", regularPath);
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:directory", directoryPath);
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:symlink", symlinkPath);
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:fifo", fifoPath);
+
+    const catalogHash = "f".repeat(64);
+    const catalogFileId = seedCatalogPreview(product.id, catalogHash);
+    const catalogTarget = path.join(tempDir, "catalog-target.png");
+    fs.writeFileSync(catalogTarget, "catalog target");
+    fs.rmSync(path.join(previewsDir, `${catalogHash}.png`));
+    fs.symlinkSync(catalogTarget, path.join(previewsDir, `${catalogHash}.png`));
+
+    seedSavedBatchCovers(product.id, ["903", "904"]);
+    fs.rmSync(path.join(coversDir, "903.png"));
+    fs.mkdirSync(path.join(coversDir, "903.png"));
+    fs.rmSync(path.join(coversDir, "904.png"));
+    fs.symlinkSync(regularPath, path.join(coversDir, "904.png"));
+
+    const byKey = new Map(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .map((candidate) => [candidate.candidate_key, candidate]),
+    );
+    expect(byKey.get("manual:regular")).toMatchObject({ available: true });
+    for (const key of ["manual:directory", "manual:symlink", "manual:fifo"]) {
+      expect(byKey.get(key)).toMatchObject({ available: false, warning: expect.any(String) });
+    }
+    expect(byKey.get(`catalog_preview:${catalogFileId}:${catalogHash}`)).toMatchObject({
+      available: false,
+    });
+    expect(byKey.get("print_cover:903")).toMatchObject({ available: false });
+    expect(byKey.get("print_cover:904")).toMatchObject({ available: false });
+  });
+
+  it("classifies explicit HTTP(S) URLs and filesystem paths without leaking paths", () => {
+    const product = productsModule!.createProduct({ name: "Path Policy Dragon" });
+    const relativeFile = path.relative(process.cwd(), path.join(tempDir, "relative.png"));
+    fs.writeFileSync(path.resolve(relativeFile), "relative");
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:home", "/home/adam/photo.png");
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:opt", "/opt/printworks/photo.png");
+    addPersistedPhotoAtPath(product.id, "manual_upload", "manual:relative", relativeFile);
+    addPersistedPhotoAtPath(
+      product.id,
+      "source_hero",
+      "source:https",
+      "https://images.example.test/dragon.png",
+    );
+
+    const byKey = new Map(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .map((candidate) => [candidate.candidate_key, candidate]),
+    );
+    expect(byKey.get("manual:home")).toMatchObject({ url: null, available: false });
+    expect(byKey.get("manual:opt")).toMatchObject({ url: null, available: false });
+    expect(byKey.get("manual:relative")).toMatchObject({
+      url: expect.stringMatching(/^\/ui\/product-photos\/\d+$/),
+      available: true,
+    });
+    expect(byKey.get("source:https")).toMatchObject({
+      url: "https://images.example.test/dragon.png",
+      available: true,
+    });
+  });
+
+  it("rolls back an ephemeral photo upsert when Product selection fails", () => {
+    const product = productsModule!.createProduct({ name: "Rollback Dragon" });
+    seedCatalogPreview(product.id, "1".repeat(64));
+    const candidate = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .find(({ source_type }) => source_type === "catalog_preview")!;
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_product_image_selection
+      BEFORE UPDATE OF main_photo_id ON products
+      WHEN NEW.main_photo_id IS NOT NULL
+      BEGIN
+        SELECT RAISE(ABORT, 'selection failure');
+      END;
+    `);
+
+    expect(() =>
+      productImagesModule!.selectProductImage(product.id, candidate.candidate_key),
+    ).toThrow(/selection failure/i);
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(0);
+    expect(
+      dbModule!.db
+        .prepare("SELECT main_photo_id, image_selection_mode FROM products WHERE id = ?")
+        .get(product.id),
+    ).toEqual({ main_photo_id: null, image_selection_mode: "auto" });
   });
 
   it("rejects unknown and unavailable candidate keys", () => {

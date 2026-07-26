@@ -83,9 +83,11 @@ describe.sequential("products model", () => {
            VALUES (?, ?, 'main') RETURNING id`,
         )
         .pluck()
-        .get(visibleProduct.id, "/photos/visible.jpg"),
+        .get(visibleProduct.id, "https://images.example.test/visible.jpg"),
     );
-    productsModule!.updateProduct(visibleProduct.id, { main_photo_id: photoId });
+    dbModule!.db
+      .prepare("UPDATE products SET main_photo_id = ? WHERE id = ?")
+      .run(photoId, visibleProduct.id);
 
     const insertBatch = dbModule!.db.prepare(
       `INSERT INTO product_batches
@@ -135,6 +137,22 @@ describe.sequential("products model", () => {
     );
     insertSnapshot.run(incompleteBatchId, "direct", 99, 99, 99, 0.1, "2026-07-25 11:00:00");
 
+    dbModule!.db
+      .prepare("UPDATE product_photos SET path = ? WHERE id = ?")
+      .run("/home/adam/private-photo.jpg", photoId);
+    expect(productsModule!.listSalesCompanionProducts()[0]?.identification_image_url).toBeNull();
+    const relativePhoto = path.relative(process.cwd(), path.join(tempDir, "sales-relative.jpg"));
+    fs.writeFileSync(path.resolve(relativePhoto), "relative sales photo");
+    dbModule!.db
+      .prepare("UPDATE product_photos SET path = ? WHERE id = ?")
+      .run(relativePhoto, photoId);
+    expect(productsModule!.listSalesCompanionProducts()[0]?.identification_image_url).toBe(
+      `/ui/product-photos/${photoId}`,
+    );
+    dbModule!.db
+      .prepare("UPDATE product_photos SET path = ? WHERE id = ?")
+      .run("https://images.example.test/visible.jpg", photoId);
+
     const published = productsModule!.listSalesCompanionProducts();
 
     expect(unpricedProduct.sales_companion_visible).toBe(true);
@@ -142,7 +160,7 @@ describe.sequential("products model", () => {
       {
         id: visibleProduct.id,
         name: "Visible Priced",
-        identification_image_url: "/photos/visible.jpg",
+        identification_image_url: "https://images.example.test/visible.jpg",
         unit_cost: 9.5,
         production_loss_cost: 2.25,
         direct_price: 29.99,
@@ -193,6 +211,8 @@ describe.sequential("products model", () => {
       target_sale_price: 18,
       model_url: null,
     });
+    const photoPath = path.join(tempDir, "desk-tray.jpg");
+    fs.writeFileSync(photoPath, "photo");
     const photoId = Number(
       dbModule!.db
         .prepare(
@@ -201,7 +221,7 @@ describe.sequential("products model", () => {
            RETURNING id`,
         )
         .pluck()
-        .get(created.id, "/photos/desk-tray.jpg", "main"),
+        .get(created.id, photoPath, "main"),
     );
     const fileId = Number(
       dbModule!.db
@@ -214,17 +234,54 @@ describe.sequential("products model", () => {
         .get(created.id, "source"),
     );
 
-    const updated = productsModule!.updateProduct(created.id, {
-      main_photo_id: photoId,
-      main_file_id: fileId,
-    });
+    dbModule!.db
+      .prepare("UPDATE products SET main_photo_id = ? WHERE id = ?")
+      .run(photoId, created.id);
+    const updated = productsModule!.updateProduct(created.id, { main_file_id: fileId });
 
     expect(updated).toMatchObject({
-      main_photo_path: "/photos/desk-tray.jpg",
+      main_photo_path: `/ui/product-photos/${photoId}`,
       can_sell_level: "green",
       can_sell_label: "Original design",
       ready_to_list: true,
     });
+  });
+
+  it("projects only explicit HTTP(S) URLs or regular local photo files", () => {
+    const product = productsModule!.createProduct({ name: "Safe Product Photos" });
+    const relativePath = path.relative(process.cwd(), path.join(tempDir, "relative-photo.png"));
+    fs.writeFileSync(path.resolve(relativePath), "relative photo");
+    const symlinkPath = path.join(tempDir, "photo-symlink.png");
+    fs.symlinkSync(path.resolve(relativePath), symlinkPath);
+    const insertPhoto = dbModule!.db.prepare(
+      `INSERT INTO product_photos (product_id, path, role)
+       VALUES (?, ?, 'gallery') RETURNING id`,
+    );
+
+    const cases = [
+      { stored: "/home/adam/photo.png", expected: null },
+      { stored: "/opt/printworks/photo.png", expected: null },
+      { stored: relativePath, expected: "local" },
+      { stored: symlinkPath, expected: null },
+      { stored: "https://images.example.test/photo.png", expected: "https" },
+      { stored: "http://images.example.test/photo.png", expected: "http" },
+      { stored: "file:///etc/passwd", expected: null },
+    ] as const;
+
+    for (const testCase of cases) {
+      const photoId = Number(insertPhoto.pluck().get(product.id, testCase.stored));
+      dbModule!.db
+        .prepare("UPDATE products SET main_photo_id = ? WHERE id = ?")
+        .run(photoId, product.id);
+      const summary = productsModule!.listProducts().find(({ id }) => id === product.id)!;
+      const expectedUrl =
+        testCase.expected === "local"
+          ? `/ui/product-photos/${photoId}`
+          : testCase.expected === "https" || testCase.expected === "http"
+            ? testCase.stored
+            : null;
+      expect(summary.main_photo_path).toBe(expectedUrl);
+    }
   });
 
   it("lists only active restock products to print next in priority order", () => {

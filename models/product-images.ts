@@ -1,8 +1,14 @@
 import fs from "node:fs";
+import path from "node:path";
 import { catalogPreviewPath, type CatalogPreviewContentType } from "../lib/catalog-preview.js";
-import { localCoverExists, localCoverPath } from "../lib/covers.js";
+import { localCoverPath } from "../lib/covers.js";
 import { db } from "../lib/db.js";
-import { listProducts, ProductValidationError, type ProductSummary } from "./products.js";
+import {
+  listProducts,
+  ProductValidationError,
+  projectProductPhotoPath,
+  type ProductSummary,
+} from "./products.js";
 
 export type ProductImageSourceType =
   | "manual_upload"
@@ -32,6 +38,7 @@ export class ProductImageValidationError extends ProductValidationError {
 
 type PersistedPhotoRow = {
   id: number;
+  file_id: number | null;
   path: string | null;
   source_type: string;
   source_ref: string | null;
@@ -90,27 +97,17 @@ function isSourceType(value: string): value is ProductImageSourceType {
   return SOURCE_TYPES.has(value as ProductImageSourceType);
 }
 
-function isLocalPhotoPath(value: string): boolean {
-  return (
-    value.startsWith("/Users/") ||
-    value.startsWith("/Volumes/") ||
-    value.startsWith("/private/") ||
-    value.startsWith("/tmp/") ||
-    value.startsWith("/var/")
-  );
-}
-
 function regularFileExists(filePath: string): boolean {
   try {
-    return fs.statSync(filePath).isFile();
+    return fs.lstatSync(filePath).isFile();
   } catch {
     return false;
   }
 }
 
-function persistedPhotoUrl(photoId: number, photoPath: string | null): string | null {
-  if (!photoPath) return null;
-  return isLocalPhotoPath(photoPath) ? `/ui/product-photos/${photoId}` : photoPath;
+function sameLocalPath(left: string | null, right: string | null): boolean {
+  if (!left || !right) return false;
+  return path.resolve(left) === path.resolve(right);
 }
 
 function parseCatalogPreview(
@@ -134,11 +131,15 @@ function previewExtension(contentType: CatalogPreviewContentType): "jpg" | "png"
   return contentType === "image/jpeg" ? "jpg" : "png";
 }
 
-function persistedCandidates(productId: number): CandidateDetails[] {
+function persistedCandidates(
+  productId: number,
+  currentDerivedCandidates: ReadonlyMap<string, CandidateDetails>,
+): CandidateDetails[] {
   const rows = db
     .prepare<[number], PersistedPhotoRow>(
       `SELECT
          pp.id,
+         pp.file_id,
          COALESCE(pp.path, cf.path) AS path,
          pp.source_type,
          pp.source_ref,
@@ -156,19 +157,38 @@ function persistedCandidates(productId: number): CandidateDetails[] {
 
   return rows.flatMap((row) => {
     if (!isSourceType(row.source_type) || row.source_type === "placeholder") return [];
-    const available =
-      row.path !== null && (!isLocalPhotoPath(row.path) || regularFileExists(row.path));
+    const candidateKey = row.candidate_key ?? `${row.source_type}:photo:${row.id}`;
+    const projection = projectProductPhotoPath(row.id, row.path);
+    let available = projection.available;
+    let warning = available ? null : "The saved image file is unavailable.";
+
+    if (row.source_type === "catalog_preview" || row.source_type === "print_cover") {
+      const currentSource = currentDerivedCandidates.get(candidateKey);
+      const matchesCurrentSource =
+        currentSource !== undefined &&
+        currentSource.available &&
+        sameLocalPath(row.path, currentSource.file_path) &&
+        (row.source_type !== "catalog_preview" || row.file_id === currentSource.file_id) &&
+        row.source_ref === currentSource.source_ref;
+      available = available && matchesCurrentSource;
+      if (!available) {
+        warning = currentSource
+          ? "The current source image file is unavailable."
+          : "This derived image no longer matches the Product's current source.";
+      }
+    }
+
     return [
       {
-        candidate_key: row.candidate_key ?? `${row.source_type}:photo:${row.id}`,
+        candidate_key: candidateKey,
         source_type: row.source_type,
         photo_id: row.id,
-        url: persistedPhotoUrl(row.id, row.path),
+        url: projection.url,
         label: row.caption?.trim() || `${row.source_type.replaceAll("_", " ")} photo`,
         priority: SOURCE_PRIORITIES[row.source_type],
         available,
-        warning: available ? null : "The saved image file is unavailable.",
-        file_id: null,
+        warning,
+        file_id: row.file_id,
         file_path: row.path,
         source_ref: row.source_ref,
         content_type: null,
@@ -201,7 +221,9 @@ function catalogPreviewCandidates(productId: number): CandidateDetails[] {
         candidate_key: `catalog_preview:${row.file_id}:${preview.hash}`,
         source_type: "catalog_preview" as const,
         photo_id: null,
-        url: `/catalog/previews/${preview.hash}.${previewExtension(preview.contentType)}`,
+        url: available
+          ? `/catalog/previews/${preview.hash}.${previewExtension(preview.contentType)}`
+          : null,
         label: `${row.filename} preview`,
         priority: SOURCE_PRIORITIES.catalog_preview,
         available,
@@ -237,19 +259,25 @@ function printCoverCandidates(productId: number): CandidateDetails[] {
     .all(productId);
 
   return rows.flatMap((row) => {
-    if (!localCoverExists(row.task_id)) return [];
+    let filePath: string;
+    try {
+      filePath = localCoverPath(row.task_id);
+    } catch {
+      return [];
+    }
+    const available = regularFileExists(filePath);
     return [
       {
         candidate_key: `print_cover:${row.task_id}`,
         source_type: "print_cover" as const,
         photo_id: null,
-        url: `/ui/covers/${encodeURIComponent(row.task_id)}`,
+        url: available ? `/ui/covers/${encodeURIComponent(row.task_id)}` : null,
         label: row.title?.trim() || `Print ${row.task_id}`,
         priority: SOURCE_PRIORITIES.print_cover,
-        available: true,
-        warning: null,
+        available,
+        warning: available ? null : "The cached print cover is unavailable.",
         file_id: null,
-        file_path: localCoverPath(row.task_id),
+        file_path: filePath,
         source_ref: row.task_id,
         content_type: "image/png",
         display_order: 0,
@@ -280,6 +308,7 @@ function placeholderCandidate(): CandidateDetails {
 
 function compareCandidates(left: CandidateDetails, right: CandidateDetails): number {
   if (left.priority !== right.priority) return left.priority - right.priority;
+  if (left.available !== right.available) return left.available ? -1 : 1;
   if (left.is_main !== right.is_main) return left.is_main ? -1 : 1;
   if (left.display_order !== right.display_order) return left.display_order - right.display_order;
   return left.candidate_key.localeCompare(right.candidate_key);
@@ -287,17 +316,26 @@ function compareCandidates(left: CandidateDetails, right: CandidateDetails): num
 
 function listCandidateDetails(productId: number): CandidateDetails[] {
   requireProduct(productId);
-  const candidates = [
-    ...persistedCandidates(productId),
+  const derivedCandidates = [
     ...catalogPreviewCandidates(productId),
     ...printCoverCandidates(productId),
+  ];
+  const currentDerivedByKey = new Map(
+    derivedCandidates.map((candidate) => [candidate.candidate_key, candidate]),
+  );
+  const candidates = [
+    ...persistedCandidates(productId, currentDerivedByKey),
+    ...derivedCandidates,
     placeholderCandidate(),
-  ].sort(compareCandidates);
+  ];
   const unique = new Map<string, CandidateDetails>();
   for (const candidate of candidates) {
-    if (!unique.has(candidate.candidate_key)) unique.set(candidate.candidate_key, candidate);
+    const existing = unique.get(candidate.candidate_key);
+    if (!existing || (!existing.available && candidate.available)) {
+      unique.set(candidate.candidate_key, candidate);
+    }
   }
-  return [...unique.values()];
+  return [...unique.values()].sort(compareCandidates);
 }
 
 function publicCandidate(candidate: CandidateDetails): ProductImageCandidate {

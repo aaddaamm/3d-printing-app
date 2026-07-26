@@ -387,6 +387,26 @@ describe("product routes", () => {
     expect(mockReturnProductImageToAuto).not.toHaveBeenCalled();
   });
 
+  it("rejects generic cross-Product main photo selection", async () => {
+    const createRes = await apiApp().request("/api/products", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "Other Product", main_photo_id: 12 }),
+    });
+    const patchRes = await apiApp().request("/api/products/1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ main_photo_id: 12 }),
+    });
+
+    expect(createRes.status).toBe(400);
+    expect(await createRes.json()).toEqual({ error: "Unknown fields: main_photo_id" });
+    expect(patchRes.status).toBe(400);
+    expect(await patchRes.json()).toEqual({ error: "Unknown fields: main_photo_id" });
+    expect(mockCreateProduct).not.toHaveBeenCalled();
+    expect(mockUpdateProduct).not.toHaveBeenCalled();
+  });
+
   it("returns pricing history for an existing product", async () => {
     const res = await apiApp().request("/api/products/1/pricing-history");
 
