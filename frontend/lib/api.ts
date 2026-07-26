@@ -310,6 +310,22 @@ type SalesCompanionProductsResponse = { products: SalesCompanionProduct[] };
 type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
 type ProductImageCandidatesResponse = { candidates: ProductImageCandidate[] };
+export type ProductImageUploadPhoto = {
+  id: number;
+  product_id: number;
+  source_type: "manual_upload";
+  source_ref: string | null;
+  candidate_key: string;
+  content_type: string;
+  width: number;
+  height: number;
+  is_app_owned: boolean;
+  url: string;
+};
+export type ProductImageUploadResponse = {
+  product: ProductSummary;
+  photo: ProductImageUploadPhoto;
+};
 export type ProductImagesRefreshResponse = {
   product: ProductSummary;
   candidates: ProductImageCandidate[];
@@ -345,7 +361,7 @@ function toRequestError(err: unknown, fallback: string): Error {
 export async function fetchJson<T = JsonRecord>(
   url: string,
   fallback: string,
-  options?: RequestInit,
+  options?: RequestOptions,
 ): Promise<T> {
   let res: Response;
   try {
@@ -458,49 +474,79 @@ export async function fetchProduct(id: number): Promise<ProductSummary> {
 
 export async function fetchProductImageCandidates(
   productId: number,
+  options?: RequestInit,
 ): Promise<ProductImageCandidate[]> {
   const data = await fetchJson<ProductImageCandidatesResponse>(
     `/api/products/${productId}/image-candidates`,
     "Failed to load product image candidates.",
+    options,
   );
   return data.candidates;
 }
 
 export function refreshProductImages(
   productId: number,
-): Promise<ProductImagesRefreshResponse | null> {
-  return postJsonOrToast<ProductImagesRefreshResponse>(
+  options?: RequestInit,
+): Promise<ProductImagesRefreshResponse> {
+  return fetchJson<ProductImagesRefreshResponse>(
     `/api/products/${productId}/images/refresh`,
-    {},
     "Failed to refresh product images.",
-    { timeoutMs: 20_000 },
+    { ...options, method: "POST", body: "{}", timeoutMs: 20_000 },
   );
 }
 
 export async function setProductImageSelection(
   productId: number,
   input: ProductImageSelectionInput,
-): Promise<ProductSummary | null> {
-  const data = await postJsonOrToast<ProductResponse>(
+  options?: RequestInit,
+): Promise<ProductSummary> {
+  const data = await fetchJson<ProductResponse>(
     `/api/products/${productId}/image-selection`,
-    input,
     "Failed to update product image selection.",
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(input),
+    },
   );
-  return data?.product ?? null;
+  return data.product;
 }
 
 export function selectProductImage(
   productId: number,
   candidateKey: string,
-): Promise<ProductSummary | null> {
-  return setProductImageSelection(productId, {
-    mode: "manual",
-    candidate_key: candidateKey,
-  });
+  options?: RequestInit,
+): Promise<ProductSummary> {
+  return setProductImageSelection(
+    productId,
+    {
+      mode: "manual",
+      candidate_key: candidateKey,
+    },
+    options,
+  );
 }
 
-export function returnProductImageToAuto(productId: number): Promise<ProductSummary | null> {
-  return setProductImageSelection(productId, { mode: "auto" });
+export function returnProductImageToAuto(
+  productId: number,
+  options?: RequestInit,
+): Promise<ProductSummary> {
+  return setProductImageSelection(productId, { mode: "auto" }, options);
+}
+
+export function uploadProductImage(
+  productId: number,
+  photo: File,
+  options?: RequestInit,
+): Promise<ProductImageUploadResponse> {
+  const body = new FormData();
+  body.append("photo", photo);
+  return fetchJson<ProductImageUploadResponse>(
+    `/api/products/${productId}/photos`,
+    "Failed to upload product photo.",
+    { ...options, method: "POST", body },
+  );
 }
 
 export async function fetchProductPricingHistory(

@@ -11,6 +11,7 @@ import {
   PRODUCT_STATUSES,
   RESTOCK_PRIORITIES,
 } from "./product-card.js";
+import { ProductImagePanel } from "./product-image-panel.js";
 import { ProductPricingHistory } from "./product-pricing-history.js";
 import { ProductSellability } from "./product-sellability.js";
 import { toast } from "./toast.js";
@@ -172,13 +173,6 @@ function optionList(
   ];
 }
 
-function DetailPhoto({ product }: { product: ProductSummary }) {
-  if (product.main_photo_path) {
-    return html`<img class="product-detail-photo" src=${product.main_photo_path} alt="" />`;
-  }
-  return html`<div class="product-detail-photo product-detail-photo--empty">No product photo</div>`;
-}
-
 function DetailFacts({ product }: { product: ProductSummary }) {
   const colors = [product.primary_color, product.accent_color].filter(Boolean).join(" / ");
   return html`<div class="product-detail-facts">
@@ -336,6 +330,12 @@ export function ProductDetailView({
     }
   };
 
+  const updateImageProduct = (updated: ProductSummary) => {
+    if (requestState.current.productId !== updated.id) return;
+    requestState.current = { ...requestState.current, product: updated };
+    setProduct(updated);
+  };
+
   if (requestState.current.productId !== productId || loading) {
     return html`<div class="empty">Loading product…</div>`;
   }
@@ -360,7 +360,7 @@ export function ProductDetailView({
 
     <section class="product-detail-layout">
       <aside class="product-detail-card">
-        <${DetailPhoto} product=${product} />
+        <${ProductImagePanel} product=${product} onProductChange=${updateImageProduct} />
         <${DetailFacts} product=${product} />
         <div class=${"product-license-warning product-license-warning--" + product.can_sell_level}>
           ${product.can_sell_level === "red"

@@ -12,6 +12,7 @@ import {
   rejectProductDetailRequest,
   resolveProductDetailRequest,
 } from "../frontend/components/product-detail-view.js";
+import { productImageModeHint } from "../frontend/components/product-card.js";
 import { sellabilityBadgeClass } from "../frontend/components/product-sellability.js";
 import { groupProductsByStatus } from "../frontend/components/products-view.js";
 import type { BatchSummary, ProductSummary } from "../frontend/lib/api.js";
@@ -201,6 +202,11 @@ it("formats batch pricing helper values", () => {
   expect(formatBatchMargin(0.5)).toBe("50%");
   expect(batchMarginClass(0.5)).toContain("batch-margin--good");
   expect(batchMarginClass(null)).toContain("batch-margin--unknown");
+});
+
+it("provides compact Product card image provenance hints", () => {
+  expect(productImageModeHint("auto")).toBe("Auto image");
+  expect(productImageModeHint("manual")).toBe("Manual image");
 });
 
 it("maps sellability levels to badge classes", () => {

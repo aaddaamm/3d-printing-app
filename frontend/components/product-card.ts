@@ -65,12 +65,16 @@ function formatPrice(price: number | null): string {
   return `$${price.toFixed(2)}`;
 }
 
+export function productImageModeHint(mode: ProductSummary["image_selection_mode"]): string {
+  return mode === "manual" ? "Manual image" : "Auto image";
+}
+
 function ProductPhoto({ product }: { product: ProductSummary }) {
   if (product.main_photo_path) {
     return html`<img
       class="product-card-photo"
       src=${product.main_photo_path}
-      alt=""
+      alt=${`${product.name} identification image`}
       loading="lazy"
     />`;
   }
@@ -101,6 +105,14 @@ export function ProductCard({
         <div class="product-card-meta">
           <span>${product.category_label || "Uncategorized"}</span>
           <span>${product.source_label || "No source"}</span>
+          <span
+            class=${`product-image-hint product-image-hint--${product.image_selection_mode}`}
+            title=${product.main_photo_source_type
+              ? `${productImageModeHint(product.image_selection_mode)}: ${product.main_photo_source_type}`
+              : productImageModeHint(product.image_selection_mode)}
+          >
+            ${productImageModeHint(product.image_selection_mode)}
+          </span>
         </div>
         <div class="product-card-badges">
           <${ProductSellability}
