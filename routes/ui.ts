@@ -1,9 +1,10 @@
-import { readFileSync, existsSync, statSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
 import { ensureLocalCoverCached } from "../lib/covers.js";
 import { db } from "../lib/db.js";
+import { resolveLocalProductPhotoPath } from "../lib/product-photo-path.js";
 import { listUiJobs } from "../models/ui.js";
 
 const SOURCE_INDEX_HTML_PATH = fileURLToPath(new URL("../frontend/index.html", import.meta.url));
@@ -176,11 +177,11 @@ function serveProductPhotoFile(c: Context): Response {
   const photoId = Number(c.req.param("photoId"));
   if (!Number.isInteger(photoId) || photoId <= 0) return c.json({ error: "Invalid" }, 400);
 
-  const filePath = resolveProductPhotoPath(photoId);
-  if (!filePath || !path.isAbsolute(filePath) || !existsSync(filePath)) return notFound(c);
+  const filePath = resolveLocalProductPhotoPath(resolveProductPhotoPath(photoId));
+  if (!filePath) return notFound(c);
 
   const contentType = IMAGE_CONTENT_TYPES.get(path.extname(filePath).toLowerCase());
-  if (!contentType || !statSync(filePath).isFile()) return notFound(c);
+  if (!contentType) return notFound(c);
 
   return binaryResponse(readFileSync(filePath), contentType, "public, max-age=86400");
 }

@@ -3,12 +3,8 @@ import path from "node:path";
 import { catalogPreviewPath, type CatalogPreviewContentType } from "../lib/catalog-preview.js";
 import { localCoverPath } from "../lib/covers.js";
 import { db } from "../lib/db.js";
-import {
-  listProducts,
-  ProductValidationError,
-  projectProductPhotoPath,
-  type ProductSummary,
-} from "./products.js";
+import { projectProductPhotoPath } from "../lib/product-photo-path.js";
+import { listProducts, ProductValidationError, type ProductSummary } from "./products.js";
 
 export type ProductImageSourceType =
   | "manual_upload"

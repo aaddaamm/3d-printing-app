@@ -1,6 +1,5 @@
-import fs from "node:fs";
-import path from "node:path";
 import { db } from "../lib/db.js";
+import { projectProductPhotoPath } from "../lib/product-photo-path.js";
 import { readyToList, sellabilityForProduct, type SellabilityLevel } from "../lib/product-rules.js";
 import type { ProductImageSourceType } from "./product-images.js";
 
@@ -219,35 +218,6 @@ const NON_NEGATIVE_NUMBER_FIELDS = [
   "target_margin_pct",
 ] as const;
 const RESTOCK_PRIORITIES = new Set(["none", "normal", "high", "urgent"]);
-const EXPLICIT_HTTP_URL_RE = /^https?:\/\//i;
-
-export function projectProductPhotoPath(
-  photoId: number,
-  storedPath: string | null,
-): { url: string | null; available: boolean } {
-  if (!storedPath) return { url: null, available: false };
-  if (EXPLICIT_HTTP_URL_RE.test(storedPath)) {
-    try {
-      const url = new URL(storedPath);
-      if ((url.protocol === "http:" || url.protocol === "https:") && url.hostname) {
-        return { url: storedPath, available: true };
-      }
-    } catch {
-      return { url: null, available: false };
-    }
-    return { url: null, available: false };
-  }
-
-  try {
-    const filePath = path.resolve(storedPath);
-    if (fs.lstatSync(filePath).isFile()) {
-      return { url: `/ui/product-photos/${photoId}`, available: true };
-    }
-  } catch {
-    // Missing and invalid local paths are unavailable.
-  }
-  return { url: null, available: false };
-}
 
 function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
   const sellability = sellabilityForProduct({
