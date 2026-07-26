@@ -92,11 +92,19 @@ describe.sequential("saved pricing and image selection schema", () => {
 
     it("creates saved pricing snapshots and image-selection columns with defaults", () => {
       const db = dbModule!.db;
-      const productColumns = db.prepare("PRAGMA table_info(products)").all() as Array<{ name: string }>;
-      const batchColumns = db.prepare("PRAGMA table_info(product_batches)").all() as Array<{ name: string }>;
-      const photoColumns = db.prepare("PRAGMA table_info(product_photos)").all() as Array<{ name: string }>;
+      const productColumns = db.prepare("PRAGMA table_info(products)").all() as Array<{
+        name: string;
+      }>;
+      const batchColumns = db.prepare("PRAGMA table_info(product_batches)").all() as Array<{
+        name: string;
+      }>;
+      const photoColumns = db.prepare("PRAGMA table_info(product_photos)").all() as Array<{
+        name: string;
+      }>;
       const snapshotSql = db
-        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'product_price_snapshots'")
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'product_price_snapshots'",
+        )
         .get() as { sql: string };
       const product = db
         .prepare("SELECT sales_companion_visible, image_selection_mode FROM products LIMIT 1")
@@ -176,9 +184,7 @@ describe.sequential("saved pricing and image selection schema", () => {
         { id: 2, sales_companion_visible: 0, image_selection_mode: "auto" },
       ]);
       expect(
-        database!
-          .prepare("SELECT source_type, extra_cost FROM product_batches WHERE id = 1")
-          .get(),
+        database!.prepare("SELECT source_type, extra_cost FROM product_batches WHERE id = 1").get(),
       ).toEqual({ source_type: "planned", extra_cost: 0 });
       expect(
         database!
@@ -198,13 +204,13 @@ describe.sequential("saved pricing and image selection schema", () => {
       });
 
       const snapshotSql = database!
-        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'product_price_snapshots'")
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'product_price_snapshots'",
+        )
         .get() as { sql: string };
       expect(snapshotSql.sql).toContain("UNIQUE (batch_id, channel)");
       expect(
-        database!
-          .prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE id = 20")
-          .get(),
+        database!.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE id = 20").get(),
       ).toEqual({ count: 1 });
     });
   });

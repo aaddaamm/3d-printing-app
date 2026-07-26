@@ -145,9 +145,9 @@ describe("migration helpers", () => {
         "TEXT NOT NULL CHECK (mode IN (lower('auto'), 'manual'))",
       ),
     ).toThrow(/Unsafe or unsupported column definition/i);
-    expect(() =>
-      addColumnIfMissing(database, "things", "mode", "TEXT; DROP TABLE things"),
-    ).toThrow(/Unsafe column definition/i);
+    expect(() => addColumnIfMissing(database, "things", "mode", "TEXT; DROP TABLE things")).toThrow(
+      /Unsafe column definition/i,
+    );
   });
 
   it("drops columns only when present", () => {
