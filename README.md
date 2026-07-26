@@ -253,19 +253,19 @@ gate in the local-first mode.
 
 ### Products
 
-| Method  | Path                              | Description                              |
-| ------- | --------------------------------- | ---------------------------------------- |
-| `GET`   | `/api/products`                   | Product catalog summaries                |
-| `POST`  | `/api/products`                   | Create a product                         |
-| `GET`   | `/api/products/print-next`        | Products queued for restock              |
-| `GET`   | `/api/products/sales-companion`   | Explicitly published Product price rows  |
-| `GET`   | `/api/products/:id`               | Product detail/summary fields            |
-| `PATCH` | `/api/products/:id`               | Update product workflow fields           |
-| `GET`   | `/api/products/:id/pricing-history` | Immutable saved Direct/Etsy history    |
-| `GET`   | `/api/products/:id/image-candidates` | Ranked Auto image candidates           |
-| `POST`  | `/api/products/:id/images/refresh` | Refresh best-effort generated/remote candidates |
-| `POST`  | `/api/products/:id/image-selection` | Switch between Auto and Manual image selection |
-| `POST`  | `/api/products/:id/photos`        | Upload a manual Product photo            |
+| Method  | Path                                 | Description                                     |
+| ------- | ------------------------------------ | ----------------------------------------------- |
+| `GET`   | `/api/products`                      | Product catalog summaries                       |
+| `POST`  | `/api/products`                      | Create a product                                |
+| `GET`   | `/api/products/print-next`           | Products queued for restock                     |
+| `GET`   | `/api/products/sales-companion`      | Explicitly published Product price rows         |
+| `GET`   | `/api/products/:id`                  | Product detail/summary fields                   |
+| `PATCH` | `/api/products/:id`                  | Update product workflow fields                  |
+| `GET`   | `/api/products/:id/pricing-history`  | Immutable saved Direct/Etsy history             |
+| `GET`   | `/api/products/:id/image-candidates` | Ranked Auto image candidates                    |
+| `POST`  | `/api/products/:id/images/refresh`   | Refresh best-effort generated/remote candidates |
+| `POST`  | `/api/products/:id/image-selection`  | Switch between Auto and Manual image selection  |
+| `POST`  | `/api/products/:id/photos`           | Upload a manual Product photo                   |
 
 `POST /api/price-quotes/save-to-product` is the Save-to-Product bridge from Price-this. One successful save creates one `price_quote` Batch plus exactly one immutable Direct snapshot and one immutable Etsy snapshot from the same manufacturing inputs. `/api/products/:id/pricing-history` keeps those saved values even after later rate/profile changes.
 
