@@ -59,6 +59,11 @@ describe.sequential("products model", () => {
         sales_companion_visible: "yes" as unknown as boolean,
       }),
     ).toThrow(/sales_companion_visible must be a boolean/i);
+    expect(() =>
+      productsModule!.updateProduct(product.id, {
+        sales_companion_visible: undefined as unknown as boolean,
+      }),
+    ).toThrow(/sales_companion_visible must be a boolean/i);
   });
 
   it("lists only visible Products using their newest complete saved pricing Batch", () => {

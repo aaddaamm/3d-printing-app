@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import {
@@ -33,6 +33,81 @@ export type ProductPricingCard = {
   successfulQuantity: number;
   assumptions: PriceQuoteResult["assumptions"];
 };
+
+export type ProductPricingHistoryRequestState = {
+  generation: number;
+  activeGeneration: number | null;
+  productId: number | null;
+  loading: boolean;
+  history: SavedProductPricingBatch[];
+  error: string | null;
+};
+
+export function initialProductPricingHistoryRequestState(): ProductPricingHistoryRequestState {
+  return {
+    generation: 0,
+    activeGeneration: null,
+    productId: null,
+    loading: true,
+    history: [],
+    error: null,
+  };
+}
+
+export function beginProductPricingHistoryRequest(
+  state: ProductPricingHistoryRequestState,
+  productId: number,
+): { state: ProductPricingHistoryRequestState; requestGeneration: number } {
+  const requestGeneration = state.generation + 1;
+  return {
+    requestGeneration,
+    state: {
+      generation: requestGeneration,
+      activeGeneration: requestGeneration,
+      productId,
+      loading: true,
+      history: [],
+      error: null,
+    },
+  };
+}
+
+export function isCurrentProductPricingHistoryRequest(
+  state: ProductPricingHistoryRequestState,
+  requestGeneration: number,
+): boolean {
+  return state.generation === requestGeneration && state.activeGeneration === requestGeneration;
+}
+
+export function resolveProductPricingHistoryRequest(
+  state: ProductPricingHistoryRequestState,
+  requestGeneration: number,
+  history: readonly SavedProductPricingBatch[],
+): ProductPricingHistoryRequestState {
+  if (!isCurrentProductPricingHistoryRequest(state, requestGeneration)) return state;
+  return {
+    ...state,
+    activeGeneration: null,
+    loading: false,
+    history: sortedPricingHistory(history),
+    error: null,
+  };
+}
+
+export function rejectProductPricingHistoryRequest(
+  state: ProductPricingHistoryRequestState,
+  requestGeneration: number,
+  error: string,
+): ProductPricingHistoryRequestState {
+  if (!isCurrentProductPricingHistoryRequest(state, requestGeneration)) return state;
+  return {
+    ...state,
+    activeGeneration: null,
+    loading: false,
+    history: [],
+    error,
+  };
+}
 
 export function sortedPricingHistory(
   history: readonly SavedProductPricingBatch[],
@@ -149,40 +224,66 @@ function HistoryRow({ batch }: { batch: SavedProductPricingBatch }) {
 }
 
 export function ProductPricingHistory({ productId }: { productId: number }) {
-  const [history, setHistory] = useState<SavedProductPricingBatch[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialRequestState = initialProductPricingHistoryRequestState();
+  const requestStateRef = useRef(initialRequestState);
+  const [requestState, setRequestState] = useState(initialRequestState);
+
+  const applyRequestState = (nextState: ProductPricingHistoryRequestState) => {
+    requestStateRef.current = nextState;
+    setRequestState(nextState);
+  };
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
+    const started = beginProductPricingHistoryRequest(requestStateRef.current, productId);
+    applyRequestState(started.state);
+
     fetchProductPricingHistory(productId)
       .then((savedHistory) => {
-        if (!cancelled) setHistory(sortedPricingHistory(savedHistory));
+        if (cancelled) return;
+        applyRequestState(
+          resolveProductPricingHistoryRequest(
+            requestStateRef.current,
+            started.requestGeneration,
+            savedHistory,
+          ),
+        );
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
-          toast(
-            error instanceof Error ? error.message : "Failed to load pricing history.",
-            "error",
-          );
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Failed to load pricing history.";
+        const rejected = rejectProductPricingHistoryRequest(
+          requestStateRef.current,
+          started.requestGeneration,
+          message,
+        );
+        if (rejected !== requestStateRef.current) {
+          applyRequestState(rejected);
+          toast(message, "error");
         }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
       });
     return () => {
       cancelled = true;
     };
   }, [productId]);
 
-  if (loading) {
+  if (requestState.productId !== productId || requestState.loading) {
     return html`<section class="product-pricing-history admin-section">
       <h3 class="admin-section-title">Saved pricing</h3>
       <p class="admin-section-desc">Loading stored pricing history…</p>
     </section>`;
   }
 
-  const cards = latestPricingCards(history);
+  if (requestState.error) {
+    return html`<section class="product-pricing-history admin-section">
+      <h3 class="admin-section-title">Saved pricing</h3>
+      <p class="admin-section-desc product-pricing-load-error">
+        Unable to load saved pricing history. ${requestState.error}
+      </p>
+    </section>`;
+  }
+
+  const cards = latestPricingCards(requestState.history);
   if (cards.length === 0) {
     return html`<section class="product-pricing-history admin-section">
       <h3 class="admin-section-title">Saved pricing</h3>
@@ -206,9 +307,11 @@ export function ProductPricingHistory({ productId }: { productId: number }) {
       ${cards.map((card) => html`<${ChannelCard} key=${card.channel} card=${card} />`)}
     </div>
     <details class="product-pricing-history-list">
-      <summary>Saved history (${history.length})</summary>
+      <summary>Saved history (${requestState.history.length})</summary>
       <ol>
-        ${history.map((batch) => html`<${HistoryRow} key=${batch.batch_id} batch=${batch} />`)}
+        ${requestState.history.map(
+          (batch) => html`<${HistoryRow} key=${batch.batch_id} batch=${batch} />`,
+        )}
       </ol>
     </details>
   </section>`;

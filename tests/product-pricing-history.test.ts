@@ -4,7 +4,13 @@ import type {
   SavedPriceSnapshot,
   SavedProductPricingBatch,
 } from "../frontend/lib/api.js";
-import { latestPricingCards } from "../frontend/components/product-pricing-history.js";
+import {
+  beginProductPricingHistoryRequest,
+  initialProductPricingHistoryRequestState,
+  latestPricingCards,
+  rejectProductPricingHistoryRequest,
+  resolveProductPricingHistoryRequest,
+} from "../frontend/components/product-pricing-history.js";
 
 function quote(
   channel: "direct" | "etsy",
@@ -85,6 +91,61 @@ function batch(
     },
   };
 }
+
+describe("saved Product pricing history request lifecycle", () => {
+  it("clears Product A history when Product B begins loading", () => {
+    const first = beginProductPricingHistoryRequest(initialProductPricingHistoryRequestState(), 1);
+    const withFirstHistory = resolveProductPricingHistoryRequest(
+      first.state,
+      first.requestGeneration,
+      [batch(10, "2026-07-25 12:00:00")],
+    );
+
+    const second = beginProductPricingHistoryRequest(withFirstHistory, 2);
+
+    expect(second.state).toMatchObject({
+      productId: 2,
+      loading: true,
+      history: [],
+      error: null,
+    });
+  });
+
+  it("rejects stale Product A data and keeps Product B empty after rejection", () => {
+    const first = beginProductPricingHistoryRequest(initialProductPricingHistoryRequestState(), 1);
+    const withFirstHistory = resolveProductPricingHistoryRequest(
+      first.state,
+      first.requestGeneration,
+      [batch(10, "2026-07-25 12:00:00")],
+    );
+    const second = beginProductPricingHistoryRequest(withFirstHistory, 2);
+
+    const afterStaleFirst = resolveProductPricingHistoryRequest(
+      second.state,
+      first.requestGeneration,
+      [batch(11, "2026-07-25 13:00:00")],
+    );
+    const afterSecondFailure = rejectProductPricingHistoryRequest(
+      afterStaleFirst,
+      second.requestGeneration,
+      "Failed to load pricing history.",
+    );
+    const afterLateSecondSuccess = resolveProductPricingHistoryRequest(
+      afterSecondFailure,
+      second.requestGeneration,
+      [batch(12, "2026-07-25 14:00:00")],
+    );
+
+    expect(afterStaleFirst).toBe(second.state);
+    expect(afterSecondFailure).toMatchObject({
+      productId: 2,
+      loading: false,
+      history: [],
+      error: "Failed to load pricing history.",
+    });
+    expect(afterLateSecondSuccess).toBe(afterSecondFailure);
+  });
+});
 
 describe("saved Product pricing history view model", () => {
   it("returns no latest cards for empty stored history", () => {

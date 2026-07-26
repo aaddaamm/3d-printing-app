@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { fetchProduct, updateProduct, type ProductInput, type ProductSummary } from "../lib/api.js";
@@ -21,7 +21,7 @@ const html = (
   }
 ).bind(h);
 
-type DetailFormState = {
+export type DetailFormState = {
   name: string;
   categoryId: string;
   statusId: string;
@@ -49,6 +49,86 @@ type DetailFormState = {
 
 function hoursFromSeconds(value: number | null): string {
   return value === null ? "" : String(value / 3600);
+}
+
+export type ProductDetailRequestState = {
+  generation: number;
+  activeGeneration: number | null;
+  productId: number | null;
+  loading: boolean;
+  product: ProductSummary | null;
+  form: DetailFormState | null;
+  error: string | null;
+};
+
+export function initialProductDetailRequestState(): ProductDetailRequestState {
+  return {
+    generation: 0,
+    activeGeneration: null,
+    productId: null,
+    loading: true,
+    product: null,
+    form: null,
+    error: null,
+  };
+}
+
+export function beginProductDetailRequest(
+  state: ProductDetailRequestState,
+  productId: number,
+): { state: ProductDetailRequestState; requestGeneration: number } {
+  const requestGeneration = state.generation + 1;
+  return {
+    requestGeneration,
+    state: {
+      generation: requestGeneration,
+      activeGeneration: requestGeneration,
+      productId,
+      loading: true,
+      product: null,
+      form: null,
+      error: null,
+    },
+  };
+}
+
+export function isCurrentProductDetailRequest(
+  state: ProductDetailRequestState,
+  requestGeneration: number,
+): boolean {
+  return state.generation === requestGeneration && state.activeGeneration === requestGeneration;
+}
+
+export function resolveProductDetailRequest(
+  state: ProductDetailRequestState,
+  requestGeneration: number,
+  product: ProductSummary,
+): ProductDetailRequestState {
+  if (!isCurrentProductDetailRequest(state, requestGeneration)) return state;
+  return {
+    ...state,
+    activeGeneration: null,
+    loading: false,
+    product,
+    form: initialProductDetailForm(product),
+    error: null,
+  };
+}
+
+export function rejectProductDetailRequest(
+  state: ProductDetailRequestState,
+  requestGeneration: number,
+  error: string,
+): ProductDetailRequestState {
+  if (!isCurrentProductDetailRequest(state, requestGeneration)) return state;
+  return {
+    ...state,
+    activeGeneration: null,
+    loading: false,
+    product: null,
+    form: null,
+    error,
+  };
 }
 
 export function initialProductDetailForm(product: ProductSummary): DetailFormState {
@@ -146,21 +226,50 @@ export function ProductDetailView({
   const [product, setProduct] = useState<ProductSummary | null>(null);
   const [form, setForm] = useState<DetailFormState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const requestState = useRef(initialProductDetailRequestState());
 
   useEffect(() => {
     let cancelled = false;
+    const started = beginProductDetailRequest(requestState.current, productId);
+    requestState.current = started.state;
+    setProduct(null);
+    setForm(null);
+    setLoadError(null);
+    setLoading(true);
+    setSaving(false);
+
     fetchProduct(productId)
       .then((item) => {
         if (cancelled) return;
-        setProduct(item);
-        setForm(initialProductDetailForm(item));
+        const resolved = resolveProductDetailRequest(
+          requestState.current,
+          started.requestGeneration,
+          item,
+        );
+        if (resolved === requestState.current) return;
+        requestState.current = resolved;
+        setProduct(resolved.product);
+        setForm(resolved.form);
+        setLoadError(resolved.error);
+        setLoading(resolved.loading);
       })
       .catch((error: unknown) => {
-        toast(error instanceof Error ? error.message : "Failed to load product.", "error");
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (cancelled) return;
+        const message = error instanceof Error ? error.message : "Failed to load product.";
+        const rejected = rejectProductDetailRequest(
+          requestState.current,
+          started.requestGeneration,
+          message,
+        );
+        if (rejected === requestState.current) return;
+        requestState.current = rejected;
+        setProduct(null);
+        setForm(null);
+        setLoadError(message);
+        setLoading(false);
+        toast(message, "error");
       });
     return () => {
       cancelled = true;
@@ -201,19 +310,38 @@ export function ProductDetailView({
       sales_companion_visible: form.salesCompanionVisible,
     };
 
+    const requestGeneration = requestState.current.generation;
     setSaving(true);
     try {
       const updated = await updateProduct(product.id, payload);
-      if (!updated) return;
+      if (
+        !updated ||
+        requestState.current.generation !== requestGeneration ||
+        requestState.current.productId !== product.id
+      ) {
+        return;
+      }
+      const updatedForm = initialProductDetailForm(updated);
+      requestState.current = { ...requestState.current, product: updated, form: updatedForm };
       setProduct(updated);
-      setForm(initialProductDetailForm(updated));
+      setForm(updatedForm);
       toast("Product updated.", "success");
     } finally {
-      setSaving(false);
+      if (
+        requestState.current.generation === requestGeneration &&
+        requestState.current.productId === product.id
+      ) {
+        setSaving(false);
+      }
     }
   };
 
-  if (loading) return html`<div class="empty">Loading product…</div>`;
+  if (requestState.current.productId !== productId || loading) {
+    return html`<div class="empty">Loading product…</div>`;
+  }
+  if (loadError) {
+    return html`<div class="empty">Unable to load product. ${loadError}</div>`;
+  }
   if (!product || !form) return html`<div class="empty">Product not found.</div>`;
 
   return html`<main class="product-detail-page">
@@ -545,6 +673,6 @@ export function ProductDetailView({
       </form>
     </section>
 
-    <${ProductPricingHistory} productId=${product.id} />
+    <${ProductPricingHistory} productId=${productId} />
   </main>`;
 }

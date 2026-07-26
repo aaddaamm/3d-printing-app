@@ -5,7 +5,13 @@ import {
   formatBatchMoney,
 } from "../frontend/components/batch-price-breakdown.js";
 import { initialBatchDetailForm } from "../frontend/components/batch-detail-view.js";
-import { initialProductDetailForm } from "../frontend/components/product-detail-view.js";
+import {
+  beginProductDetailRequest,
+  initialProductDetailForm,
+  initialProductDetailRequestState,
+  rejectProductDetailRequest,
+  resolveProductDetailRequest,
+} from "../frontend/components/product-detail-view.js";
 import { sellabilityBadgeClass } from "../frontend/components/product-sellability.js";
 import { groupProductsByStatus } from "../frontend/components/products-view.js";
 import type { BatchSummary, ProductSummary } from "../frontend/lib/api.js";
@@ -88,6 +94,45 @@ it("groups product cards into known status columns", () => {
   expect(
     columns.find((column) => column.statusId === "active")?.products.map((item) => item.id),
   ).toEqual([1, 3]);
+});
+
+it("clears Product detail state on an id change and rejects stale responses", () => {
+  const firstProduct = product({ id: 1, name: "Product A" });
+  const secondProduct = product({ id: 2, name: "Product B" });
+  const first = beginProductDetailRequest(initialProductDetailRequestState(), firstProduct.id);
+  const withFirstProduct = resolveProductDetailRequest(
+    first.state,
+    first.requestGeneration,
+    firstProduct,
+  );
+
+  const second = beginProductDetailRequest(withFirstProduct, secondProduct.id);
+  const afterStaleFirst = resolveProductDetailRequest(
+    second.state,
+    first.requestGeneration,
+    firstProduct,
+  );
+  const afterSecondFailure = rejectProductDetailRequest(
+    afterStaleFirst,
+    second.requestGeneration,
+    "Failed to load Product B.",
+  );
+
+  expect(second.state).toMatchObject({
+    productId: 2,
+    product: null,
+    form: null,
+    loading: true,
+    error: null,
+  });
+  expect(afterStaleFirst).toBe(second.state);
+  expect(afterSecondFailure).toMatchObject({
+    productId: 2,
+    product: null,
+    form: null,
+    loading: false,
+    error: "Failed to load Product B.",
+  });
 });
 
 it("initializes product detail form from editable API fields", () => {

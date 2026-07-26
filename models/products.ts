@@ -373,6 +373,12 @@ function normalizeBooleanFlag(value: unknown, field: string): number {
   throw new ProductValidationError(`${field} must be a boolean`);
 }
 
+function normalizeExplicitBooleanFlag(value: unknown, field: string): number {
+  if (typeof value === "boolean") return value ? 1 : 0;
+  if (value === 0 || value === 1) return value;
+  throw new ProductValidationError(`${field} must be a boolean`);
+}
+
 function normalizeRestockPriority(value: unknown, fallback = "none"): string {
   if (value === undefined || value === null) return fallback;
   if (typeof value !== "string") {
@@ -632,7 +638,7 @@ export function updateProduct(id: number, input: UpdateProductInput): ProductSum
   if ("sales_companion_visible" in input) {
     setColumn(
       "sales_companion_visible",
-      normalizeBooleanFlag(input.sales_companion_visible, "sales_companion_visible"),
+      normalizeExplicitBooleanFlag(input.sales_companion_visible, "sales_companion_visible"),
     );
   }
   if ("restock_priority" in input) {
