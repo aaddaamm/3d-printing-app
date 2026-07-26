@@ -23,10 +23,142 @@ export type ExistingOrNewProductSelection =
       notes: string;
     };
 
+export type SaveToProductModalState = {
+  mode: ExistingOrNewProductSelection["mode"];
+  existingProductId: string;
+  newProduct: Extract<ExistingOrNewProductSelection, { mode: "new" }>;
+};
+
+export type SaveProductRequestState = {
+  mounted: boolean;
+  generation: number;
+  activeGeneration: number | null;
+};
+
 export type PriceQuoteRequestState = {
   generation: number;
   activeGeneration: number | null;
 };
+
+export function initialSaveToProductModalState(
+  jobs: Array<Job | undefined>,
+): SaveToProductModalState {
+  return {
+    mode: "new",
+    existingProductId: "",
+    newProduct: {
+      mode: "new",
+      name: suggestedProductName(jobs),
+      designer: "",
+      sourceId: "",
+      licenseId: "unknown_verify",
+      modelUrl: "",
+      notes: "",
+    },
+  };
+}
+
+export function setSaveToProductMode(
+  state: SaveToProductModalState,
+  mode: SaveToProductModalState["mode"],
+): SaveToProductModalState {
+  return { ...state, mode };
+}
+
+export function setSaveToProductExistingProductId(
+  state: SaveToProductModalState,
+  existingProductId: string,
+): SaveToProductModalState {
+  return { ...state, existingProductId };
+}
+
+export function setSaveToProductNewProductField(
+  state: SaveToProductModalState,
+  field: keyof SaveToProductModalState["newProduct"],
+  value: string,
+): SaveToProductModalState {
+  if (field === "mode") return state;
+  return {
+    ...state,
+    newProduct: {
+      ...state.newProduct,
+      [field]: value,
+    },
+  };
+}
+
+export function saveToProductSelection(
+  state: SaveToProductModalState,
+): ExistingOrNewProductSelection {
+  return state.mode === "existing"
+    ? { mode: "existing", productId: Number(state.existingProductId) }
+    : { ...state.newProduct };
+}
+
+export function canSaveToProduct(
+  state: SaveToProductModalState,
+  options: { loadingProducts: boolean; saving: boolean },
+): boolean {
+  if (options.saving) return false;
+  if (state.mode === "existing") {
+    const existingProductNumber = Number(state.existingProductId);
+    return (
+      Number.isSafeInteger(existingProductNumber) &&
+      existingProductNumber > 0 &&
+      !options.loadingProducts
+    );
+  }
+  return Boolean(state.newProduct.name.trim());
+}
+
+export function initialSaveProductRequestState(): SaveProductRequestState {
+  return { mounted: true, generation: 0, activeGeneration: null };
+}
+
+export function beginSaveProductRequest(state: SaveProductRequestState): {
+  state: SaveProductRequestState;
+  requestGeneration: number;
+} | null {
+  if (!state.mounted || state.activeGeneration !== null) return null;
+
+  const requestGeneration = state.generation + 1;
+  return {
+    state: { ...state, generation: requestGeneration, activeGeneration: requestGeneration },
+    requestGeneration,
+  };
+}
+
+export function invalidateSaveProductRequests(
+  state: SaveProductRequestState,
+): SaveProductRequestState {
+  return { ...state, generation: state.generation + 1, activeGeneration: null };
+}
+
+export function unmountSaveProductRequests(
+  state: SaveProductRequestState,
+): SaveProductRequestState {
+  return { mounted: false, generation: state.generation + 1, activeGeneration: null };
+}
+
+export function isCurrentSaveProductRequest(
+  state: SaveProductRequestState,
+  requestGeneration: number,
+): boolean {
+  return (
+    state.mounted &&
+    state.generation === requestGeneration &&
+    state.activeGeneration === requestGeneration
+  );
+}
+
+export function completeSaveProductRequest(
+  state: SaveProductRequestState,
+  requestGeneration: number,
+): SaveProductRequestState {
+  return isCurrentSaveProductRequest(state, requestGeneration)
+    ? { ...state, activeGeneration: null }
+    : state;
+}
 
 export function initialPriceQuoteRequestState(): PriceQuoteRequestState {
   return { generation: 0, activeGeneration: null };

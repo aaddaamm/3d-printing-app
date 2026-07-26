@@ -1,10 +1,95 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  beginSaveProductRequest,
   buildSaveProductPricingRequest,
+  completeSaveProductRequest,
+  initialSaveProductRequestState,
+  initialSaveToProductModalState,
+  invalidateSaveProductRequests,
+  isCurrentSaveProductRequest,
+  setSaveToProductExistingProductId,
+  setSaveToProductMode,
+  setSaveToProductNewProductField,
   type ExistingOrNewProductSelection,
+  unmountSaveProductRequests,
 } from "../frontend/components/price-this-helpers.js";
+import type { Job } from "../frontend/components/jobs-view-types.js";
 import type { PriceThisDraft } from "../frontend/components/price-this-helpers.js";
+
+describe("save-to-product modal request state", () => {
+  it("rejects a stale response after close or unmount invalidates the request", () => {
+    const started = beginSaveProductRequest(initialSaveProductRequestState());
+    expect(started).not.toBeNull();
+    if (!started) return;
+
+    expect(
+      isCurrentSaveProductRequest(
+        invalidateSaveProductRequests(started.state),
+        started.requestGeneration,
+      ),
+    ).toBe(false);
+    expect(
+      isCurrentSaveProductRequest(
+        unmountSaveProductRequests(started.state),
+        started.requestGeneration,
+      ),
+    ).toBe(false);
+  });
+
+  it("treats only the newest request as current and closes it on completion", () => {
+    const first = beginSaveProductRequest(initialSaveProductRequestState());
+    expect(first).not.toBeNull();
+    if (!first) return;
+
+    const second = beginSaveProductRequest(invalidateSaveProductRequests(first.state));
+    expect(second).not.toBeNull();
+    if (!second) return;
+
+    expect(isCurrentSaveProductRequest(second.state, first.requestGeneration)).toBe(false);
+    expect(isCurrentSaveProductRequest(second.state, second.requestGeneration)).toBe(true);
+
+    const completed = completeSaveProductRequest(second.state, second.requestGeneration);
+    expect(isCurrentSaveProductRequest(completed, second.requestGeneration)).toBe(false);
+  });
+
+  it("prevents duplicate begin calls while a submit is already active", () => {
+    const started = beginSaveProductRequest(initialSaveProductRequestState());
+    expect(started).not.toBeNull();
+    if (!started) return;
+
+    expect(beginSaveProductRequest(started.state)).toBeNull();
+  });
+});
+
+describe("save-to-product modal form state", () => {
+  it("preserves new-product fields while switching between new and existing modes", () => {
+    const jobs: Array<Job | undefined> = [{ id: 4, designTitle: "Orbiter" }];
+    const initial = initialSaveToProductModalState(jobs);
+    const edited = setSaveToProductNewProductField(
+      setSaveToProductNewProductField(initial, "designer", "Ada"),
+      "notes",
+      "First batch",
+    );
+    const existing = setSaveToProductExistingProductId(
+      setSaveToProductMode(edited, "existing"),
+      "17",
+    );
+    const backToNew = setSaveToProductMode(existing, "new");
+
+    expect(backToNew.mode).toBe("new");
+    expect(backToNew.existingProductId).toBe("17");
+    expect(backToNew.newProduct).toEqual({
+      mode: "new",
+      name: "Orbiter",
+      designer: "Ada",
+      sourceId: "",
+      licenseId: "unknown_verify",
+      modelUrl: "",
+      notes: "First batch",
+    });
+  });
+});
 
 describe("buildSaveProductPricingRequest", () => {
   it("maps manufacturing inputs for an existing product without the viewed quote channel", () => {

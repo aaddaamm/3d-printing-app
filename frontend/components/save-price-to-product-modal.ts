@@ -5,10 +5,20 @@ import htm from "htm";
 import { fetchProducts, savePriceQuoteToProduct, type ProductSummary } from "../lib/api.js";
 import { useEscapeClose } from "../hooks/use-escape-close.js";
 import {
+  beginSaveProductRequest,
   buildSaveProductPricingRequest,
-  suggestedProductName,
-  type ExistingOrNewProductSelection,
+  canSaveToProduct,
+  completeSaveProductRequest,
+  initialSaveProductRequestState,
+  initialSaveToProductModalState,
+  invalidateSaveProductRequests,
+  isCurrentSaveProductRequest,
+  saveToProductSelection,
+  setSaveToProductExistingProductId,
+  setSaveToProductMode,
+  setSaveToProductNewProductField,
   type PriceThisDraft,
+  unmountSaveProductRequests,
 } from "./price-this-helpers.js";
 import { PRODUCT_LICENSES, PRODUCT_SOURCES } from "./product-card.js";
 import type { Job } from "./jobs-view-types.js";
@@ -19,8 +29,6 @@ const html = (
     bind: (renderer: typeof h) => (strings: TemplateStringsArray, ...values: unknown[]) => unknown;
   }
 ).bind(h);
-
-type NewProductFormState = Extract<ExistingOrNewProductSelection, { mode: "new" }>;
 
 type SavePriceToProductModalProps = {
   draft: PriceThisDraft;
@@ -35,18 +43,6 @@ function overlayClose(onClose: () => void) {
   };
 }
 
-function initialNewProductState(selectedJobs: Array<Job | undefined>): NewProductFormState {
-  return {
-    mode: "new",
-    name: suggestedProductName(selectedJobs),
-    designer: "",
-    sourceId: "",
-    licenseId: "unknown_verify",
-    modelUrl: "",
-    notes: "",
-  };
-}
-
 function productOptionLabel(product: ProductSummary): string {
   const parts = [product.name, product.designer || product.status_label].filter(Boolean);
   return parts.join(" · ");
@@ -58,19 +54,27 @@ export function SavePriceToProductModal({
   navigate,
   onClose,
 }: SavePriceToProductModalProps) {
-  const [mode, setMode] = useState<ExistingOrNewProductSelection["mode"]>("new");
-  const [existingProductId, setExistingProductId] = useState("");
-  const [newProduct, setNewProduct] = useState<NewProductFormState>(() =>
-    initialNewProductState(selectedJobs),
-  );
+  const [modalState, setModalState] = useState(() => initialSaveToProductModalState(selectedJobs));
   const [products, setProducts] = useState<ProductSummary[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [saving, setSaving] = useState(false);
-  const savingRef = useRef(false);
+  const saveRequestState = useRef(initialSaveProductRequestState());
   const existingSelectRef = useRef<HTMLSelectElement | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
-  useEscapeClose(onClose);
+  useEffect(() => {
+    return () => {
+      saveRequestState.current = unmountSaveProductRequests(saveRequestState.current);
+    };
+  }, []);
+
+  const dismiss = () => {
+    if (saving) return;
+    saveRequestState.current = invalidateSaveProductRequests(saveRequestState.current);
+    onClose();
+  };
+
+  useEscapeClose(dismiss);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,54 +96,54 @@ export function SavePriceToProductModal({
   }, []);
 
   useEffect(() => {
-    if (mode === "existing") {
+    if (modalState.mode === "existing") {
       existingSelectRef.current?.focus();
       return;
     }
     nameInputRef.current?.focus();
-  }, [mode]);
+  }, [modalState.mode]);
 
   const existingOptions = useMemo(
     () => [...products].sort((left, right) => left.name.localeCompare(right.name)),
     [products],
   );
 
-  const existingProductNumber = Number(existingProductId);
-  const canSave =
-    !saving &&
-    (mode === "existing"
-      ? Number.isSafeInteger(existingProductNumber) && existingProductNumber > 0 && !loadingProducts
-      : Boolean(newProduct.name.trim()));
-
-  const setNewProductField = (field: keyof Omit<NewProductFormState, "mode">, value: string) => {
-    setNewProduct((current) => ({ ...current, [field]: value }));
-  };
+  const canSave = canSaveToProduct(modalState, { loadingProducts, saving });
 
   const handleSubmit = async (event: Event) => {
     event.preventDefault();
-    if (!canSave || savingRef.current) return;
+    if (!canSave) return;
 
-    const selection: ExistingOrNewProductSelection =
-      mode === "existing" ? { mode, productId: existingProductNumber } : { ...newProduct };
+    const started = beginSaveProductRequest(saveRequestState.current);
+    if (!started) return;
 
-    savingRef.current = true;
+    saveRequestState.current = started.state;
     setSaving(true);
     try {
       const result = await savePriceQuoteToProduct(
-        buildSaveProductPricingRequest(draft, selection),
+        buildSaveProductPricingRequest(draft, saveToProductSelection(modalState)),
       );
-      if (!result) return;
-      toast("Saved price quote to product.", "success");
-      onClose();
-      navigate(`/products/${result.saved.product.id}`);
+      if (
+        result &&
+        isCurrentSaveProductRequest(saveRequestState.current, started.requestGeneration)
+      ) {
+        toast("Saved price quote to product.", "success");
+        onClose();
+        navigate(`/products/${result.saved.product.id}`);
+      }
     } finally {
-      savingRef.current = false;
-      setSaving(false);
+      if (isCurrentSaveProductRequest(saveRequestState.current, started.requestGeneration)) {
+        saveRequestState.current = completeSaveProductRequest(
+          saveRequestState.current,
+          started.requestGeneration,
+        );
+        setSaving(false);
+      }
     }
   };
 
   return html`
-    <div class="overlay" onClick=${overlayClose(onClose)}>
+    <div class="overlay" onClick=${overlayClose(dismiss)}>
       <div
         class="modal save-price-modal"
         role="dialog"
@@ -157,7 +161,7 @@ export function SavePriceToProductModal({
           <button
             class="modal-close"
             type="button"
-            onClick=${onClose}
+            onClick=${dismiss}
             aria-label="Close save to product dialog"
           >
             ✕
@@ -172,8 +176,8 @@ export function SavePriceToProductModal({
                   type="radio"
                   name="save-product-mode"
                   value="new"
-                  checked=${mode === "new"}
-                  onChange=${() => setMode("new")}
+                  checked=${modalState.mode === "new"}
+                  onChange=${() => setModalState((current) => setSaveToProductMode(current, "new"))}
                 />
                 <span>Create Product</span>
               </label>
@@ -182,22 +186,28 @@ export function SavePriceToProductModal({
                   type="radio"
                   name="save-product-mode"
                   value="existing"
-                  checked=${mode === "existing"}
-                  onChange=${() => setMode("existing")}
+                  checked=${modalState.mode === "existing"}
+                  onChange=${() =>
+                    setModalState((current) => setSaveToProductMode(current, "existing"))}
                 />
                 <span>Use existing Product</span>
               </label>
             </fieldset>
 
-            ${mode === "existing"
+            ${modalState.mode === "existing"
               ? html`<label class="form-label">
                   Product
                   <select
                     class="form-input"
                     ref=${existingSelectRef}
-                    value=${existingProductId}
+                    value=${modalState.existingProductId}
                     onChange=${(event: Event) =>
-                      setExistingProductId((event.target as HTMLSelectElement).value)}
+                      setModalState((current) =>
+                        setSaveToProductExistingProductId(
+                          current,
+                          (event.target as HTMLSelectElement).value,
+                        ),
+                      )}
                   >
                     <option value="">Choose a Product</option>
                     ${existingOptions.map(
@@ -222,9 +232,15 @@ export function SavePriceToProductModal({
                       class="form-input"
                       ref=${nameInputRef}
                       type="text"
-                      value=${newProduct.name}
+                      value=${modalState.newProduct.name}
                       onInput=${(event: Event) =>
-                        setNewProductField("name", (event.target as HTMLInputElement).value)}
+                        setModalState((current) =>
+                          setSaveToProductNewProductField(
+                            current,
+                            "name",
+                            (event.target as HTMLInputElement).value,
+                          ),
+                        )}
                       required
                     />
                   </label>
@@ -233,18 +249,30 @@ export function SavePriceToProductModal({
                     <input
                       class="form-input"
                       type="text"
-                      value=${newProduct.designer}
+                      value=${modalState.newProduct.designer}
                       onInput=${(event: Event) =>
-                        setNewProductField("designer", (event.target as HTMLInputElement).value)}
+                        setModalState((current) =>
+                          setSaveToProductNewProductField(
+                            current,
+                            "designer",
+                            (event.target as HTMLInputElement).value,
+                          ),
+                        )}
                     />
                   </label>
                   <label class="form-label">
                     Source
                     <select
                       class="form-input"
-                      value=${newProduct.sourceId}
+                      value=${modalState.newProduct.sourceId}
                       onChange=${(event: Event) =>
-                        setNewProductField("sourceId", (event.target as HTMLSelectElement).value)}
+                        setModalState((current) =>
+                          setSaveToProductNewProductField(
+                            current,
+                            "sourceId",
+                            (event.target as HTMLSelectElement).value,
+                          ),
+                        )}
                     >
                       <option value="">Source TBD</option>
                       ${PRODUCT_SOURCES.map(
@@ -259,9 +287,15 @@ export function SavePriceToProductModal({
                     License
                     <select
                       class="form-input"
-                      value=${newProduct.licenseId}
+                      value=${modalState.newProduct.licenseId}
                       onChange=${(event: Event) =>
-                        setNewProductField("licenseId", (event.target as HTMLSelectElement).value)}
+                        setModalState((current) =>
+                          setSaveToProductNewProductField(
+                            current,
+                            "licenseId",
+                            (event.target as HTMLSelectElement).value,
+                          ),
+                        )}
                     >
                       ${PRODUCT_LICENSES.map(
                         (license) =>
@@ -276,24 +310,36 @@ export function SavePriceToProductModal({
                     <input
                       class="form-input"
                       type="url"
-                      value=${newProduct.modelUrl}
+                      value=${modalState.newProduct.modelUrl}
                       onInput=${(event: Event) =>
-                        setNewProductField("modelUrl", (event.target as HTMLInputElement).value)}
+                        setModalState((current) =>
+                          setSaveToProductNewProductField(
+                            current,
+                            "modelUrl",
+                            (event.target as HTMLInputElement).value,
+                          ),
+                        )}
                     />
                   </label>
                   <label class="form-label save-price-modal-field-wide">
                     Notes
                     <textarea
                       class="form-input form-textarea"
-                      value=${newProduct.notes}
+                      value=${modalState.newProduct.notes}
                       onInput=${(event: Event) =>
-                        setNewProductField("notes", (event.target as HTMLTextAreaElement).value)}
+                        setModalState((current) =>
+                          setSaveToProductNewProductField(
+                            current,
+                            "notes",
+                            (event.target as HTMLTextAreaElement).value,
+                          ),
+                        )}
                     />
                   </label>
                 </div>`}
 
             <div class="form-actions save-price-modal-actions">
-              <button type="button" class="btn-secondary" onClick=${onClose} disabled=${saving}>
+              <button type="button" class="btn-secondary" onClick=${dismiss} disabled=${saving}>
                 Cancel
               </button>
               <button type="submit" class="btn-primary" disabled=${!canSave}>
