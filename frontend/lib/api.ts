@@ -7,6 +7,29 @@ type RequestOptions = (RequestInit & { timeoutMs?: number | null }) | undefined;
 
 export type SellabilityLevel = "green" | "yellow" | "red";
 
+export type ProductImageSourceType =
+  | "manual_upload"
+  | "source_hero"
+  | "catalog_preview"
+  | "contact_sheet"
+  | "print_cover"
+  | "placeholder";
+
+export type ProductImageCandidate = {
+  candidate_key: string;
+  source_type: ProductImageSourceType;
+  photo_id: number | null;
+  url: string | null;
+  label: string;
+  priority: number;
+  available: boolean;
+  warning: string | null;
+};
+
+export type ProductImageSelectionInput =
+  | { mode: "auto" }
+  | { mode: "manual"; candidate_key: string };
+
 export type ProductSummary = {
   id: number;
   name: string;
@@ -19,7 +42,10 @@ export type ProductSummary = {
   source_label: string | null;
   license_id: string | null;
   license_label: string | null;
+  main_photo_id: number | null;
   main_photo_path: string | null;
+  main_photo_source_type: ProductImageSourceType | null;
+  image_selection_mode: "auto" | "manual";
   target_sale_price: number | null;
   restock_priority: string;
   model_url: string | null;
@@ -284,6 +310,7 @@ type ProductsResponse = { products: ProductSummary[] };
 type SalesCompanionProductsResponse = { products: SalesCompanionProduct[] };
 type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
+type ProductImageCandidatesResponse = { candidates: ProductImageCandidate[] };
 type ProductPricingHistoryResponse = { history: SavedProductPricingBatch[] };
 type ProjectsResponse = { projects: ProjectSummary[] };
 type BatchesResponse = { batches: BatchSummary[] };
@@ -423,6 +450,42 @@ export async function fetchSalesCompanionProducts(): Promise<SalesCompanionProdu
 export async function fetchProduct(id: number): Promise<ProductSummary> {
   const data = await fetchJson<ProductResponse>(`/api/products/${id}`, "Failed to load product.");
   return data.product;
+}
+
+export async function fetchProductImageCandidates(
+  productId: number,
+): Promise<ProductImageCandidate[]> {
+  const data = await fetchJson<ProductImageCandidatesResponse>(
+    `/api/products/${productId}/image-candidates`,
+    "Failed to load product image candidates.",
+  );
+  return data.candidates;
+}
+
+export async function setProductImageSelection(
+  productId: number,
+  input: ProductImageSelectionInput,
+): Promise<ProductSummary | null> {
+  const data = await postJsonOrToast<ProductResponse>(
+    `/api/products/${productId}/image-selection`,
+    input,
+    "Failed to update product image selection.",
+  );
+  return data?.product ?? null;
+}
+
+export function selectProductImage(
+  productId: number,
+  candidateKey: string,
+): Promise<ProductSummary | null> {
+  return setProductImageSelection(productId, {
+    mode: "manual",
+    candidate_key: candidateKey,
+  });
+}
+
+export function returnProductImageToAuto(productId: number): Promise<ProductSummary | null> {
+  return setProductImageSelection(productId, { mode: "auto" });
 }
 
 export async function fetchProductPricingHistory(

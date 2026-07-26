@@ -5,25 +5,34 @@ const {
   mockCreateProduct,
   mockCreateProductFromJob,
   mockCreateProductFromProject,
+  mockListProductImageCandidates,
   mockListProductPricingHistory,
   mockListProducts,
   mockListProductsToPrintNext,
   mockListSalesCompanionProducts,
+  mockReturnProductImageToAuto,
+  mockSelectProductImage,
   mockUpdateProduct,
+  MockProductImageValidationError,
   MockProductValidationError,
   MockSavedProductPricingValidationError,
 } = vi.hoisted(() => {
   class ProductValidationError extends Error {}
+  class ProductImageValidationError extends ProductValidationError {}
   class SavedProductPricingValidationError extends Error {}
   return {
     mockCreateProduct: vi.fn(),
     mockCreateProductFromJob: vi.fn(),
     mockCreateProductFromProject: vi.fn(),
+    mockListProductImageCandidates: vi.fn(),
     mockListProductPricingHistory: vi.fn(),
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockListSalesCompanionProducts: vi.fn(),
+    mockReturnProductImageToAuto: vi.fn(),
+    mockSelectProductImage: vi.fn(),
     mockUpdateProduct: vi.fn(),
+    MockProductImageValidationError: ProductImageValidationError,
     MockProductValidationError: ProductValidationError,
     MockSavedProductPricingValidationError: SavedProductPricingValidationError,
   };
@@ -45,6 +54,13 @@ vi.mock("../models/saved-product-pricing.js", () => ({
   listProductPricingHistory: mockListProductPricingHistory,
 }));
 
+vi.mock("../models/product-images.js", () => ({
+  ProductImageValidationError: MockProductImageValidationError,
+  listProductImageCandidates: mockListProductImageCandidates,
+  returnProductImageToAuto: mockReturnProductImageToAuto,
+  selectProductImage: mockSelectProductImage,
+}));
+
 import { products } from "../routes/products.js";
 
 const sampleProduct = {
@@ -59,7 +75,10 @@ const sampleProduct = {
   source_label: "Printables",
   license_id: "commercial_allowed",
   license_label: "Commercial Allowed",
+  main_photo_id: null,
   main_photo_path: null,
+  main_photo_source_type: null,
+  image_selection_mode: "auto",
   target_sale_price: 20,
   restock_priority: "none",
   model_url: "https://example.com/controller-stand",
@@ -82,6 +101,29 @@ const sampleProduct = {
   can_sell_label: "Commercial use allowed",
   ready_to_list: false,
 };
+
+const sampleCandidates = [
+  {
+    candidate_key: "catalog_preview:4:abc",
+    source_type: "catalog_preview",
+    photo_id: null,
+    url: "/catalog/previews/abc.png",
+    label: "Controller Stand preview",
+    priority: 30,
+    available: true,
+    warning: null,
+  },
+  {
+    candidate_key: "manual_upload:missing",
+    source_type: "manual_upload",
+    photo_id: 8,
+    url: "/ui/product-photos/8",
+    label: "Missing upload",
+    priority: 10,
+    available: false,
+    warning: "The saved image file is unavailable.",
+  },
+];
 
 const samplePricingHistory = [
   {
@@ -162,10 +204,18 @@ describe("product routes", () => {
         priced_at: "2026-07-25 12:00:00",
       },
     ]);
+    mockListProductImageCandidates.mockReturnValue(sampleCandidates);
     mockListProductPricingHistory.mockReturnValue(samplePricingHistory);
     mockCreateProduct.mockReturnValue(sampleProduct);
     mockCreateProductFromJob.mockReturnValue({ ...sampleProduct, name: "Dragon Egg" });
     mockCreateProductFromProject.mockReturnValue({ ...sampleProduct, name: "Cubee Dragons" });
+    mockReturnProductImageToAuto.mockReturnValue(sampleProduct);
+    mockSelectProductImage.mockReturnValue({
+      ...sampleProduct,
+      main_photo_id: 12,
+      main_photo_source_type: "catalog_preview",
+      image_selection_mode: "manual",
+    });
     mockUpdateProduct.mockReturnValue({
       ...sampleProduct,
       status_id: "active",
@@ -249,6 +299,92 @@ describe("product routes", () => {
       name: "Controller Stand",
       designer: "PrintWorks",
     });
+  });
+
+  it("lists ranked image candidates for an existing product", async () => {
+    const res = await apiApp().request("/api/products/1/image-candidates");
+
+    expect(res.status).toBe(200);
+    expect(mockListProductImageCandidates).toHaveBeenCalledWith(1);
+    expect(await res.json()).toEqual({ candidates: sampleCandidates });
+  });
+
+  it("selects Manual candidates and returns the Product", async () => {
+    const res = await apiApp().request("/api/products/1/image-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "manual", candidate_key: "catalog_preview:4:abc" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockSelectProductImage).toHaveBeenCalledWith(1, "catalog_preview:4:abc");
+    expect((await res.json()) as object).toEqual({
+      product: expect.objectContaining({ image_selection_mode: "manual" }),
+    });
+  });
+
+  it("returns image selection to Auto mode", async () => {
+    const res = await apiApp().request("/api/products/1/image-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "auto" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockReturnProductImageToAuto).toHaveBeenCalledWith(1);
+    expect(mockSelectProductImage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { mode: "auto", candidate_key: "catalog_preview:4:abc" },
+    { mode: "manual" },
+    { mode: "manual", candidate_key: "catalog_preview:4:abc", extra: true },
+    { mode: "automatic" },
+    { mode: 1 },
+  ])("rejects non-strict image selection bodies: %o", async (body) => {
+    const res = await apiApp().request("/api/products/1/image-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockReturnProductImageToAuto).not.toHaveBeenCalled();
+    expect(mockSelectProductImage).not.toHaveBeenCalled();
+  });
+
+  it("rejects unavailable image candidates", async () => {
+    mockSelectProductImage.mockImplementation(() => {
+      throw new MockProductImageValidationError(
+        "Image candidate is unavailable: manual_upload:missing",
+      );
+    });
+    const res = await apiApp().request("/api/products/1/image-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "manual", candidate_key: "manual_upload:missing" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({
+      error: "Image candidate is unavailable: manual_upload:missing",
+    });
+  });
+
+  it("returns 404 for image routes when the product does not exist", async () => {
+    mockListProducts.mockReturnValue([]);
+
+    const listRes = await apiApp().request("/api/products/99/image-candidates");
+    const selectRes = await apiApp().request("/api/products/99/image-selection", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode: "auto" }),
+    });
+
+    expect(listRes.status).toBe(404);
+    expect(selectRes.status).toBe(404);
+    expect(mockListProductImageCandidates).not.toHaveBeenCalled();
+    expect(mockReturnProductImageToAuto).not.toHaveBeenCalled();
   });
 
   it("returns pricing history for an existing product", async () => {

@@ -1,5 +1,6 @@
 import { db } from "../lib/db.js";
 import { readyToList, sellabilityForProduct, type SellabilityLevel } from "../lib/product-rules.js";
+import type { ProductImageSourceType } from "./product-images.js";
 
 export interface ProductSummary {
   id: number;
@@ -13,7 +14,10 @@ export interface ProductSummary {
   source_label: string | null;
   license_id: string | null;
   license_label: string | null;
+  main_photo_id: number | null;
   main_photo_path: string | null;
+  main_photo_source_type: ProductImageSourceType | null;
+  image_selection_mode: "auto" | "manual";
   target_sale_price: number | null;
   restock_priority: string;
   model_url: string | null;
@@ -149,9 +153,13 @@ const PRODUCT_SELECT = `
         OR COALESCE(pp.path, cf.path) LIKE '/Volumes/%'
         OR COALESCE(pp.path, cf.path) LIKE '/private/%'
         OR COALESCE(pp.path, cf.path) LIKE '/tmp/%'
+        OR COALESCE(pp.path, cf.path) LIKE '/var/%'
         THEN '/ui/product-photos/' || pp.id
       ELSE COALESCE(pp.path, cf.path)
     END AS main_photo_path,
+    p.main_photo_id,
+    pp.source_type AS main_photo_source_type,
+    p.image_selection_mode,
     p.target_sale_price,
     COALESCE(p.restock_priority, 'none') AS restock_priority,
     p.model_url,
@@ -170,8 +178,7 @@ const PRODUCT_SELECT = `
     p.pricing_notes,
     p.notes,
     p.sales_companion_visible,
-    p.main_file_id,
-    p.main_photo_id
+    p.main_file_id
   FROM products p
   LEFT JOIN product_categories pc ON pc.id = p.category_id
   LEFT JOIN product_statuses ps ON ps.id = p.status_id
@@ -235,7 +242,10 @@ function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
     source_label: row.source_label,
     license_id: row.license_id,
     license_label: row.license_label,
+    main_photo_id: row.main_photo_id,
     main_photo_path: row.main_photo_path,
+    main_photo_source_type: row.main_photo_source_type,
+    image_selection_mode: row.image_selection_mode,
     target_sale_price: row.target_sale_price,
     restock_priority: row.restock_priority,
     model_url: row.model_url,
@@ -683,6 +693,7 @@ export function listSalesCompanionProducts(): SalesCompanionProduct[] {
              OR COALESCE(pp.path, cf.path) LIKE '/Volumes/%'
              OR COALESCE(pp.path, cf.path) LIKE '/private/%'
              OR COALESCE(pp.path, cf.path) LIKE '/tmp/%'
+             OR COALESCE(pp.path, cf.path) LIKE '/var/%'
              THEN '/ui/product-photos/' || pp.id
            ELSE COALESCE(pp.path, cf.path)
          END AS identification_image_url,

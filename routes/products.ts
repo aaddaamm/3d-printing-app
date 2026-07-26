@@ -15,6 +15,11 @@ import {
   listProductPricingHistory,
   SavedProductPricingValidationError,
 } from "../models/saved-product-pricing.js";
+import {
+  listProductImageCandidates,
+  returnProductImageToAuto,
+  selectProductImage,
+} from "../models/product-images.js";
 import { jsonError, parseJsonBody, requireId, unknownFields } from "../lib/util.js";
 
 export const products = new Hono();
@@ -116,6 +121,46 @@ products.post("/", async (c) => {
   try {
     const product = createProduct(body as unknown as CreateProductInput);
     return c.json({ product }, 201);
+  } catch (error: unknown) {
+    return handleProductError(c, error);
+  }
+});
+
+products.get("/:id/image-candidates", (c) => {
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
+
+  try {
+    return c.json({ candidates: listProductImageCandidates(idOrError) });
+  } catch (error: unknown) {
+    return handleProductError(c, error);
+  }
+});
+
+products.post("/:id/image-selection", async (c) => {
+  const idOrError = requireId(c);
+  if (idOrError instanceof Response) return idOrError;
+  if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
+
+  const body = await parseJsonBody(c);
+  if (!body) return jsonError(c, "Invalid JSON body", 400);
+  const unknown = unknownFields(body, ["mode", "candidate_key"]);
+  if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
+
+  try {
+    if (body["mode"] === "auto" && Object.keys(body).length === 1) {
+      return c.json({ product: returnProductImageToAuto(idOrError) });
+    }
+    if (
+      body["mode"] === "manual" &&
+      Object.keys(body).length === 2 &&
+      typeof body["candidate_key"] === "string" &&
+      body["candidate_key"].trim() !== ""
+    ) {
+      return c.json({ product: selectProductImage(idOrError, body["candidate_key"]) });
+    }
+    return jsonError(c, "Invalid image selection body", 400);
   } catch (error: unknown) {
     return handleProductError(c, error);
   }
