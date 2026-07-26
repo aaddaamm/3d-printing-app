@@ -4,6 +4,7 @@ import { readyToList, sellabilityForProduct, type SellabilityLevel } from "../li
 export interface ProductSummary {
   id: number;
   name: string;
+  designer: string | null;
   category_id: string | null;
   category_label: string | null;
   status_id: string;
@@ -38,6 +39,7 @@ export interface ProductSummary {
 export interface CreateProductInput {
   name: string;
   description?: string | null;
+  designer?: string | null;
   category_id?: string | null;
   status_id?: string;
   source_id?: string | null;
@@ -85,6 +87,7 @@ type ProductSummaryRow = Omit<
 type ProductColumn =
   | "name"
   | "description"
+  | "designer"
   | "category_id"
   | "status_id"
   | "source_id"
@@ -114,6 +117,7 @@ const PRODUCT_SELECT = `
   SELECT
     p.id,
     p.name,
+    p.designer,
     p.category_id,
     pc.label AS category_label,
     COALESCE(p.status_id, 'idea') AS status_id,
@@ -168,6 +172,7 @@ const LOOKUP_TABLES = {
 
 const OPTIONAL_TEXT_FIELDS = [
   "description",
+  "designer",
   "model_url",
   "etsy_listing_url",
   "default_material",
@@ -203,6 +208,7 @@ function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
   return {
     id: row.id,
     name: row.name,
+    designer: row.designer,
     category_id: row.category_id,
     category_label: row.category_label,
     status_id: row.status_id,
@@ -470,13 +476,13 @@ export function createProduct(input: CreateProductInput): ProductSummary {
   const result = db
     .prepare(
       `INSERT INTO products (
-        name, slug, description, status, category_id, status_id, source_id, license_id,
+        name, slug, description, designer, status, category_id, status_id, source_id, license_id,
         model_url, main_file_id, main_photo_id, etsy_listing_url, default_material,
         primary_color, accent_color, preferred_printer_id, estimated_print_time_s,
         estimated_filament_g, target_sale_price, booth_price, etsy_price, packaging_cost,
         handling_minutes, target_margin_pct, pricing_notes, notes, is_original_design, restock_priority
       ) VALUES (
-        @name, @slug, @description, @status, @category_id, @status_id, @source_id, @license_id,
+        @name, @slug, @description, @designer, @status, @category_id, @status_id, @source_id, @license_id,
         @model_url, @main_file_id, @main_photo_id, @etsy_listing_url, @default_material,
         @primary_color, @accent_color, @preferred_printer_id, @estimated_print_time_s,
         @estimated_filament_g, @target_sale_price, @booth_price, @etsy_price, @packaging_cost,

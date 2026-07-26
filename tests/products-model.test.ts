@@ -151,6 +151,7 @@ describe.sequential("products model", () => {
     );
     const product = productsModule!.createProduct({
       name: "Detailed Product",
+      designer: "Model Maker",
       model_url: "https://example.com/model",
       etsy_listing_url: "https://etsy.com/listing/123",
       default_material: "PLA",
@@ -169,6 +170,7 @@ describe.sequential("products model", () => {
     });
 
     expect(product).toMatchObject({
+      designer: "Model Maker",
       model_url: "https://example.com/model",
       etsy_listing_url: "https://etsy.com/listing/123",
       default_material: "PLA",
@@ -189,12 +191,14 @@ describe.sequential("products model", () => {
 
     const updated = productsModule!.updateProduct(product.id, {
       status_id: "active",
+      designer: "Updated Maker",
       booth_price: 13,
       pricing_notes: "Updated notes.",
     });
 
     expect(updated).toMatchObject({
       status_id: "active",
+      designer: "Updated Maker",
       model_url: "https://example.com/model",
       etsy_listing_url: "https://etsy.com/listing/123",
       default_material: "PLA",
