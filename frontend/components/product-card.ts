@@ -109,6 +109,14 @@ export function ProductCard({
             readyToList=${product.ready_to_list}
           />
           <span class="product-license-badge">${product.license_label || "License unknown"}</span>
+          <span
+            class=${"product-publication-badge " +
+            (product.sales_companion_visible
+              ? "product-publication-badge--visible"
+              : "product-publication-badge--private")}
+          >
+            ${product.sales_companion_visible ? "Sales visible" : "Sales private"}
+          </span>
         </div>
         <div class="product-card-footer">
           <strong>${formatPrice(product.target_sale_price)}</strong>

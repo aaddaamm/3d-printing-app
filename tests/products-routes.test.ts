@@ -8,6 +8,7 @@ const {
   mockListProductPricingHistory,
   mockListProducts,
   mockListProductsToPrintNext,
+  mockListSalesCompanionProducts,
   mockUpdateProduct,
   MockProductValidationError,
   MockSavedProductPricingValidationError,
@@ -21,6 +22,7 @@ const {
     mockListProductPricingHistory: vi.fn(),
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
+    mockListSalesCompanionProducts: vi.fn(),
     mockUpdateProduct: vi.fn(),
     MockProductValidationError: ProductValidationError,
     MockSavedProductPricingValidationError: SavedProductPricingValidationError,
@@ -34,6 +36,7 @@ vi.mock("../models/products.js", () => ({
   createProductFromProject: mockCreateProductFromProject,
   listProducts: mockListProducts,
   listProductsToPrintNext: mockListProductsToPrintNext,
+  listSalesCompanionProducts: mockListSalesCompanionProducts,
   updateProduct: mockUpdateProduct,
 }));
 
@@ -74,6 +77,7 @@ const sampleProduct = {
   target_margin_pct: 0.5,
   pricing_notes: "Round to market-friendly prices.",
   notes: "Use a brim.",
+  sales_companion_visible: false,
   can_sell_level: "green",
   can_sell_label: "Commercial use allowed",
   ready_to_list: false,
@@ -144,6 +148,20 @@ describe("product routes", () => {
     vi.resetAllMocks();
     mockListProducts.mockReturnValue([sampleProduct]);
     mockListProductsToPrintNext.mockReturnValue([{ ...sampleProduct, restock_priority: "high" }]);
+    mockListSalesCompanionProducts.mockReturnValue([
+      {
+        id: 1,
+        name: "Controller Stand",
+        identification_image_url: null,
+        unit_cost: 9.5,
+        production_loss_cost: 1.25,
+        direct_price: 29.99,
+        direct_margin_pct: 0.5,
+        etsy_price: 34.99,
+        etsy_margin_pct: 0.55,
+        priced_at: "2026-07-25 12:00:00",
+      },
+    ]);
     mockListProductPricingHistory.mockReturnValue(samplePricingHistory);
     mockCreateProduct.mockReturnValue(sampleProduct);
     mockCreateProductFromJob.mockReturnValue({ ...sampleProduct, name: "Dragon Egg" });
@@ -176,6 +194,31 @@ describe("product routes", () => {
     expect(await res.json()).toEqual({
       products: [{ ...sampleProduct, restock_priority: "high" }],
     });
+  });
+
+  it("returns the minimal Sales Companion publication projection", async () => {
+    const res = await apiApp().request("/api/products/sales-companion");
+
+    expect(res.status).toBe(200);
+    expect(mockListSalesCompanionProducts).toHaveBeenCalledOnce();
+    const body = (await res.json()) as { products: Array<Record<string, unknown>> };
+    expect(body.products).toEqual([
+      {
+        id: 1,
+        name: "Controller Stand",
+        identification_image_url: null,
+        unit_cost: 9.5,
+        production_loss_cost: 1.25,
+        direct_price: 29.99,
+        direct_margin_pct: 0.5,
+        etsy_price: 34.99,
+        etsy_margin_pct: 0.55,
+        priced_at: "2026-07-25 12:00:00",
+      },
+    ]);
+    expect(Object.keys(body.products[0] ?? {})).not.toEqual(
+      expect.arrayContaining(["job_ids", "source_url", "notes", "provider", "rates"]),
+    );
   });
 
   it("creates a product from a source job", async () => {
@@ -273,6 +316,34 @@ describe("product routes", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "Unknown license_id: missing" });
+  });
+
+  it("allows explicit Sales Companion visibility updates", async () => {
+    mockUpdateProduct.mockReturnValue({ ...sampleProduct, sales_companion_visible: true });
+
+    const res = await apiApp().request("/api/products/1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sales_companion_visible: true }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockUpdateProduct).toHaveBeenCalledWith(1, { sales_companion_visible: true });
+  });
+
+  it("rejects invalid Sales Companion visibility values", async () => {
+    mockUpdateProduct.mockImplementation(() => {
+      throw new MockProductValidationError("sales_companion_visible must be a boolean");
+    });
+
+    const res = await apiApp().request("/api/products/1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sales_companion_visible: "yes" }),
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "sales_companion_visible must be a boolean" });
   });
 
   it("patches product status and pricing defaults", async () => {

@@ -31,6 +31,7 @@ export interface ProductSummary {
   target_margin_pct: number | null;
   pricing_notes: string | null;
   notes: string | null;
+  sales_companion_visible: boolean;
   can_sell_level: SellabilityLevel;
   can_sell_label: string;
   ready_to_list: boolean;
@@ -63,6 +64,7 @@ export interface CreateProductInput {
   pricing_notes?: string | null;
   notes?: string | null;
   is_original_design?: boolean | number;
+  sales_companion_visible?: boolean | number;
   restock_priority?: string | null;
 }
 
@@ -77,11 +79,25 @@ export class ProductValidationError extends Error {
 
 type ProductSummaryRow = Omit<
   ProductSummary,
-  "can_sell_level" | "can_sell_label" | "ready_to_list"
+  "sales_companion_visible" | "can_sell_level" | "can_sell_label" | "ready_to_list"
 > & {
+  sales_companion_visible: number;
   model_url: string | null;
   main_file_id: number | null;
   main_photo_id: number | null;
+};
+
+export type SalesCompanionProduct = {
+  id: number;
+  name: string;
+  identification_image_url: string | null;
+  unit_cost: number;
+  production_loss_cost: number;
+  direct_price: number;
+  direct_margin_pct: number;
+  etsy_price: number;
+  etsy_margin_pct: number;
+  priced_at: string;
 };
 
 type ProductColumn =
@@ -111,6 +127,7 @@ type ProductColumn =
   | "pricing_notes"
   | "notes"
   | "is_original_design"
+  | "sales_companion_visible"
   | "restock_priority";
 
 const PRODUCT_SELECT = `
@@ -152,6 +169,7 @@ const PRODUCT_SELECT = `
     p.target_margin_pct,
     p.pricing_notes,
     p.notes,
+    p.sales_companion_visible,
     p.main_file_id,
     p.main_photo_id
   FROM products p
@@ -235,6 +253,7 @@ function productSummaryFromRow(row: ProductSummaryRow): ProductSummary {
     target_margin_pct: row.target_margin_pct,
     pricing_notes: row.pricing_notes,
     notes: row.notes,
+    sales_companion_visible: row.sales_companion_visible === 1,
     can_sell_level: sellability.level,
     can_sell_label: sellability.label,
     ready_to_list: readyToList({
@@ -347,11 +366,11 @@ function normalizeNonNegativeInteger(value: unknown, field: string): number | nu
   return value;
 }
 
-function normalizeBooleanFlag(value: unknown): number {
+function normalizeBooleanFlag(value: unknown, field: string): number {
   if (value === undefined) return 0;
   if (typeof value === "boolean") return value ? 1 : 0;
   if (value === 0 || value === 1) return value;
-  throw new ProductValidationError("is_original_design must be a boolean");
+  throw new ProductValidationError(`${field} must be a boolean`);
 }
 
 function normalizeRestockPriority(value: unknown, fallback = "none"): string {
@@ -452,7 +471,11 @@ export function createProduct(input: CreateProductInput): ProductSummary {
     slug: uniqueSlug(name),
     status: statusId,
     status_id: statusId,
-    is_original_design: normalizeBooleanFlag(input.is_original_design),
+    is_original_design: normalizeBooleanFlag(input.is_original_design, "is_original_design"),
+    sales_companion_visible: normalizeBooleanFlag(
+      input.sales_companion_visible,
+      "sales_companion_visible",
+    ),
     restock_priority: normalizeRestockPriority(input.restock_priority),
   };
 
@@ -480,13 +503,15 @@ export function createProduct(input: CreateProductInput): ProductSummary {
         model_url, main_file_id, main_photo_id, etsy_listing_url, default_material,
         primary_color, accent_color, preferred_printer_id, estimated_print_time_s,
         estimated_filament_g, target_sale_price, booth_price, etsy_price, packaging_cost,
-        handling_minutes, target_margin_pct, pricing_notes, notes, is_original_design, restock_priority
+        handling_minutes, target_margin_pct, pricing_notes, notes, is_original_design,
+        sales_companion_visible, restock_priority
       ) VALUES (
         @name, @slug, @description, @designer, @status, @category_id, @status_id, @source_id, @license_id,
         @model_url, @main_file_id, @main_photo_id, @etsy_listing_url, @default_material,
         @primary_color, @accent_color, @preferred_printer_id, @estimated_print_time_s,
         @estimated_filament_g, @target_sale_price, @booth_price, @etsy_price, @packaging_cost,
-        @handling_minutes, @target_margin_pct, @pricing_notes, @notes, @is_original_design, @restock_priority
+        @handling_minutes, @target_margin_pct, @pricing_notes, @notes, @is_original_design,
+        @sales_companion_visible, @restock_priority
       )`,
     )
     .run(values);
@@ -599,7 +624,16 @@ export function updateProduct(id: number, input: UpdateProductInput): ProductSum
     );
   }
   if ("is_original_design" in input) {
-    setColumn("is_original_design", normalizeBooleanFlag(input.is_original_design));
+    setColumn(
+      "is_original_design",
+      normalizeBooleanFlag(input.is_original_design, "is_original_design"),
+    );
+  }
+  if ("sales_companion_visible" in input) {
+    setColumn(
+      "sales_companion_visible",
+      normalizeBooleanFlag(input.sales_companion_visible, "sales_companion_visible"),
+    );
   }
   if ("restock_priority" in input) {
     setColumn("restock_priority", normalizeRestockPriority(input.restock_priority));
@@ -607,6 +641,64 @@ export function updateProduct(id: number, input: UpdateProductInput): ProductSum
 
   db.prepare(`UPDATE products SET ${updates.join(", ")} WHERE id = @id`).run(values);
   return getProductSummaryById(id);
+}
+
+export function listSalesCompanionProducts(): SalesCompanionProduct[] {
+  return db
+    .prepare<[], SalesCompanionProduct>(
+      `WITH complete_batches AS (
+         SELECT
+           pb.id,
+           pb.product_id,
+           pb.created_at,
+           ROW_NUMBER() OVER (
+             PARTITION BY pb.product_id
+             ORDER BY pb.created_at DESC, pb.id DESC
+           ) AS recency
+         FROM product_batches pb
+         JOIN product_price_snapshots snapshots ON snapshots.batch_id = pb.id
+         WHERE pb.source_type = 'price_quote'
+         GROUP BY pb.id
+         HAVING COUNT(*) = 2
+           AND SUM(CASE WHEN snapshots.channel = 'direct' THEN 1 ELSE 0 END) = 1
+           AND SUM(CASE WHEN snapshots.channel = 'etsy' THEN 1 ELSE 0 END) = 1
+       ),
+       latest_complete_batches AS (
+         SELECT id, product_id, created_at
+         FROM complete_batches
+         WHERE recency = 1
+       )
+       SELECT
+         p.id,
+         p.name,
+         CASE
+           WHEN pp.id IS NULL THEN NULL
+           WHEN COALESCE(pp.path, cf.path) LIKE '/Users/%'
+             OR COALESCE(pp.path, cf.path) LIKE '/Volumes/%'
+             OR COALESCE(pp.path, cf.path) LIKE '/private/%'
+             OR COALESCE(pp.path, cf.path) LIKE '/tmp/%'
+             THEN '/ui/product-photos/' || pp.id
+           ELSE COALESCE(pp.path, cf.path)
+         END AS identification_image_url,
+         direct.unit_cost,
+         direct.production_loss_cost,
+         direct.suggested_price AS direct_price,
+         direct.estimated_margin_pct AS direct_margin_pct,
+         etsy.suggested_price AS etsy_price,
+         etsy.estimated_margin_pct AS etsy_margin_pct,
+         latest.created_at AS priced_at
+       FROM products p
+       JOIN latest_complete_batches latest ON latest.product_id = p.id
+       JOIN product_price_snapshots direct
+         ON direct.batch_id = latest.id AND direct.channel = 'direct'
+       JOIN product_price_snapshots etsy
+         ON etsy.batch_id = latest.id AND etsy.channel = 'etsy'
+       LEFT JOIN product_photos pp ON pp.id = p.main_photo_id
+       LEFT JOIN catalog_files cf ON cf.id = pp.file_id
+       WHERE p.sales_companion_visible = 1
+       ORDER BY p.name COLLATE NOCASE, p.id`,
+    )
+    .all();
 }
 
 export function listProductsToPrintNext(): ProductSummary[] {

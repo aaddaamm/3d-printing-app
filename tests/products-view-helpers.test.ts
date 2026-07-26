@@ -45,6 +45,7 @@ function product(overrides: Partial<ProductSummary>): ProductSummary {
     can_sell_label: "Verify license",
     ready_to_list: false,
     ...overrides,
+    sales_companion_visible: overrides.sales_companion_visible ?? false,
   };
 }
 

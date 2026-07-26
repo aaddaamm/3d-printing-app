@@ -2697,7 +2697,8 @@ tbody td {
 .product-license-badge,
 .product-status-pill,
 .product-priority,
-.product-sellability {
+.product-sellability,
+.product-publication-badge {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -2713,6 +2714,18 @@ tbody td {
   color: #dbe6ff;
   background: rgba(148, 170, 230, 0.12);
   border: 1px solid rgba(148, 170, 230, 0.26);
+}
+
+.product-publication-badge--visible {
+  color: var(--green);
+  background: var(--green-soft);
+  border: 1px solid rgba(123, 216, 143, 0.28);
+}
+
+.product-publication-badge--private {
+  color: var(--muted);
+  background: rgba(148, 170, 230, 0.08);
+  border: 1px solid var(--border);
 }
 
 .product-sellability--green {
@@ -2864,6 +2877,173 @@ tbody td {
 .product-license-warning--red {
   color: var(--red);
   background: var(--red-soft);
+}
+
+.product-publication-section {
+  border: 1px solid var(--ui-divider-soft);
+  border-radius: var(--radius);
+  padding: 14px;
+}
+
+.sales-companion-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.sales-companion-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+}
+
+.sales-companion-image-warning {
+  margin: 0;
+  color: var(--yellow);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.product-pricing-history {
+  margin: 0 28px;
+  padding: 18px;
+  border: 1px solid var(--ui-panel-border);
+  border-radius: var(--radius);
+  background: var(--ui-panel-bg);
+}
+
+.product-pricing-heading,
+.product-pricing-card-heading,
+.product-pricing-history-row > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.product-pricing-heading > span {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+}
+
+.product-pricing-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.product-pricing-card {
+  padding: 14px;
+  border: 1px solid var(--ui-divider-soft);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.product-pricing-card-heading {
+  align-items: baseline;
+  margin-bottom: 12px;
+  color: var(--text);
+}
+
+.product-pricing-card-heading span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.product-pricing-card-heading strong {
+  color: var(--accent);
+  font-size: 1.35rem;
+}
+
+.product-pricing-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.product-pricing-metrics div {
+  display: grid;
+  gap: 2px;
+}
+
+.product-pricing-metrics dt,
+.product-pricing-assumptions span,
+.product-pricing-history-row span {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.product-pricing-metrics dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.product-pricing-assumptions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--ui-divider-soft);
+}
+
+.product-pricing-assumptions strong {
+  flex-basis: 100%;
+  color: var(--subtext);
+  font-size: 0.74rem;
+}
+
+.product-pricing-warnings,
+.product-pricing-no-warnings {
+  margin: 10px 0 0;
+  color: var(--yellow);
+  font-size: 0.73rem;
+}
+
+.product-pricing-warnings ul {
+  margin: 5px 0 0;
+  padding-left: 18px;
+}
+
+.product-pricing-history-list summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.product-pricing-history-list ol {
+  display: grid;
+  gap: 7px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-pricing-history-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--ui-divider-soft);
+  border-radius: 8px;
+}
+
+.product-pricing-history-row > div {
+  flex-direction: column;
+  gap: 2px;
+}
+
+.product-pricing-history-row strong {
+  color: var(--text);
+  font-size: 0.75rem;
 }
 
 .product-form-grid {
@@ -3079,7 +3259,9 @@ tbody td {
   .product-create-card,
   .batch-create-card,
   .product-detail-layout,
-  .product-print-next-summary {
+  .product-print-next-summary,
+  .product-pricing-card-grid,
+  .product-pricing-history-row {
     grid-template-columns: 1fr;
   }
 

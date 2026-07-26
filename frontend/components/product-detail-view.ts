@@ -11,6 +11,7 @@ import {
   PRODUCT_STATUSES,
   RESTOCK_PRIORITIES,
 } from "./product-card.js";
+import { ProductPricingHistory } from "./product-pricing-history.js";
 import { ProductSellability } from "./product-sellability.js";
 import { toast } from "./toast.js";
 
@@ -43,6 +44,7 @@ type DetailFormState = {
   targetMarginPct: string;
   pricingNotes: string;
   notes: string;
+  salesCompanionVisible: boolean;
 };
 
 function hoursFromSeconds(value: number | null): string {
@@ -75,6 +77,7 @@ export function initialProductDetailForm(product: ProductSummary): DetailFormSta
     targetMarginPct: product.target_margin_pct === null ? "" : String(product.target_margin_pct),
     pricingNotes: product.pricing_notes ?? "",
     notes: product.notes ?? "",
+    salesCompanionVisible: product.sales_companion_visible,
   };
 }
 
@@ -195,6 +198,7 @@ export function ProductDetailView({
       target_margin_pct: numberOrNull(form.targetMarginPct),
       pricing_notes: form.pricingNotes.trim() || null,
       notes: form.notes.trim() || null,
+      sales_companion_visible: form.salesCompanionVisible,
     };
 
     setSaving(true);
@@ -424,6 +428,37 @@ export function ProductDetailView({
           </label>
         </section>
 
+        <section class="admin-section product-publication-section">
+          <h3 class="admin-section-title">Sales Companion publication</h3>
+          <label class="sales-companion-toggle">
+            <input
+              type="checkbox"
+              checked=${form.salesCompanionVisible}
+              onChange=${(event: Event) =>
+                setForm((current) =>
+                  current
+                    ? {
+                        ...current,
+                        salesCompanionVisible: (event.target as HTMLInputElement).checked,
+                      }
+                    : current,
+                )}
+            />
+            <span>Visible in Sales Companion</span>
+          </label>
+          <p class="admin-section-desc">
+            ${form.salesCompanionVisible
+              ? "Visible Products publish only their newest complete saved Direct and Etsy pricing."
+              : "Private by default. Enable this only when the Product is ready for local Sales Companion use."}
+          </p>
+          ${!product.main_photo_path
+            ? html`<p class="sales-companion-image-warning">
+                No identification image is selected. Visibility is allowed, but Sales Companion will
+                show this Product without an image.
+              </p>`
+            : null}
+        </section>
+
         <section class="admin-section">
           <h3 class="admin-section-title">Product pricing defaults</h3>
           <p class="admin-section-desc">
@@ -509,5 +544,7 @@ export function ProductDetailView({
         </div>
       </form>
     </section>
+
+    <${ProductPricingHistory} productId=${product.id} />
   </main>`;
 }

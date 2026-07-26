@@ -37,6 +37,7 @@ export type ProductSummary = {
   target_margin_pct: number | null;
   pricing_notes: string | null;
   notes: string | null;
+  sales_companion_visible: boolean;
   can_sell_level: SellabilityLevel;
   can_sell_label: string;
   ready_to_list: boolean;
@@ -69,6 +70,7 @@ export type ProductInput = Partial<{
   pricing_notes: string | null;
   notes: string | null;
   is_original_design: boolean;
+  sales_companion_visible: boolean;
   restock_priority: string | null;
 }>;
 
@@ -260,12 +262,26 @@ export type SavedProductPricingBatch = {
   snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
 };
 
+export type SalesCompanionProduct = {
+  id: number;
+  name: string;
+  identification_image_url: string | null;
+  unit_cost: number;
+  production_loss_cost: number;
+  direct_price: number;
+  direct_margin_pct: number;
+  etsy_price: number;
+  etsy_margin_pct: number;
+  priced_at: string;
+};
+
 export type SavedProductPricingResponse = {
   saved: SavedProductPricing;
   image_warnings: string[];
 };
 
 type ProductsResponse = { products: ProductSummary[] };
+type SalesCompanionProductsResponse = { products: SalesCompanionProduct[] };
 type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
 type ProductPricingHistoryResponse = { history: SavedProductPricingBatch[] };
@@ -393,6 +409,14 @@ export async function fetchJobDetails(jobId: number): Promise<JobDetailResponse>
 
 export async function fetchProducts(): Promise<ProductSummary[]> {
   const data = await fetchJson<ProductsResponse>("/api/products", "Failed to load products.");
+  return data.products;
+}
+
+export async function fetchSalesCompanionProducts(): Promise<SalesCompanionProduct[]> {
+  const data = await fetchJson<SalesCompanionProductsResponse>(
+    "/api/products/sales-companion",
+    "Failed to load Sales Companion products.",
+  );
   return data.products;
 }
 

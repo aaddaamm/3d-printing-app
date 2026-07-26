@@ -6,6 +6,7 @@ import {
   createProductFromProject,
   listProducts,
   listProductsToPrintNext,
+  listSalesCompanionProducts,
   updateProduct,
   type CreateProductInput,
   type UpdateProductInput,
@@ -45,6 +46,7 @@ const PRODUCT_MUTABLE_FIELDS = [
   "pricing_notes",
   "notes",
   "is_original_design",
+  "sales_companion_visible",
   "restock_priority",
 ] as const;
 
@@ -71,6 +73,11 @@ products.get("/", (c) => {
 // Must be before /:id to avoid param capture.
 products.get("/print-next", (c) => {
   return c.json({ products: listProductsToPrintNext() });
+});
+
+// Must be before /:id to avoid param capture.
+products.get("/sales-companion", (c) => {
+  return c.json({ products: listSalesCompanionProducts() });
 });
 
 products.post("/from-job/:jobId", (c) => {

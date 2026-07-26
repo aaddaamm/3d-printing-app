@@ -41,6 +41,118 @@ describe.sequential("products model", () => {
     productsModule = null;
   });
 
+  it("maps Sales Companion visibility to an explicit boolean and validates updates", () => {
+    const product = productsModule!.createProduct({ name: "Private Product" });
+
+    expect(product.sales_companion_visible).toBe(false);
+    expect(
+      productsModule!.updateProduct(product.id, { sales_companion_visible: true }),
+    ).toMatchObject({ sales_companion_visible: true });
+    expect(productsModule!.updateProduct(product.id, { sales_companion_visible: 0 })).toMatchObject(
+      { sales_companion_visible: false },
+    );
+    expect(productsModule!.updateProduct(product.id, { sales_companion_visible: 1 })).toMatchObject(
+      { sales_companion_visible: true },
+    );
+    expect(() =>
+      productsModule!.updateProduct(product.id, {
+        sales_companion_visible: "yes" as unknown as boolean,
+      }),
+    ).toThrow(/sales_companion_visible must be a boolean/i);
+  });
+
+  it("lists only visible Products using their newest complete saved pricing Batch", () => {
+    const privateProduct = productsModule!.createProduct({ name: "Private Product" });
+    const unpricedProduct = productsModule!.createProduct({
+      name: "Visible Unpriced",
+      sales_companion_visible: true,
+    });
+    const visibleProduct = productsModule!.createProduct({
+      name: "Visible Priced",
+      sales_companion_visible: true,
+    });
+    const photoId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO product_photos (product_id, path, role)
+           VALUES (?, ?, 'main') RETURNING id`,
+        )
+        .pluck()
+        .get(visibleProduct.id, "/photos/visible.jpg"),
+    );
+    productsModule!.updateProduct(visibleProduct.id, { main_photo_id: photoId });
+
+    const insertBatch = dbModule!.db.prepare(
+      `INSERT INTO product_batches
+         (product_id, pricing_profile_id, planned_quantity, completed_quantity, source_type, created_at)
+       VALUES (?, 'booth', 4, 4, 'price_quote', ?) RETURNING id`,
+    );
+    const insertSnapshot = dbModule!.db.prepare(
+      `INSERT INTO product_price_snapshots (
+         batch_id, channel, target_margin_pct, platform_fee_pct, fixed_fee_per_order,
+         labor_hourly_rate, material_cost, machine_cost, production_loss_cost,
+         batch_labor_cost, per_unit_labor_cost, packaging_cost, extra_cost, subtotal_cost,
+         buffer_cost, total_cost, unit_cost, minimum_viable_price, suggested_price,
+         profit_per_unit, profit_per_batch, estimated_margin_pct, input_json,
+         assumptions_json, warnings_json, breakdown_json, created_at
+       ) VALUES (
+         ?, ?, 0.5, 0, 0, 30, 4, 6, ?, 2, 1, 1, 0, 14, 1, 15, ?, 15, ?,
+         10, 40, ?, '{}', '{}', '[]', '{}', ?
+       )`,
+    );
+    const addCompleteBatch = (
+      productId: number,
+      createdAt: string,
+      unitCost: number,
+      lossCost: number,
+      directPrice: number,
+      etsyPrice: number,
+    ) => {
+      const batchId = Number(insertBatch.pluck().get(productId, createdAt));
+      insertSnapshot.run(batchId, "direct", lossCost, unitCost, directPrice, 0.5, createdAt);
+      insertSnapshot.run(batchId, "etsy", lossCost, unitCost, etsyPrice, 0.55, createdAt);
+      return batchId;
+    };
+
+    addCompleteBatch(privateProduct.id, "2026-07-25 08:00:00", 7, 1, 20, 24);
+    addCompleteBatch(visibleProduct.id, "2026-07-25 09:00:00", 8, 1.5, 25, 29);
+    addCompleteBatch(visibleProduct.id, "2026-07-25 10:00:00", 8.5, 2, 27.99, 32.99);
+    const newestBatchId = addCompleteBatch(
+      visibleProduct.id,
+      "2026-07-25 10:00:00",
+      9.5,
+      2.25,
+      29.99,
+      34.99,
+    );
+    const incompleteBatchId = Number(
+      insertBatch.pluck().get(visibleProduct.id, "2026-07-25 11:00:00"),
+    );
+    insertSnapshot.run(incompleteBatchId, "direct", 99, 99, 99, 0.1, "2026-07-25 11:00:00");
+
+    const published = productsModule!.listSalesCompanionProducts();
+
+    expect(unpricedProduct.sales_companion_visible).toBe(true);
+    expect(published).toEqual([
+      {
+        id: visibleProduct.id,
+        name: "Visible Priced",
+        identification_image_url: "/photos/visible.jpg",
+        unit_cost: 9.5,
+        production_loss_cost: 2.25,
+        direct_price: 29.99,
+        direct_margin_pct: 0.5,
+        etsy_price: 34.99,
+        etsy_margin_pct: 0.55,
+        priced_at: "2026-07-25 10:00:00",
+      },
+    ]);
+    expect(newestBatchId).toBeGreaterThan(0);
+    expect(Object.keys(published[0] ?? {})).not.toEqual(
+      expect.arrayContaining(["job_ids", "source_url", "notes", "provider", "printer_id", "rates"]),
+    );
+  });
+
   it("creates a product with lookup labels and computed sellability fields", () => {
     const product = productsModule!.createProduct({
       name: "  Controller Stand  ",
