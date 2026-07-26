@@ -162,6 +162,17 @@ export type PriceQuoteRequest = {
   target_margin_pct?: number;
 };
 
+export type PriceQuoteRateAssumption = {
+  job_id: number;
+  task_id: string;
+  material_type: string;
+  material_rate_per_kg: number;
+  printer: string;
+  machine_rate_per_hr: number;
+  used_material_fallback: boolean;
+  used_machine_fallback: boolean;
+};
+
 export type PriceQuoteResult = {
   channel: "direct" | "etsy";
   assumptions: {
@@ -169,6 +180,9 @@ export type PriceQuoteResult = {
     target_margin_pct: number;
     platform_fee_pct: number;
     fixed_fee_per_order: number;
+    failure_buffer_pct: number;
+    overhead_buffer_pct: number;
+    resolved_rates: PriceQuoteRateAssumption[];
   };
   attempts: Array<{
     job_id: number;

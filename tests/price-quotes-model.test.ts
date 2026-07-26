@@ -144,6 +144,14 @@ describe.sequential("price quotes model", () => {
   });
 
   it("resolves cross-provider attempts and reports failed production cost separately", () => {
+    dbModule!.db
+      .prepare(
+        `UPDATE labor_config
+         SET failure_buffer_pct = 0.1, overhead_buffer_pct = 0.05
+         WHERE id = 1`,
+      )
+      .run();
+
     const result = priceQuotesModule!.calculatePriceQuote(validInput());
 
     expect(result.attempts.map((attempt) => attempt.job_id)).toEqual([successJobId, failedJobId]);
@@ -170,6 +178,34 @@ describe.sequential("price quotes model", () => {
     expect(result.breakdown.productionLossCost).toBeGreaterThan(0);
     expect(result.breakdown.materialCost + result.breakdown.machineCost).toBeGreaterThanOrEqual(
       result.breakdown.productionLossCost,
+    );
+    expect(result.assumptions).toMatchObject({
+      failure_buffer_pct: 0.1,
+      overhead_buffer_pct: 0.05,
+    });
+    expect(result.assumptions.resolved_rates).toEqual(
+      expect.arrayContaining([
+        {
+          job_id: successJobId,
+          task_id: "bambu-task",
+          material_type: "PLA",
+          material_rate_per_kg: 20,
+          printer: "P1S",
+          machine_rate_per_hr: 2,
+          used_material_fallback: false,
+          used_machine_fallback: false,
+        },
+        {
+          job_id: failedJobId,
+          task_id: "moon-task",
+          material_type: "PETG",
+          material_rate_per_kg: 30,
+          printer: "Snapmaker U1",
+          machine_rate_per_hr: 4,
+          used_material_fallback: false,
+          used_machine_fallback: false,
+        },
+      ]),
     );
     expect(result.warnings).toEqual([]);
   });
@@ -208,6 +244,43 @@ describe.sequential("price quotes model", () => {
     expect(result.breakdown.machineCost).toBe(4);
   });
 
+  it("preserves each resolved material-rate contribution for multi-material tasks", () => {
+    dbModule!.db
+      .prepare(
+        `INSERT INTO job_filaments (task_id, filament_type, weight_g)
+         VALUES ('bambu-task', 'PETG', 5)`,
+      )
+      .run();
+
+    const result = priceQuotesModule!.calculatePriceQuote(validInput({ job_ids: [successJobId] }));
+
+    expect(result.attempts[0]).toMatchObject({ material_cost: 1.15, machine_cost: 2 });
+    expect(result.assumptions.resolved_rates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          job_id: successJobId,
+          task_id: "bambu-task",
+          material_type: "PLA",
+          material_rate_per_kg: 20,
+          printer: "P1S",
+          machine_rate_per_hr: 2,
+          used_material_fallback: false,
+          used_machine_fallback: false,
+        }),
+        expect.objectContaining({
+          job_id: successJobId,
+          task_id: "bambu-task",
+          material_type: "PETG",
+          material_rate_per_kg: 30,
+          printer: "P1S",
+          machine_rate_per_hr: 2,
+          used_material_fallback: false,
+          used_machine_fallback: false,
+        }),
+      ]),
+    );
+  });
+
   it("uses effective material rates including configured waste buffers", () => {
     const updateRate = dbModule!.db.prepare(
       `UPDATE material_rates
@@ -232,6 +305,20 @@ describe.sequential("price quotes model", () => {
     const result = priceQuotesModule!.calculatePriceQuote(validInput());
 
     expect(result.attempts[1]!.material_cost).toBe(0.4);
+    expect(result.assumptions.resolved_rates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          job_id: failedJobId,
+          task_id: "moon-task",
+          material_type: "PLA",
+          material_rate_per_kg: 20,
+          printer: "Snapmaker U1",
+          machine_rate_per_hr: 4,
+          used_material_fallback: true,
+          used_machine_fallback: false,
+        }),
+      ]),
+    );
     expect(result.warnings).toEqual([
       expect.stringMatching(/job .*Dragon retry.*task .*Dragon body retry.*PLA/i),
     ]);
@@ -272,6 +359,20 @@ describe.sequential("price quotes model", () => {
     const result = priceQuotesModule!.calculatePriceQuote(validInput());
 
     expect(result.attempts[1]!.machine_cost).toBe(1);
+    expect(result.assumptions.resolved_rates).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          job_id: failedJobId,
+          task_id: "moon-task",
+          material_type: "PETG",
+          material_rate_per_kg: 30,
+          printer: "P1S",
+          machine_rate_per_hr: 2,
+          used_material_fallback: false,
+          used_machine_fallback: true,
+        }),
+      ]),
+    );
     expect(result.warnings).toEqual([
       expect.stringMatching(/job .*Dragon retry.*task .*Dragon body retry.*machine.*P1S/i),
     ]);
@@ -309,18 +410,24 @@ describe.sequential("price quotes model", () => {
       validInput({ channel: "etsy", target_margin_pct: 0.25 }),
     );
 
-    expect(direct.assumptions).toEqual({
+    expect(direct.assumptions).toMatchObject({
       labor_hourly_rate: 30,
       target_margin_pct: 0.4,
       platform_fee_pct: 0,
       fixed_fee_per_order: 0,
+      failure_buffer_pct: 0,
+      overhead_buffer_pct: 0,
     });
-    expect(etsy.assumptions).toEqual({
+    expect(direct.assumptions.resolved_rates).toHaveLength(2);
+    expect(etsy.assumptions).toMatchObject({
       labor_hourly_rate: 30,
       target_margin_pct: 0.5,
       platform_fee_pct: 0.12,
       fixed_fee_per_order: 0.45,
+      failure_buffer_pct: 0,
+      overhead_buffer_pct: 0,
     });
+    expect(etsy.assumptions.resolved_rates).toHaveLength(2);
     expect(overridden.assumptions.target_margin_pct).toBe(0.25);
     expect(etsy.breakdown.suggestedPrice).toBeGreaterThan(direct.breakdown.suggestedPrice);
   });

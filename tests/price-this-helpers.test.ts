@@ -14,6 +14,30 @@ const quote: PriceQuoteResult = {
     target_margin_pct: 0.393,
     platform_fee_pct: 0.12,
     fixed_fee_per_order: 0.45,
+    failure_buffer_pct: 0.1,
+    overhead_buffer_pct: 0.05,
+    resolved_rates: [
+      {
+        job_id: 12,
+        task_id: "task-12",
+        material_type: "PLA",
+        material_rate_per_kg: 20,
+        printer: "X1 Carbon",
+        machine_rate_per_hr: 2.25,
+        used_material_fallback: false,
+        used_machine_fallback: false,
+      },
+      {
+        job_id: 7,
+        task_id: "task-7",
+        material_type: "PLA",
+        material_rate_per_kg: 20,
+        printer: "SV08",
+        machine_rate_per_hr: 1.8,
+        used_material_fallback: true,
+        used_machine_fallback: false,
+      },
+    ],
   },
   attempts: [
     {
