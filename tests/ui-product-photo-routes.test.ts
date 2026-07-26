@@ -85,6 +85,27 @@ describe.sequential("product photo UI routes", () => {
     expect(await absoluteRes.text()).toBe("absolute bytes");
   });
 
+  it("returns 404 when a validated photo is replaced by a symlink before open", async () => {
+    const photoPath = path.join(tempDir, "replace-me.webp");
+    const targetPath = path.join(tempDir, "secret.webp");
+    fs.writeFileSync(photoPath, "original bytes");
+    fs.writeFileSync(targetPath, "secret bytes");
+    const photoId = insertPhoto(photoPath, "image/webp");
+    const originalLstat = fs.lstatSync.bind(fs);
+    const lstat = vi.spyOn(fs, "lstatSync").mockImplementationOnce((filePath) => {
+      const stat = originalLstat(filePath);
+      fs.rmSync(photoPath);
+      fs.symlinkSync(targetPath, photoPath);
+      return stat;
+    });
+
+    const res = await app().request(`/ui/product-photos/${photoId}`);
+
+    lstat.mockRestore();
+    expect(res.status).toBe(404);
+    expect(await res.json()).toEqual({ error: "Not found" });
+  });
+
   it("returns 404 for missing, unsupported, and non-regular local paths", async () => {
     const missingId = insertPhoto(path.relative(process.cwd(), path.join(tempDir, "missing.png")));
     const directoryPath = path.join(tempDir, "directory.png");

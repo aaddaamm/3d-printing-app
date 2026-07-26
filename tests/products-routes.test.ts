@@ -11,17 +11,21 @@ const {
   mockListProducts,
   mockListProductsToPrintNext,
   mockListSalesCompanionProducts,
-  mockRemoveAppOwnedProductImage,
+  mockRemoveUnreferencedAppOwnedProductImage,
   mockReturnProductImageToAuto,
   mockSelectProductImage,
   mockStoreUploadedProductImage,
   mockUpdateProduct,
+  MockProductImageFileSizeError,
+  MockProductImageFileValidationError,
   MockProductImageValidationError,
   MockProductValidationError,
   MockSavedProductPricingValidationError,
 } = vi.hoisted(() => {
   class ProductValidationError extends Error {}
   class ProductImageValidationError extends ProductValidationError {}
+  class ProductImageFileValidationError extends Error {}
+  class ProductImageFileSizeError extends ProductImageFileValidationError {}
   class SavedProductPricingValidationError extends Error {}
   return {
     mockCreateManualProductPhoto: vi.fn(),
@@ -33,11 +37,13 @@ const {
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockListSalesCompanionProducts: vi.fn(),
-    mockRemoveAppOwnedProductImage: vi.fn(),
+    mockRemoveUnreferencedAppOwnedProductImage: vi.fn(),
     mockReturnProductImageToAuto: vi.fn(),
     mockSelectProductImage: vi.fn(),
     mockStoreUploadedProductImage: vi.fn(),
     mockUpdateProduct: vi.fn(),
+    MockProductImageFileSizeError: ProductImageFileSizeError,
+    MockProductImageFileValidationError: ProductImageFileValidationError,
     MockProductImageValidationError: ProductImageValidationError,
     MockProductValidationError: ProductValidationError,
     MockSavedProductPricingValidationError: SavedProductPricingValidationError,
@@ -64,12 +70,14 @@ vi.mock("../models/product-images.js", () => ({
   ProductImageValidationError: MockProductImageValidationError,
   createManualProductPhoto: mockCreateManualProductPhoto,
   ensureGeneratedProductImageCandidates: mockEnsureGeneratedProductImageCandidates,
+  removeUnreferencedAppOwnedProductImage: mockRemoveUnreferencedAppOwnedProductImage,
   returnProductImageToAuto: mockReturnProductImageToAuto,
   selectProductImage: mockSelectProductImage,
 }));
 
 vi.mock("../lib/product-image-files.js", () => ({
-  removeAppOwnedProductImage: mockRemoveAppOwnedProductImage,
+  ProductImageFileSizeError: MockProductImageFileSizeError,
+  ProductImageFileValidationError: MockProductImageFileValidationError,
   storeUploadedProductImage: mockStoreUploadedProductImage,
 }));
 
@@ -197,6 +205,25 @@ function apiApp(): Hono {
   return app;
 }
 
+function oversizedStreamingRequest(transferEncoding?: "chunked"): Request {
+  const chunks = Array.from({ length: 4 }, () => new Uint8Array(4 * 1024 * 1024));
+  const body = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      const chunk = chunks.shift();
+      if (chunk) controller.enqueue(chunk);
+      else controller.close();
+    },
+  });
+  const headers = new Headers({ "Content-Type": "application/octet-stream" });
+  if (transferEncoding) headers.set("Transfer-Encoding", transferEncoding);
+  return new Request("http://localhost/api/products/1/photos", {
+    method: "POST",
+    headers,
+    body,
+    duplex: "half",
+  } as RequestInit & { duplex: "half" });
+}
+
 describe("product routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -231,6 +258,7 @@ describe("product routes", () => {
       width: 640,
       height: 480,
       contentHash: "a".repeat(64),
+      createdOrRepaired: true,
     });
     mockCreateManualProductPhoto.mockReturnValue({
       product: {
@@ -401,6 +429,30 @@ describe("product routes", () => {
     expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
   });
 
+  it.each([undefined, "chunked" as const])(
+    "rejects an oversized streaming aggregate with transfer encoding %s",
+    async (transferEncoding) => {
+      const res = await apiApp().fetch(oversizedStreamingRequest(transferEncoding));
+
+      expect(res.status).toBe(413);
+      expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects oversized aggregate multipart data even when the selected photo is small", async () => {
+    const form = new FormData();
+    form.set("photo", new File(["small"], "photo.png"));
+    form.set("extra", new File([new Uint8Array(12 * 1024 * 1024)], "extra.bin"));
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(413);
+    expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
+  });
+
   it("requires a multipart File in the photo field", async () => {
     const form = new FormData();
     form.set("photo", "not a file");
@@ -427,13 +479,39 @@ describe("product routes", () => {
     });
 
     expect(res.status).toBe(500);
-    expect(mockRemoveAppOwnedProductImage).toHaveBeenCalledWith(
+    expect(mockRemoveUnreferencedAppOwnedProductImage).toHaveBeenCalledWith(
       "/tmp/product-images/1/uploads/upload.webp",
     );
   });
 
-  it("maps invalid uploaded image bytes to 400 without database cleanup", async () => {
-    mockStoreUploadedProductImage.mockRejectedValue(new Error("Invalid image"));
+  it("does not remove a pre-existing content-addressed upload after database failure", async () => {
+    mockStoreUploadedProductImage.mockResolvedValue({
+      path: "/tmp/product-images/1/uploads/upload.webp",
+      contentType: "image/webp",
+      width: 640,
+      height: 480,
+      contentHash: "a".repeat(64),
+      createdOrRepaired: false,
+    });
+    mockCreateManualProductPhoto.mockImplementation(() => {
+      throw new Error("database failed");
+    });
+    const form = new FormData();
+    form.set("photo", new File(["image bytes"], "dragon.png"));
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(500);
+    expect(mockRemoveUnreferencedAppOwnedProductImage).not.toHaveBeenCalled();
+  });
+
+  it("maps typed invalid uploaded image bytes to 400 without database cleanup", async () => {
+    mockStoreUploadedProductImage.mockRejectedValue(
+      new MockProductImageFileValidationError("Invalid image"),
+    );
     const form = new FormData();
     form.set("photo", new File(["bad"], "bad.png", { type: "image/png" }));
 
@@ -444,7 +522,53 @@ describe("product routes", () => {
 
     expect(res.status).toBe(400);
     expect(mockCreateManualProductPhoto).not.toHaveBeenCalled();
-    expect(mockRemoveAppOwnedProductImage).not.toHaveBeenCalled();
+    expect(mockRemoveUnreferencedAppOwnedProductImage).not.toHaveBeenCalled();
+  });
+
+  it("maps typed image size errors to 413 and storage failures to 500", async () => {
+    const form = new FormData();
+    form.set("photo", new File(["bytes"], "photo.png"));
+    mockStoreUploadedProductImage.mockRejectedValueOnce(
+      new MockProductImageFileSizeError("decoded input is too large"),
+    );
+
+    const sizeRes = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+    expect(sizeRes.status).toBe(413);
+
+    mockStoreUploadedProductImage.mockRejectedValueOnce(new Error("disk unavailable"));
+    const storageRes = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+    expect(storageRes.status).toBe(500);
+  });
+
+  it("does not mask the original database error when cleanup fails", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    mockCreateManualProductPhoto.mockImplementation(() => {
+      throw new MockProductImageValidationError("database validation failed");
+    });
+    mockRemoveUnreferencedAppOwnedProductImage.mockImplementation(() => {
+      throw new Error("cleanup failed");
+    });
+    const form = new FormData();
+    form.set("photo", new File(["bytes"], "photo.png"));
+
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: form,
+    });
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "database validation failed" });
+    expect(log).toHaveBeenCalledWith(
+      "Failed to clean up an unreferenced Product image after database failure.",
+      expect.any(Error),
+    );
+    log.mockRestore();
   });
 
   it("selects Manual candidates and returns the Product", async () => {

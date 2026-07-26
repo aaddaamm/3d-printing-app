@@ -4,6 +4,8 @@ import path from "node:path";
 import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  ProductImageFileSizeError,
+  ProductImageFileValidationError,
   generateProductContactSheet,
   removeAppOwnedProductImage,
   storeRemoteProductImage,
@@ -52,6 +54,7 @@ describe.sequential("product image files", () => {
       width: expect.any(Number),
       height: expect.any(Number),
       contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      createdOrRepaired: true,
     });
     expect(metadata).toMatchObject({
       format: "webp",
@@ -67,10 +70,10 @@ describe.sequential("product image files", () => {
   it("rejects invalid, byte-oversize, and decoded-pixel-oversize uploads without output", async () => {
     await expect(
       storeUploadedProductImage(1, new TextEncoder().encode("not an image")),
-    ).rejects.toThrow(/image/i);
+    ).rejects.toBeInstanceOf(ProductImageFileValidationError);
     await expect(
       storeUploadedProductImage(1, new Uint8Array(MAX_UPLOAD_BYTES + 1)),
-    ).rejects.toThrow(/10 MiB/i);
+    ).rejects.toBeInstanceOf(ProductImageFileSizeError);
     const pixelBomb = await png(6400, 6400, "#ffffff");
     await expect(storeUploadedProductImage(1, pixelBomb)).rejects.toThrow(/pixel|limit/i);
 
@@ -86,7 +89,11 @@ describe.sequential("product image files", () => {
 
     const repaired = await storeUploadedProductImage(9, bytes);
 
-    expect(repaired).toEqual(first);
+    expect(repaired).toMatchObject({
+      path: first.path,
+      contentHash: first.contentHash,
+      createdOrRepaired: true,
+    });
     expect((await sharp(repaired.path).metadata()).format).toBe("webp");
     expect(fs.readdirSync(path.dirname(repaired.path))).toEqual([path.basename(repaired.path)]);
   });
@@ -96,7 +103,12 @@ describe.sequential("product image files", () => {
     const first = await storeRemoteProductImage(2, "https://example.test/photo.png", bytes);
     const second = await storeRemoteProductImage(2, "https://example.test/photo.png", bytes);
 
-    expect(first).toEqual(second);
+    expect(first).toMatchObject({ createdOrRepaired: true });
+    expect(second).toMatchObject({
+      path: first.path,
+      contentHash: first.contentHash,
+      createdOrRepaired: false,
+    });
     expect((await sharp(first.path).metadata()).format).toBe("webp");
     expect(first.path).toContain(`${path.sep}2${path.sep}remote${path.sep}`);
   });
@@ -113,7 +125,12 @@ describe.sequential("product image files", () => {
     const second = await generateProductContactSheet(3, 8, [plateB, plateA]);
 
     expect(first).not.toBeNull();
-    expect(first).toEqual(second);
+    expect(first).toMatchObject({ createdOrRepaired: true });
+    expect(second).toMatchObject({
+      path: first!.path,
+      contentHash: first!.contentHash,
+      createdOrRepaired: false,
+    });
     expect(first!.path).toContain(`${path.sep}3${path.sep}contact-sheets${path.sep}`);
     expect(await sharp(first!.path).metadata()).toMatchObject({ format: "webp" });
     expect(Math.max(first!.width, first!.height)).toBeLessThanOrEqual(1600);

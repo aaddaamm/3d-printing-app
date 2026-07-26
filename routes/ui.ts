@@ -1,4 +1,11 @@
-import { readFileSync, existsSync } from "node:fs";
+import {
+  closeSync,
+  constants as fsConstants,
+  existsSync,
+  fstatSync,
+  openSync,
+  readFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
@@ -177,6 +184,28 @@ function resolveProductPhoto(
   );
 }
 
+function readRegularFileNoFollow(filePath: string): Buffer | null {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(
+      filePath,
+      fsConstants.O_RDONLY | fsConstants.O_NOFOLLOW | fsConstants.O_NONBLOCK,
+    );
+    if (!fstatSync(descriptor).isFile()) return null;
+    return readFileSync(descriptor);
+  } catch {
+    return null;
+  } finally {
+    if (descriptor !== null) {
+      try {
+        closeSync(descriptor);
+      } catch {
+        // A failed close does not make it safe to retry by path.
+      }
+    }
+  }
+}
+
 function serveProductPhotoFile(c: Context): Response {
   const photoId = Number(c.req.param("photoId"));
   if (!Number.isInteger(photoId) || photoId <= 0) return c.json({ error: "Invalid" }, 400);
@@ -189,7 +218,9 @@ function serveProductPhotoFile(c: Context): Response {
     photo?.content_type ?? IMAGE_CONTENT_TYPES.get(path.extname(filePath).toLowerCase());
   if (!contentType || !SAFE_IMAGE_CONTENT_TYPES.has(contentType)) return notFound(c);
 
-  return binaryResponse(readFileSync(filePath), contentType, "public, max-age=86400");
+  const content = readRegularFileNoFollow(filePath);
+  if (!content) return notFound(c);
+  return binaryResponse(content, contentType, "public, max-age=86400");
 }
 
 function servePrinterPhotoFile(c: Context): Response {

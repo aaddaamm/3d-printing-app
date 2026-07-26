@@ -10,7 +10,22 @@ export type StoredProductImage = {
   width: number;
   height: number;
   contentHash: string;
+  createdOrRepaired: boolean;
 };
+
+export class ProductImageFileValidationError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ProductImageFileValidationError";
+  }
+}
+
+export class ProductImageFileSizeError extends ProductImageFileValidationError {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = "ProductImageFileSizeError";
+  }
+}
 
 const MAX_INPUT_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_PIXELS = 40_000_000;
@@ -30,8 +45,9 @@ function productImagesRoot(): string {
 }
 
 function assertPositiveId(value: number, label: string): void {
-  if (!Number.isInteger(value) || value <= 0)
-    throw new Error(`${label} must be a positive integer`);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new ProductImageFileValidationError(`${label} must be a positive integer`);
+  }
 }
 
 function assertContained(root: string, candidate: string): string {
@@ -57,6 +73,7 @@ function ensureRegularDirectory(directory: string): void {
   if (!rootStat.isDirectory() || rootStat.isSymbolicLink()) {
     throw new Error(`Product images root is not a regular directory: ${root}`);
   }
+  const canonicalRoot = fs.realpathSync(root);
 
   const relative = path.relative(root, directory);
   let current = root;
@@ -71,6 +88,7 @@ function ensureRegularDirectory(directory: string): void {
       if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
       fs.mkdirSync(current);
     }
+    assertContained(canonicalRoot, fs.realpathSync(current));
   }
 }
 
@@ -83,22 +101,32 @@ function ownedImagePath(productId: number, kind: OwnedImageKind, contentHash: st
   return assertContained(root, path.join(directory, `${contentHash}.webp`));
 }
 
-function atomicWriteOwnedFile(filePath: string, bytes: Uint8Array): void {
+function atomicWriteOwnedFile(filePath: string, bytes: Uint8Array): boolean {
   const root = productImagesRoot();
   const target = assertContained(root, filePath);
   const directory = path.dirname(target);
   ensureRegularDirectory(directory);
 
+  let existingDescriptor: number | null = null;
   try {
-    const existing = fs.lstatSync(target);
-    if (!existing.isFile() || existing.isSymbolicLink()) {
+    existingDescriptor = fs.openSync(
+      target,
+      fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+    );
+    const existing = fs.fstatSync(existingDescriptor);
+    if (!existing.isFile()) {
       throw new Error(`App-owned image target is not a regular file: ${target}`);
     }
-    if (existing.size === bytes.byteLength && sha256(fs.readFileSync(target)) === sha256(bytes)) {
-      return;
+    if (
+      existing.size === bytes.byteLength &&
+      sha256(fs.readFileSync(existingDescriptor)) === sha256(bytes)
+    ) {
+      return false;
     }
   } catch (error: unknown) {
     if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+  } finally {
+    if (existingDescriptor !== null) fs.closeSync(existingDescriptor);
   }
 
   const temporary = assertContained(
@@ -107,7 +135,21 @@ function atomicWriteOwnedFile(filePath: string, bytes: Uint8Array): void {
   );
   try {
     fs.writeFileSync(temporary, bytes, { flag: "wx", mode: 0o600 });
+    ensureRegularDirectory(directory);
+    const temporaryStat = fs.lstatSync(temporary);
+    if (!temporaryStat.isFile() || temporaryStat.isSymbolicLink()) {
+      throw new Error(`App-owned temporary image is not a regular file: ${temporary}`);
+    }
+    try {
+      const targetStat = fs.lstatSync(target);
+      if (!targetStat.isFile() || targetStat.isSymbolicLink()) {
+        throw new Error(`App-owned image target is not a regular file: ${target}`);
+      }
+    } catch (error: unknown) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "ENOENT") throw error;
+    }
     fs.renameSync(temporary, target);
+    return true;
   } catch (error) {
     try {
       const stat = fs.lstatSync(temporary);
@@ -129,8 +171,10 @@ async function normalizeImage(bytes: Uint8Array): Promise<{
   height: number;
   contentHash: string;
 }> {
-  if (bytes.byteLength === 0) throw new Error("Image bytes are required");
-  if (bytes.byteLength > MAX_INPUT_BYTES) throw new Error("Image exceeds the 10 MiB byte limit");
+  if (bytes.byteLength === 0) throw new ProductImageFileValidationError("Image bytes are required");
+  if (bytes.byteLength > MAX_INPUT_BYTES) {
+    throw new ProductImageFileSizeError("Image exceeds the 10 MiB byte limit");
+  }
 
   try {
     const result = await sharp(Buffer.from(bytes), {
@@ -154,7 +198,16 @@ async function normalizeImage(bytes: Uint8Array): Promise<{
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid image or decoded pixel limit exceeded: ${message}`, { cause: error });
+    if (/pixel limit|exceeds? pixel/i.test(message)) {
+      throw new ProductImageFileSizeError(
+        `Invalid image or decoded pixel limit exceeded: ${message}`,
+        { cause: error },
+      );
+    }
+    throw new ProductImageFileValidationError(
+      `Invalid image or decoded pixel limit exceeded: ${message}`,
+      { cause: error },
+    );
   }
 }
 
@@ -165,13 +218,14 @@ async function storeNormalizedProductImage(
 ): Promise<StoredProductImage> {
   const normalized = await normalizeImage(bytes);
   const filePath = ownedImagePath(productId, kind, normalized.contentHash);
-  atomicWriteOwnedFile(filePath, normalized.bytes);
+  const createdOrRepaired = atomicWriteOwnedFile(filePath, normalized.bytes);
   return {
     path: filePath,
     contentType: "image/webp",
     width: normalized.width,
     height: normalized.height,
     contentHash: normalized.contentHash,
+    createdOrRepaired,
   };
 }
 
@@ -191,10 +245,10 @@ export async function storeRemoteProductImage(
   try {
     url = new URL(sourceUrl);
   } catch {
-    throw new Error("Remote product image source must be an HTTP(S) URL");
+    throw new ProductImageFileValidationError("Remote product image source must be an HTTP(S) URL");
   }
   if ((url.protocol !== "http:" && url.protocol !== "https:") || !url.hostname) {
-    throw new Error("Remote product image source must be an HTTP(S) URL");
+    throw new ProductImageFileValidationError("Remote product image source must be an HTTP(S) URL");
   }
   return storeNormalizedProductImage(productId, "remote", bytes);
 }
@@ -260,6 +314,37 @@ function readRegularInput(filePath: string): Buffer {
   }
 }
 
+export function fingerprintProductContactSheetInputs(inputs: ContactSheetInput[]): string {
+  const normalizedInputs = normalizedContactSheetInputs(inputs);
+  const fingerprint = createHash("sha256");
+  for (const input of normalizedInputs) {
+    const bytes = readRegularInput(input.path);
+    const key = Buffer.from(input.key);
+    const label = Buffer.from(input.label);
+    fingerprint.update(String(key.byteLength)).update(":").update(key);
+    fingerprint.update(String(label.byteLength)).update(":").update(label);
+    fingerprint.update(sha256(bytes));
+  }
+  return fingerprint.digest("hex");
+}
+
+export function appOwnedProductImageContentHash(
+  filePath: string,
+  expectedKind?: OwnedImageKind,
+): string {
+  const root = productImagesRoot();
+  const target = assertContained(root, filePath);
+  const relative = path.relative(root, target).split(path.sep).join("/");
+  if (!OWNED_FILE_RE.test(relative)) {
+    throw new Error(`Refusing to hash a non-owned product image path: ${target}`);
+  }
+  const [, actualKind] = relative.split("/");
+  if (expectedKind && actualKind !== expectedKind) {
+    throw new Error(`App-owned product image has the wrong storage kind: ${target}`);
+  }
+  return sha256(readRegularInput(target));
+}
+
 export async function generateProductContactSheet(
   productId: number,
   batchId: number,
@@ -317,13 +402,14 @@ export async function generateProductContactSheet(
     .toBuffer({ resolveWithObject: true });
   const contentHash = sha256(result.data);
   const filePath = ownedImagePath(productId, "contact-sheets", contentHash);
-  atomicWriteOwnedFile(filePath, result.data);
+  const createdOrRepaired = atomicWriteOwnedFile(filePath, result.data);
   return {
     path: filePath,
     contentType: "image/webp",
     width: result.info.width,
     height: result.info.height,
     contentHash,
+    createdOrRepaired,
   };
 }
 

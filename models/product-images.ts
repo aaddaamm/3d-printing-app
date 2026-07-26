@@ -4,7 +4,10 @@ import { catalogPreviewPath, type CatalogPreviewContentType } from "../lib/catal
 import { localCoverPath } from "../lib/covers.js";
 import { db } from "../lib/db.js";
 import {
+  appOwnedProductImageContentHash,
+  fingerprintProductContactSheetInputs,
   generateProductContactSheet,
+  removeAppOwnedProductImage,
   type ContactSheetInput,
   type StoredProductImage,
 } from "../lib/product-image-files.js";
@@ -47,6 +50,7 @@ type PersistedPhotoRow = {
   caption: string | null;
   content_type: string | null;
   display_order: number;
+  is_app_owned: number;
   is_main: number;
 };
 
@@ -60,6 +64,11 @@ type CoverRow = {
   batch_id: number;
   task_id: string;
   title: string | null;
+};
+
+type ContactSheetContext = {
+  batchId: number;
+  sourceRef: string;
 };
 
 export type ProductPhoto = {
@@ -150,6 +159,7 @@ function previewExtension(contentType: CatalogPreviewContentType): "jpg" | "png"
 function persistedCandidates(
   productId: number,
   currentDerivedCandidates: ReadonlyMap<string, CandidateDetails>,
+  contactSheetContext: ContactSheetContext | null,
 ): CandidateDetails[] {
   const rows = db
     .prepare<[number], PersistedPhotoRow>(
@@ -163,6 +173,7 @@ function persistedCandidates(
          pp.caption,
          pp.content_type,
          pp.display_order,
+         pp.is_app_owned,
          CASE WHEN p.main_photo_id = pp.id THEN 1 ELSE 0 END AS is_main
        FROM product_photos pp
        JOIN products p ON p.id = pp.product_id
@@ -192,6 +203,30 @@ function persistedCandidates(
         warning = currentSource
           ? "The current source image file is unavailable."
           : "This derived image no longer matches the Product's current source.";
+      }
+    } else if (row.source_type === "contact_sheet") {
+      const expectedPrefix = contactSheetContext
+        ? `contact_sheet:${contactSheetContext.batchId}:`
+        : null;
+      const contentHash = candidateKey.split(":").at(-1) ?? "";
+      let actualHash: string | null = null;
+      try {
+        if (row.path) actualHash = appOwnedProductImageContentHash(row.path, "contact-sheets");
+      } catch {
+        actualHash = null;
+      }
+      const matchesCurrentSource =
+        contactSheetContext !== null &&
+        row.is_app_owned === 1 &&
+        row.source_ref === contactSheetContext.sourceRef &&
+        expectedPrefix !== null &&
+        candidateKey.startsWith(expectedPrefix) &&
+        /^[a-f0-9]{64}$/.test(contentHash) &&
+        path.basename(row.path ?? "") === `${contentHash}.webp` &&
+        actualHash === contentHash;
+      available = available && matchesCurrentSource;
+      if (!available) {
+        warning = "This contact sheet no longer matches the latest saved Batch covers.";
       }
     }
 
@@ -343,8 +378,9 @@ function listCandidateDetails(productId: number): CandidateDetails[] {
   const currentDerivedByKey = new Map(
     derivedCandidates.map((candidate) => [candidate.candidate_key, candidate]),
   );
+  const contactSheetContext = currentContactSheetContext(coverRows);
   const candidates = [
-    ...persistedCandidates(productId, currentDerivedByKey),
+    ...persistedCandidates(productId, currentDerivedByKey, contactSheetContext),
     ...derivedCandidates,
     placeholderCandidate(),
   ];
@@ -395,7 +431,27 @@ function availableContactSheetInputs(rows: CoverRow[]): ContactSheetInput[] {
   return [...unique.values()];
 }
 
-function upsertContactSheet(productId: number, batchId: number, stored: StoredProductImage): void {
+function currentContactSheetContext(rows: CoverRow[]): ContactSheetContext | null {
+  const batchId = rows[0]?.batch_id;
+  const inputs = availableContactSheetInputs(rows);
+  if (!batchId || inputs.length < 2) return null;
+  try {
+    const fingerprint = fingerprintProductContactSheetInputs(inputs);
+    return {
+      batchId,
+      sourceRef: `contact_sheet:${batchId}:${fingerprint}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function upsertContactSheet(
+  productId: number,
+  batchId: number,
+  sourceRef: string,
+  stored: StoredProductImage,
+): void {
   const candidateKey = `contact_sheet:${batchId}:${stored.contentHash}`;
   db.prepare(
     `INSERT INTO product_photos (
@@ -415,7 +471,7 @@ function upsertContactSheet(productId: number, batchId: number, stored: StoredPr
     productId,
     stored.path,
     `Batch ${batchId} contact sheet`,
-    String(batchId),
+    sourceRef,
     candidateKey,
     stored.contentType,
     stored.width,
@@ -435,10 +491,24 @@ export async function ensureGeneratedProductImageCandidates(
   }
 
   try {
+    const fingerprint = fingerprintProductContactSheetInputs(inputs);
+    const sourceRef = `contact_sheet:${batchId}:${fingerprint}`;
+    const currentCandidates = listCandidateDetails(productId);
+    if (
+      currentCandidates.some(
+        ({ source_type, source_ref, available }) =>
+          source_type === "contact_sheet" && source_ref === sourceRef && available,
+      )
+    ) {
+      return { candidates: currentCandidates.map(publicCandidate), warnings: [] };
+    }
+
     const stored = await generateProductContactSheet(productId, batchId, inputs);
-    if (stored) upsertContactSheet(productId, batchId, stored);
+    if (stored) upsertContactSheet(productId, batchId, sourceRef, stored);
     return { candidates: listProductImageCandidates(productId), warnings: [] };
   } catch {
+    // A generated content-addressed file may be shared or concurrently referenced. If its
+    // upsert fails, retain the safe orphan for a later reference-aware garbage collector.
     const warning = `The contact sheet for Batch ${batchId} could not be generated.`;
     const unavailable: ProductImageCandidate = {
       candidate_key: `contact_sheet:${batchId}:unavailable`,
@@ -450,7 +520,12 @@ export async function ensureGeneratedProductImageCandidates(
       available: false,
       warning,
     };
-    const candidates = [...listProductImageCandidates(productId), unavailable].sort(
+    const current = listProductImageCandidates(productId).map((candidate) =>
+      candidate.source_type === "contact_sheet"
+        ? { ...candidate, available: false, warning: candidate.warning ?? warning }
+        : candidate,
+    );
+    const candidates = [...current, unavailable].sort(
       (left, right) =>
         left.priority - right.priority ||
         Number(right.available) - Number(left.available) ||
@@ -569,6 +644,18 @@ export function createManualProductPhoto(
   stored: StoredProductImage,
 ): { product: ProductSummary; photo: ProductPhoto } {
   return createManualProductPhotoTransaction(productId, stored);
+}
+
+export function removeUnreferencedAppOwnedProductImage(filePath: string): boolean {
+  const referenced = db
+    .prepare<
+      [string],
+      { referenced: number }
+    >("SELECT EXISTS(SELECT 1 FROM product_photos WHERE path = ?) AS referenced")
+    .get(filePath)?.referenced;
+  if (referenced !== 0) return false;
+  removeAppOwnedProductImage(filePath);
+  return true;
 }
 
 const selectProductImageTransaction = db.transaction(

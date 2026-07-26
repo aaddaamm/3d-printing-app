@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { bodyLimit } from "hono/body-limit";
 import {
   ProductValidationError,
   createProduct,
@@ -18,11 +19,13 @@ import {
 import {
   createManualProductPhoto,
   ensureGeneratedProductImageCandidates,
+  removeUnreferencedAppOwnedProductImage,
   returnProductImageToAuto,
   selectProductImage,
 } from "../models/product-images.js";
 import {
-  removeAppOwnedProductImage,
+  ProductImageFileSizeError,
+  ProductImageFileValidationError,
   storeUploadedProductImage,
 } from "../lib/product-image-files.js";
 import { jsonError, parseJsonBody, requireId, unknownFields } from "../lib/util.js";
@@ -160,45 +163,70 @@ products.get("/:id/image-candidates", async (c) => {
   }
 });
 
-products.post("/:id/photos", async (c) => {
-  const idOrError = requireId(c);
-  if (idOrError instanceof Response) return idOrError;
-  if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
+products.post(
+  "/:id/photos",
+  bodyLimit({
+    maxSize: MAX_MULTIPART_BYTES,
+    onError: (c) => jsonError(c, "Multipart upload exceeds the 12 MiB limit", 413),
+  }),
+  async (c) => {
+    const idOrError = requireId(c);
+    if (idOrError instanceof Response) return idOrError;
+    if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
 
-  const declaredLength = c.req.header("Content-Length");
-  if (declaredLength && /^\d+$/.test(declaredLength)) {
-    if (BigInt(declaredLength) > BigInt(MAX_MULTIPART_BYTES)) {
-      return jsonError(c, "Multipart upload exceeds the 12 MiB limit", 413);
+    const declaredLength = c.req.header("Content-Length");
+    if (declaredLength && /^\d+$/.test(declaredLength)) {
+      if (BigInt(declaredLength) > BigInt(MAX_MULTIPART_BYTES)) {
+        return jsonError(c, "Multipart upload exceeds the 12 MiB limit", 413);
+      }
     }
-  }
 
-  let body: Awaited<ReturnType<typeof c.req.parseBody>>;
-  try {
-    body = await c.req.parseBody();
-  } catch {
-    return jsonError(c, "Invalid multipart body", 400);
-  }
-  const photo = body["photo"];
-  if (!(photo instanceof File)) return jsonError(c, "photo must be a multipart File", 400);
-  if (photo.size > MAX_PHOTO_BYTES) {
-    return jsonError(c, "Photo exceeds the 10 MiB limit", 413);
-  }
+    let body: Awaited<ReturnType<typeof c.req.parseBody>>;
+    try {
+      body = await c.req.parseBody();
+    } catch {
+      return jsonError(c, "Invalid multipart body", 400);
+    }
+    const photo = body["photo"];
+    if (!(photo instanceof File)) return jsonError(c, "photo must be a multipart File", 400);
+    if (photo.size > MAX_PHOTO_BYTES) {
+      return jsonError(c, "Photo exceeds the 10 MiB limit", 413);
+    }
 
-  let stored;
-  try {
-    stored = await storeUploadedProductImage(idOrError, new Uint8Array(await photo.arrayBuffer()));
-  } catch {
-    return jsonError(c, "Invalid product photo upload", 400);
-  }
+    let stored;
+    try {
+      stored = await storeUploadedProductImage(
+        idOrError,
+        new Uint8Array(await photo.arrayBuffer()),
+      );
+    } catch (error: unknown) {
+      if (error instanceof ProductImageFileSizeError) {
+        return jsonError(c, error.message, 413);
+      }
+      if (error instanceof ProductImageFileValidationError) {
+        return jsonError(c, error.message, 400);
+      }
+      throw error;
+    }
 
-  try {
-    const result = createManualProductPhoto(idOrError, stored);
-    return c.json({ product: result.product, photo: publicUploadedPhoto(result.photo) }, 201);
-  } catch (error: unknown) {
-    removeAppOwnedProductImage(stored.path);
-    return handleProductError(c, error);
-  }
-});
+    try {
+      const result = createManualProductPhoto(idOrError, stored);
+      return c.json({ product: result.product, photo: publicUploadedPhoto(result.photo) }, 201);
+    } catch (error: unknown) {
+      if (stored.createdOrRepaired) {
+        try {
+          removeUnreferencedAppOwnedProductImage(stored.path);
+        } catch (cleanupError: unknown) {
+          console.error(
+            "Failed to clean up an unreferenced Product image after database failure.",
+            cleanupError,
+          );
+        }
+      }
+      return handleProductError(c, error);
+    }
+  },
+);
 
 products.post("/:id/image-selection", async (c) => {
   const idOrError = requireId(c);

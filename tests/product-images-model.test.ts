@@ -6,6 +6,7 @@ import sharp from "sharp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type DbModule = typeof import("../lib/db.js");
+type ProductImageFilesModule = typeof import("../lib/product-image-files.js");
 type ProductImagesModule = typeof import("../models/product-images.js");
 type ProductsModule = typeof import("../models/products.js");
 
@@ -15,6 +16,7 @@ let coversDir = "";
 let previewsDir = "";
 let imagesDir = "";
 let dbModule: DbModule | null = null;
+let productImageFilesModule: ProductImageFilesModule | null = null;
 let productImagesModule: ProductImagesModule | null = null;
 let productsModule: ProductsModule | null = null;
 
@@ -33,6 +35,7 @@ async function loadFreshModules(): Promise<void> {
   process.env.PRODUCT_IMAGES_DIR = imagesDir;
   dbModule = await import("../lib/db.js");
   productsModule = await import("../models/products.js");
+  productImageFilesModule = await import("../lib/product-image-files.js");
   productImagesModule = await import("../models/product-images.js");
 }
 
@@ -156,6 +159,7 @@ describe.sequential("product image model", () => {
     delete process.env.CATALOG_PREVIEWS_DIR;
     delete process.env.PRODUCT_IMAGES_DIR;
     dbModule = null;
+    productImageFilesModule = null;
     productImagesModule = null;
     productsModule = null;
   });
@@ -189,7 +193,13 @@ describe.sequential("product image model", () => {
     expect(new Set(candidates.map((candidate) => candidate.candidate_key)).size).toBe(
       candidates.length,
     );
-    expect(candidates.filter((candidate) => candidate.available).length).toBe(candidates.length);
+    expect(candidates.filter((candidate) => candidate.available)).toHaveLength(
+      candidates.length - 1,
+    );
+    expect(candidates.find(({ source_type }) => source_type === "contact_sheet")).toMatchObject({
+      available: false,
+      warning: expect.any(String),
+    });
   });
 
   it("lazily generates and upserts a contact sheet for the latest multi-cover Batch", async () => {
@@ -225,7 +235,7 @@ describe.sequential("product image model", () => {
       .get(contact.photo_id) as Record<string, unknown>;
     expect(row).toMatchObject({
       source_type: "contact_sheet",
-      source_ref: String(batchId),
+      source_ref: expect.any(String),
       candidate_key: contact.candidate_key,
       is_app_owned: 1,
       content_type: "image/webp",
@@ -233,6 +243,8 @@ describe.sequential("product image model", () => {
       height: expect.any(Number),
       path: expect.stringContaining(imagesDir),
     });
+    expect(String(row["source_ref"]).startsWith(`contact_sheet:${batchId}:`)).toBe(true);
+    expect(String(row["source_ref"]).split(":").at(-1)).toMatch(/^[a-f0-9]{64}$/);
     expect(
       dbModule!.db
         .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
@@ -280,6 +292,184 @@ describe.sequential("product image model", () => {
     );
   });
 
+  it("marks an older Batch contact sheet stale without unlocking Manual selection", async () => {
+    const product = productsModule!.createProduct({ name: "Batch Change Dragon" });
+    seedSavedBatchCovers(product.id, ["741", "742"]);
+    await writeValidCover("741", "#110000");
+    await writeValidCover("742", "#220000");
+    const generated = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+    const oldContact = generated.candidates.find(
+      ({ source_type }) => source_type === "contact_sheet",
+    )!;
+    const manual = productImagesModule!.selectProductImage(product.id, oldContact.candidate_key);
+
+    const newBatchId = seedSavedBatchCovers(product.id, ["743", "744"]);
+    await writeValidCover("743", "#001100");
+    await writeValidCover("744", "#002200");
+    const stale = productImagesModule!
+      .listProductImageCandidates(product.id)
+      .find(({ candidate_key }) => candidate_key === oldContact.candidate_key);
+    expect(stale).toMatchObject({ available: false, warning: expect.any(String) });
+    expect(productImagesModule!.refreshAutoProductImage(product.id)).toMatchObject({
+      main_photo_id: manual.main_photo_id,
+      image_selection_mode: "manual",
+    });
+
+    const refreshed = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+    expect(
+      refreshed.candidates.find(
+        ({ candidate_key, available }) =>
+          available && candidate_key.startsWith(`contact_sheet:${newBatchId}:`),
+      ),
+    ).toBeDefined();
+  });
+
+  it("invalidates contact sheets when cover bytes or the stored output hash changes", async () => {
+    const product = productsModule!.createProduct({ name: "Changed Cover Dragon" });
+    seedSavedBatchCovers(product.id, ["751", "752"]);
+    await writeValidCover("751", "#111111");
+    await writeValidCover("752", "#222222");
+    const first = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+    const oldContact = first.candidates.find(({ source_type }) => source_type === "contact_sheet")!;
+
+    await writeValidCover("751", "#333333");
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .find(({ candidate_key }) => candidate_key === oldContact.candidate_key),
+    ).toMatchObject({ available: false, warning: expect.any(String) });
+
+    const regenerated = await productImagesModule!.ensureGeneratedProductImageCandidates(
+      product.id,
+    );
+    const current = regenerated.candidates.find(
+      ({ source_type, available }) => source_type === "contact_sheet" && available,
+    )!;
+    const currentPath = dbModule!.db
+      .prepare("SELECT path FROM product_photos WHERE id = ?")
+      .pluck()
+      .get(current.photo_id) as string;
+    fs.writeFileSync(currentPath, "wrong hash");
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .find(({ candidate_key }) => candidate_key === current.candidate_key),
+    ).toMatchObject({ available: false, warning: expect.any(String) });
+  });
+
+  it("invalidates an old contact sheet when the latest Batch has only one cover", async () => {
+    const product = productsModule!.createProduct({ name: "Reduced Cover Dragon" });
+    seedSavedBatchCovers(product.id, ["761", "762"]);
+    await writeValidCover("761", "#111111");
+    await writeValidCover("762", "#222222");
+    const generated = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+    const oldContact = generated.candidates.find(
+      ({ source_type }) => source_type === "contact_sheet",
+    )!;
+
+    seedSavedBatchCovers(product.id, ["763"]);
+    await writeValidCover("763", "#333333");
+
+    expect(
+      productImagesModule!
+        .listProductImageCandidates(product.id)
+        .find(({ candidate_key }) => candidate_key === oldContact.candidate_key),
+    ).toMatchObject({ available: false, warning: expect.any(String) });
+  });
+
+  it("keeps old contact sheets unavailable when regeneration fails", async () => {
+    const product = productsModule!.createProduct({ name: "Broken Regeneration Dragon" });
+    seedSavedBatchCovers(product.id, ["771", "772"]);
+    await writeValidCover("771", "#111111");
+    await writeValidCover("772", "#222222");
+    await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+
+    fs.writeFileSync(path.join(coversDir, "771.png"), "not an image");
+    const failed = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+
+    expect(failed.warnings).toEqual([expect.stringMatching(/contact sheet/i)]);
+    expect(
+      failed.candidates.filter(({ source_type }) => source_type === "contact_sheet"),
+    ).not.toEqual([]);
+    expect(
+      failed.candidates
+        .filter(({ source_type }) => source_type === "contact_sheet")
+        .every(({ available, warning }) => !available && Boolean(warning)),
+    ).toBe(true);
+  });
+
+  it("retains a contact-sheet orphan when its database upsert fails", async () => {
+    const product = productsModule!.createProduct({ name: "Orphan Dragon" });
+    seedSavedBatchCovers(product.id, ["781", "782"]);
+    await writeValidCover("781", "#111111");
+    await writeValidCover("782", "#222222");
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_contact_sheet_upsert
+      BEFORE INSERT ON product_photos
+      WHEN NEW.source_type = 'contact_sheet'
+      BEGIN
+        SELECT RAISE(ABORT, 'contact upsert failed');
+      END;
+    `);
+
+    const failed = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+
+    expect(failed.warnings).toEqual([expect.stringMatching(/contact sheet/i)]);
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(0);
+    const contactDirectory = path.join(imagesDir, String(product.id), "contact-sheets");
+    expect(fs.readdirSync(contactDirectory)).toHaveLength(1);
+  });
+
+  it("cleans only newly written uploads that have no committed photo reference", async () => {
+    const product = productsModule!.createProduct({ name: "Cleanup Dragon" });
+    const bytes = await sharp({
+      create: { width: 32, height: 32, channels: 3, background: "#112233" },
+    })
+      .png()
+      .toBuffer();
+    const first = await productImageFilesModule!.storeUploadedProductImage(product.id, bytes);
+    const selected = productImagesModule!.createManualProductPhoto(product.id, first);
+    const repeated = await productImageFilesModule!.storeUploadedProductImage(product.id, bytes);
+    expect(repeated.createdOrRepaired).toBe(false);
+
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_repeated_upload_selection
+      BEFORE UPDATE OF main_photo_id ON products
+      BEGIN
+        SELECT RAISE(ABORT, 'forced database failure');
+      END;
+    `);
+    expect(() => productImagesModule!.createManualProductPhoto(product.id, repeated)).toThrow(
+      /forced database failure/i,
+    );
+    expect(fs.readFileSync(first.path)).toEqual(fs.readFileSync(repeated.path));
+    expect(
+      dbModule!.db
+        .prepare("SELECT path FROM product_photos WHERE id = ?")
+        .pluck()
+        .get(selected.photo.id),
+    ).toBe(first.path);
+    expect(productImagesModule!.removeUnreferencedAppOwnedProductImage(first.path)).toBe(false);
+
+    const freshBytes = await sharp({
+      create: { width: 33, height: 33, channels: 3, background: "#445566" },
+    })
+      .png()
+      .toBuffer();
+    const fresh = await productImageFilesModule!.storeUploadedProductImage(product.id, freshBytes);
+    expect(fresh.createdOrRepaired).toBe(true);
+    expect(() => productImagesModule!.createManualProductPhoto(product.id, fresh)).toThrow(
+      /forced database failure/i,
+    );
+    expect(productImagesModule!.removeUnreferencedAppOwnedProductImage(fresh.path)).toBe(true);
+    expect(fs.existsSync(fresh.path)).toBe(false);
+  });
+
   it("transactionally inserts a Manual upload and selects it as the main photo", () => {
     const product = productsModule!.createProduct({ name: "Uploaded Dragon" });
     const storedPath = path.join(
@@ -296,6 +486,7 @@ describe.sequential("product image model", () => {
       width: 640,
       height: 480,
       contentHash: "a".repeat(64),
+      createdOrRepaired: true,
     };
 
     const result = productImagesModule!.createManualProductPhoto(product.id, stored);
