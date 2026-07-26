@@ -67,6 +67,10 @@ export function selectableCandidates(
   return candidates.filter(({ available }) => available);
 }
 
+export function candidateWarningId(candidateKey: string): string {
+  return `product-image-warning-${encodeURIComponent(candidateKey)}`;
+}
+
 export type ProductImageRequest = {
   mountGeneration: number;
   operationGeneration: number;
@@ -76,7 +80,8 @@ export type ProductImageRequest = {
 export type ProductImageRequestState = {
   mountGeneration: number;
   operationGeneration: number;
-  appliedOperationGeneration: number;
+  completedOperationGeneration: number;
+  activeActionGeneration: number | null;
   productId: number | null;
   active: boolean;
 };
@@ -85,7 +90,8 @@ export function initialProductImageRequestState(): ProductImageRequestState {
   return {
     mountGeneration: 0,
     operationGeneration: 0,
-    appliedOperationGeneration: 0,
+    completedOperationGeneration: 0,
+    activeActionGeneration: null,
     productId: null,
     active: false,
   };
@@ -101,7 +107,8 @@ export function beginProductImagePanelMount(
     state: {
       mountGeneration,
       operationGeneration: 0,
-      appliedOperationGeneration: 0,
+      completedOperationGeneration: 0,
+      activeActionGeneration: null,
       productId,
       active: true,
     },
@@ -134,8 +141,34 @@ export function isCurrentProductImageRequest(
     state.active &&
     state.mountGeneration === request.mountGeneration &&
     state.productId === request.productId &&
-    request.operationGeneration >= state.appliedOperationGeneration
+    state.operationGeneration === request.operationGeneration
   );
+}
+
+export function tryBeginProductImageAction(state: ProductImageRequestState): {
+  state: ProductImageRequestState;
+  request: ProductImageRequest;
+} | null {
+  if (state.activeActionGeneration !== null) return null;
+  const started = beginProductImageRequest(state);
+  return {
+    request: started.request,
+    state: { ...started.state, activeActionGeneration: started.request.operationGeneration },
+  };
+}
+
+export function finishProductImageAction(
+  state: ProductImageRequestState,
+  request: ProductImageRequest,
+): ProductImageRequestState {
+  if (
+    state.mountGeneration !== request.mountGeneration ||
+    state.productId !== request.productId ||
+    state.activeActionGeneration !== request.operationGeneration
+  ) {
+    return state;
+  }
+  return { ...state, activeActionGeneration: null };
 }
 
 export function resolveProductImageRequest(
@@ -143,7 +176,7 @@ export function resolveProductImageRequest(
   request: ProductImageRequest,
 ): ProductImageRequestState {
   if (!isCurrentProductImageRequest(state, request)) return state;
-  return { ...state, appliedOperationGeneration: request.operationGeneration };
+  return { ...state, completedOperationGeneration: request.operationGeneration };
 }
 
 export function invalidateProductImageRequests(
@@ -196,6 +229,15 @@ export function ProductImagePanel({
     return { request: started.request, controller };
   };
 
+  const beginAction = () => {
+    const started = tryBeginProductImageAction(requestState.current);
+    if (!started) return null;
+    requestState.current = started.state;
+    const controller = new AbortController();
+    controllers.current.add(controller);
+    return { request: started.request, controller };
+  };
+
   const isCurrentMount = (mountGeneration: number, productId: number) =>
     requestState.current.active &&
     requestState.current.mountGeneration === mountGeneration &&
@@ -206,48 +248,54 @@ export function ProductImagePanel({
     requestState.current = mounted.state;
     setCandidates([]);
     setLoadingCandidates(true);
-    setRefreshing(true);
+    setRefreshing(false);
     setBusyAction(null);
     setWarnings([]);
     setStatusMessage("");
 
-    const list = beginRequest();
-    fetchProductImageCandidates(product.id, { signal: list.controller.signal })
-      .then((items) => {
+    const bootstrapImages = async () => {
+      const list = beginRequest();
+      try {
+        const items = await fetchProductImageCandidates(product.id, {
+          signal: list.controller.signal,
+        });
         if (!isCurrentProductImageRequest(requestState.current, list.request)) return;
         requestState.current = resolveProductImageRequest(requestState.current, list.request);
         setCandidates(items);
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (!isCurrentProductImageRequest(requestState.current, list.request)) return;
         const message = requestErrorMessage(error, "Failed to load product image candidates.");
         setStatusMessage(message);
         toast(message, "error");
-      })
-      .finally(() => {
+      } finally {
         controllers.current.delete(list.controller);
         if (isCurrentMount(mounted.mountGeneration, product.id)) setLoadingCandidates(false);
-      });
+      }
 
-    const refresh = beginRequest();
-    refreshProductImages(product.id, { signal: refresh.controller.signal })
-      .then((result) => {
+      if (!isCurrentProductImageRequest(requestState.current, list.request)) return;
+      setRefreshing(true);
+      const refresh = beginRequest();
+      try {
+        const result = await refreshProductImages(product.id, {
+          signal: refresh.controller.signal,
+        });
         if (!isCurrentProductImageRequest(requestState.current, refresh.request)) return;
         requestState.current = resolveProductImageRequest(requestState.current, refresh.request);
         setCandidates(result.candidates);
         setWarnings(result.warnings);
         onProductChange(result.product);
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (!isCurrentProductImageRequest(requestState.current, refresh.request)) return;
         const message = requestErrorMessage(error, "Failed to refresh product images.");
         setWarnings([message]);
         toast(message, "error");
-      })
-      .finally(() => {
+      } finally {
         controllers.current.delete(refresh.controller);
         if (isCurrentMount(mounted.mountGeneration, product.id)) setRefreshing(false);
-      });
+      }
+    };
+
+    void bootstrapImages();
 
     return () => {
       requestState.current = invalidateProductImageRequests(requestState.current);
@@ -258,7 +306,8 @@ export function ProductImagePanel({
 
   const chooseCandidate = async (candidate: ProductImageCandidate) => {
     if (!candidate.available || busyAction) return;
-    const started = beginRequest();
+    const started = beginAction();
+    if (!started) return;
     setBusyAction(candidate.candidate_key);
     setStatusMessage(`Selecting ${imageSourceLabel(candidate.source_type)}…`);
     try {
@@ -277,6 +326,7 @@ export function ProductImagePanel({
       toast(message, "error");
     } finally {
       controllers.current.delete(started.controller);
+      requestState.current = finishProductImageAction(requestState.current, started.request);
       if (isCurrentMount(started.request.mountGeneration, started.request.productId)) {
         setBusyAction(null);
       }
@@ -289,7 +339,8 @@ export function ProductImagePanel({
     input.value = "";
     if (!file || busyAction) return;
 
-    const started = beginRequest();
+    const started = beginAction();
+    if (!started) return;
     setBusyAction("upload");
     setStatusMessage(`Uploading ${file.name}…`);
     try {
@@ -313,6 +364,7 @@ export function ProductImagePanel({
       toast(message, "error");
     } finally {
       controllers.current.delete(started.controller);
+      requestState.current = finishProductImageAction(requestState.current, started.request);
       if (isCurrentMount(started.request.mountGeneration, started.request.productId)) {
         setBusyAction(null);
       }
@@ -321,7 +373,8 @@ export function ProductImagePanel({
 
   const returnToAuto = async () => {
     if (busyAction) return;
-    const started = beginRequest();
+    const started = beginAction();
+    if (!started) return;
     setBusyAction("auto");
     setStatusMessage("Returning to automatic image selection…");
     try {
@@ -340,6 +393,7 @@ export function ProductImagePanel({
       toast(message, "error");
     } finally {
       controllers.current.delete(started.controller);
+      requestState.current = finishProductImageAction(requestState.current, started.request);
       if (isCurrentMount(started.request.mountGeneration, started.request.productId)) {
         setBusyAction(null);
       }
@@ -377,10 +431,12 @@ export function ProductImagePanel({
       <details class="product-image-choices">
         <summary>Choose image</summary>
         <div class="product-image-candidate-grid">
-          ${candidates.map(
-            (candidate) =>
-              html`<button
-                key=${candidate.candidate_key}
+          ${candidates.map((candidate) => {
+            const warningId = candidate.warning
+              ? candidateWarningId(candidate.candidate_key)
+              : undefined;
+            return html`<div class="product-image-candidate-item" key=${candidate.candidate_key}>
+              <button
                 type="button"
                 class=${`product-image-candidate${candidate.available ? "" : " product-image-candidate--unavailable"}`}
                 disabled=${!candidate.available || Boolean(busyAction)}
@@ -388,6 +444,7 @@ export function ProductImagePanel({
                 aria-label=${candidate.available
                   ? candidateActionLabel(candidate)
                   : `${candidate.label} unavailable`}
+                aria-describedby=${warningId}
               >
                 ${candidate.url
                   ? html`<img
@@ -400,13 +457,14 @@ export function ProductImagePanel({
                     >`}
                 <strong>${candidate.label || imageSourceLabel(candidate.source_type)}</strong>
                 <span>${candidateActionLabel(candidate)}</span>
-                ${candidate.warning
-                  ? html`<small class="product-image-candidate-warning"
-                      >${candidate.warning}</small
-                    >`
-                  : null}
-              </button>`,
-          )}
+              </button>
+              ${candidate.warning
+                ? html`<small id=${warningId} class="product-image-candidate-warning">
+                    ${candidate.warning}
+                  </small>`
+                : null}
+            </div>`;
+          })}
         </div>
         ${loadingCandidates && candidates.length === 0
           ? html`<p class="product-image-loading">Finding local image choices…</p>`

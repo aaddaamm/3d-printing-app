@@ -2917,6 +2917,12 @@ tbody td {
   padding: 0 10px 10px;
 }
 
+.product-image-candidate-item {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
 .product-image-candidate {
   display: grid;
   grid-template-rows: auto auto auto;
@@ -2973,6 +2979,7 @@ tbody td {
 }
 
 .product-image-candidate-warning {
+  padding: 0 3px;
   color: var(--yellow);
   font-size: 0.66rem;
   line-height: 1.35;

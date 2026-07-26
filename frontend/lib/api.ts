@@ -345,10 +345,35 @@ async function errorMessage(res: Response, fallback: string): Promise<string> {
   }
 }
 
+function composeAbortSignals(signals: AbortSignal[]): AbortSignal {
+  const abortSignalWithAny = AbortSignal as typeof AbortSignal & {
+    any?: (signals: AbortSignal[]) => AbortSignal;
+  };
+  if (typeof abortSignalWithAny.any === "function") return abortSignalWithAny.any(signals);
+
+  const controller = new AbortController();
+  const abortFrom = (signal: AbortSignal) => {
+    if (!controller.signal.aborted) controller.abort(signal.reason);
+  };
+  for (const signal of signals) {
+    if (signal.aborted) {
+      abortFrom(signal);
+      break;
+    }
+    signal.addEventListener("abort", () => abortFrom(signal), { once: true });
+  }
+  return controller.signal;
+}
+
 function requestOptions(options: RequestOptions): RequestInit {
   const { timeoutMs = FETCH_TIMEOUT_MS, ...requestInit } = options ?? {};
-  if (requestInit.signal || timeoutMs === null) return requestInit;
-  return { signal: AbortSignal.timeout(timeoutMs), ...requestInit };
+  if (timeoutMs === null) return requestInit;
+
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = requestInit.signal
+    ? composeAbortSignals([requestInit.signal, timeoutSignal])
+    : timeoutSignal;
+  return { ...requestInit, signal };
 }
 
 function toRequestError(err: unknown, fallback: string): Error {

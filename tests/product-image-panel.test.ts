@@ -1,16 +1,20 @@
+import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 import {
   beginProductImagePanelMount,
   beginProductImageRequest,
   candidateActionLabel,
+  candidateWarningId,
   currentImageSourceLabel,
   imageModeLabel,
   imageSourceLabel,
   initialProductImageRequestState,
+  finishProductImageAction,
   invalidateProductImageRequests,
   isCurrentProductImageRequest,
   resolveProductImageRequest,
   selectableCandidates,
+  tryBeginProductImageAction,
 } from "../frontend/components/product-image-panel.js";
 import type { ProductImageCandidate } from "../frontend/lib/api.js";
 
@@ -64,23 +68,57 @@ it("keeps unavailable candidates warning-visible but excludes them from selectio
   expect(unavailable.warning).toBe("The source covers are unavailable.");
 });
 
-it("orders async results and invalidates every request on Product changes and unmount", () => {
+it("makes an older request stale as soon as a newer request starts, even when newer fails", () => {
+  const mounted = beginProductImagePanelMount(initialProductImageRequestState(), 7);
+  const older = beginProductImageRequest(mounted.state);
+  const newer = beginProductImageRequest(older.state);
+
+  expect(isCurrentProductImageRequest(newer.state, older.request)).toBe(false);
+  expect(isCurrentProductImageRequest(newer.state, newer.request)).toBe(true);
+
+  // A rejected request does not roll latest-started ordering back to an older generation.
+  expect(isCurrentProductImageRequest(newer.state, older.request)).toBe(false);
+  expect(resolveProductImageRequest(newer.state, older.request)).toBe(newer.state);
+});
+
+it("lets a user action invalidate either bootstrap phase and blocks synchronous duplicates", () => {
   const mounted = beginProductImagePanelMount(initialProductImageRequestState(), 7);
   const list = beginProductImageRequest(mounted.state);
-  const refresh = beginProductImageRequest(list.state);
+  const selection = tryBeginProductImageAction(list.state);
 
-  let current = resolveProductImageRequest(refresh.state, refresh.request);
-  expect(isCurrentProductImageRequest(current, list.request)).toBe(false);
-  expect(resolveProductImageRequest(current, list.request)).toBe(current);
+  expect(selection).not.toBeNull();
+  expect(isCurrentProductImageRequest(selection!.state, list.request)).toBe(false);
+  expect(tryBeginProductImageAction(selection!.state)).toBeNull();
 
-  const selection = beginProductImageRequest(current);
-  current = resolveProductImageRequest(selection.state, selection.request);
-  expect(isCurrentProductImageRequest(current, refresh.request)).toBe(false);
+  const afterFailedSelection = finishProductImageAction(selection!.state, selection!.request);
+  expect(isCurrentProductImageRequest(afterFailedSelection, list.request)).toBe(false);
 
-  const nextProduct = beginProductImagePanelMount(current, 8);
+  const refresh = beginProductImageRequest(afterFailedSelection);
+  const upload = tryBeginProductImageAction(refresh.state);
+  expect(upload).not.toBeNull();
+  expect(isCurrentProductImageRequest(upload!.state, refresh.request)).toBe(false);
+});
+
+it("invalidates requests on Product changes and unmount", () => {
+  const mounted = beginProductImagePanelMount(initialProductImageRequestState(), 7);
+  const selection = tryBeginProductImageAction(mounted.state)!;
+  const nextProduct = beginProductImagePanelMount(selection.state, 8);
   expect(isCurrentProductImageRequest(nextProduct.state, selection.request)).toBe(false);
 
-  const upload = beginProductImageRequest(nextProduct.state);
+  const upload = tryBeginProductImageAction(nextProduct.state)!;
   const unmounted = invalidateProductImageRequests(upload.state);
   expect(isCurrentProductImageRequest(unmounted, upload.request)).toBe(false);
+});
+
+it("connects stable unavailable-warning IDs to independently rendered warning text", () => {
+  const warningId = candidateWarningId("contact_sheet:batch/7");
+  expect(warningId).toBe("product-image-warning-contact_sheet%3Abatch%2F7");
+
+  const source = readFileSync(
+    new URL("../frontend/components/product-image-panel.ts", import.meta.url),
+    "utf8",
+  );
+  expect(source).toContain("aria-describedby=${warningId}");
+  expect(source).toContain("id=${warningId}");
+  expect(source).toContain('class="product-image-candidate-warning"');
 });

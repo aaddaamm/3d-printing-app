@@ -9,6 +9,8 @@ import {
   beginProductDetailRequest,
   initialProductDetailForm,
   initialProductDetailRequestState,
+  mergeProductFormResponse,
+  mergeProductImageResponse,
   rejectProductDetailRequest,
   resolveProductDetailRequest,
 } from "../frontend/components/product-detail-view.js";
@@ -137,6 +139,66 @@ it("clears Product detail state on an id change and rejects stale responses", ()
     loading: false,
     error: "Failed to load Product B.",
   });
+});
+
+it("merges form and image responses without either stale summary overwriting the other", () => {
+  const original = product({
+    id: 4,
+    name: "Original name",
+    main_photo_id: 10,
+    main_photo_path: "/old.webp",
+    main_photo_source_type: "print_cover",
+    image_selection_mode: "auto",
+  });
+  const formResponse = product({
+    id: 4,
+    name: "Saved name",
+    notes: "Saved notes",
+    main_photo_id: 10,
+    main_photo_path: "/old.webp",
+    main_photo_source_type: "print_cover",
+    image_selection_mode: "auto",
+  });
+  const imageResponse = product({
+    id: 4,
+    name: "Original name",
+    notes: null,
+    main_photo_id: 22,
+    main_photo_path: "/manual.webp",
+    main_photo_source_type: "manual_upload",
+    image_selection_mode: "manual",
+  });
+
+  const formThenImage = mergeProductImageResponse(
+    mergeProductFormResponse(original, formResponse),
+    imageResponse,
+  );
+  const imageThenForm = mergeProductFormResponse(
+    mergeProductImageResponse(original, imageResponse),
+    formResponse,
+  );
+
+  for (const merged of [formThenImage, imageThenForm]) {
+    expect(merged).toMatchObject({
+      id: 4,
+      name: "Saved name",
+      notes: "Saved notes",
+      main_photo_id: 22,
+      main_photo_path: "/manual.webp",
+      main_photo_source_type: "manual_upload",
+      image_selection_mode: "manual",
+    });
+  }
+});
+
+it("ignores Product response merges for a different current Product", () => {
+  const current = product({ id: 4, name: "Current" });
+  const other = product({ id: 5, name: "Other", image_selection_mode: "manual" });
+
+  expect(mergeProductImageResponse(current, other)).toBe(current);
+  expect(mergeProductFormResponse(current, other)).toBe(current);
+  expect(mergeProductImageResponse(null, other)).toBeNull();
+  expect(mergeProductFormResponse(null, other)).toBeNull();
 });
 
 it("initializes product detail form from editable API fields", () => {

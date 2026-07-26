@@ -132,6 +132,34 @@ export function rejectProductDetailRequest(
   };
 }
 
+export function mergeProductImageResponse(
+  current: ProductSummary | null,
+  response: ProductSummary,
+): ProductSummary | null {
+  if (!current || current.id !== response.id) return current;
+  return {
+    ...current,
+    main_photo_id: response.main_photo_id,
+    main_photo_path: response.main_photo_path,
+    main_photo_source_type: response.main_photo_source_type,
+    image_selection_mode: response.image_selection_mode,
+  };
+}
+
+export function mergeProductFormResponse(
+  current: ProductSummary | null,
+  response: ProductSummary,
+): ProductSummary | null {
+  if (!current || current.id !== response.id) return current;
+  return {
+    ...response,
+    main_photo_id: current.main_photo_id,
+    main_photo_path: current.main_photo_path,
+    main_photo_source_type: current.main_photo_source_type,
+    image_selection_mode: current.image_selection_mode,
+  };
+}
+
 export function initialProductDetailForm(product: ProductSummary): DetailFormState {
   return {
     name: product.name,
@@ -316,8 +344,10 @@ export function ProductDetailView({
         return;
       }
       const updatedForm = initialProductDetailForm(updated);
-      requestState.current = { ...requestState.current, product: updated, form: updatedForm };
-      setProduct(updated);
+      const merged = mergeProductFormResponse(requestState.current.product, updated);
+      if (!merged) return;
+      requestState.current = { ...requestState.current, product: merged, form: updatedForm };
+      setProduct((current) => mergeProductFormResponse(current, updated));
       setForm(updatedForm);
       toast("Product updated.", "success");
     } finally {
@@ -332,8 +362,10 @@ export function ProductDetailView({
 
   const updateImageProduct = (updated: ProductSummary) => {
     if (requestState.current.productId !== updated.id) return;
-    requestState.current = { ...requestState.current, product: updated };
-    setProduct(updated);
+    const merged = mergeProductImageResponse(requestState.current.product, updated);
+    if (!merged) return;
+    requestState.current = { ...requestState.current, product: merged };
+    setProduct((current) => mergeProductImageResponse(current, updated));
   };
 
   if (requestState.current.productId !== productId || loading) {

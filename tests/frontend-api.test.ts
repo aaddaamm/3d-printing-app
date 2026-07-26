@@ -246,6 +246,45 @@ describe("frontend API endpoint contracts", () => {
     );
   });
 
+  it("composes a caller abort signal with the image refresh timeout", async () => {
+    const payload = { product: { id: 2 }, candidates: [], warnings: [] };
+    const caller = new AbortController();
+    const timeoutSignal = new AbortController().signal;
+    const composedSignal = new AbortController().signal;
+    const timeoutSpy = vi.spyOn(AbortSignal, "timeout").mockReturnValue(timeoutSignal);
+    const anySpy = vi.spyOn(AbortSignal, "any").mockReturnValue(composedSignal);
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(refreshProductImages(2, { signal: caller.signal })).resolves.toEqual(payload);
+
+    expect(timeoutSpy).toHaveBeenCalledWith(20_000);
+    expect(anySpy).toHaveBeenCalledWith([caller.signal, timeoutSignal]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/products/2/images/refresh",
+      expect.objectContaining({ signal: composedSignal }),
+    );
+  });
+
+  it("propagates caller abort through the composed image refresh signal", async () => {
+    const caller = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, options) => {
+      return new Promise<Response>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), {
+          once: true,
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const refresh = refreshProductImages(2, { signal: caller.signal });
+    caller.abort();
+
+    await expect(refresh).rejects.toThrow("Failed to refresh product images. (network error)");
+    expect(fetchMock.mock.calls[0]?.[1]?.signal).not.toBe(caller.signal);
+    expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
+  });
+
   it("returns null when create helpers cannot complete", async () => {
     vi.stubGlobal(
       "fetch",
