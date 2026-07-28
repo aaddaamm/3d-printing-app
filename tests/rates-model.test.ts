@@ -92,6 +92,32 @@ describe("upsertMachineRate", () => {
     expect(machine_rate_per_hr).toBeCloseTo(1000 / 5000 + 0.1 + 0.5, 6);
   });
 
+  it("computes the approved Snapmaker U1 machine rate", () => {
+    mockGetMachine.mockReturnValue({
+      device_model: "Snapmaker U1",
+      purchase_price: 899,
+      lifetime_hrs: 3000,
+      electricity_rate: 0.1,
+      maintenance_buffer: 0.5,
+      machine_rate_per_hr: 899 / 3000 + 0.1 + 0.5,
+    });
+
+    upsertMachineRate({
+      device_model: "Snapmaker U1",
+      purchase_price: 899,
+      lifetime_hrs: 3000,
+      electricity_rate: 0.1,
+      maintenance_buffer: 0.5,
+    });
+
+    const { device_model, machine_rate_per_hr } = mockUpsertMachineRun.mock.calls[0]![0] as {
+      device_model: string;
+      machine_rate_per_hr: number;
+    };
+    expect(device_model).toBe("Snapmaker U1");
+    expect(machine_rate_per_hr).toBeCloseTo(0.8996666667, 9);
+  });
+
   it("rejects zero lifetime_hrs before writing to the DB", () => {
     expect(() =>
       upsertMachineRate({
