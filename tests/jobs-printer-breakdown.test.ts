@@ -29,8 +29,11 @@ it("matches inventory printer jobs by printer_id instead of shared model/name", 
   expect(jobsForInventoryPrinter(printer(3), jobs).map((job) => job.id)).toEqual([102]);
 });
 
-it("maps Snapmaker U1 inventory models to the local printer photo", () => {
+it("maps only the exact normalized Snapmaker U1 inventory model to the local printer photo", () => {
   expect(getPrinterPhotoUrl("Snapmaker U1")).toBe("/ui/printers/snapmaker-u1");
-  expect(getPrinterPhotoUrl("SNAPMAKER U1")).toBe("/ui/printers/snapmaker-u1");
+  expect(getPrinterPhotoUrl("  SNAPMAKER U1  ")).toBe("/ui/printers/snapmaker-u1");
+  expect(getPrinterPhotoUrl("Snapmaker U10")).toBeNull();
+  expect(getPrinterPhotoUrl("Snapmaker U1 Pro")).toBeNull();
+  expect(getPrinterPhotoUrl("PreSnapmaker U1Suffix")).toBeNull();
   expect(getPrinterPhotoUrl("Unknown Printer")).toBeNull();
 });

@@ -35,6 +35,7 @@ describe("printer photo UI routes", () => {
     const response = await app().request("/ui/printers/snapmaker-u1");
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toBe("image/webp");
+    expect(response.headers.get("cache-control")).toBe("public, max-age=86400");
     expect((await response.arrayBuffer()).byteLength).toBeGreaterThan(1_000);
 
     expect((await app().request("/ui/printers/not-real")).status).toBe(404);

@@ -17,7 +17,7 @@ export function getPrinterPhotoUrl(deviceModel: string): string | null {
   const normalized = deviceModel.toLowerCase();
   if (normalized.includes("a1 mini")) return "/ui/printers/a1-mini";
   if (normalized.includes("p1s")) return "/ui/printers/p1s";
-  if (normalized.includes("snapmaker u1")) return "/ui/printers/snapmaker-u1";
+  if (normalized.trim() === "snapmaker u1") return "/ui/printers/snapmaker-u1";
   return null;
 }
 
