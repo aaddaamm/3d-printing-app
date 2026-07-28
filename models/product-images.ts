@@ -169,6 +169,12 @@ function previewExtension(contentType: CatalogPreviewContentType): "jpg" | "png"
   return contentType === "image/jpeg" ? "jpg" : "png";
 }
 
+function sourceHeroCandidateKey(modelUrl: string, sourceUrl: string, contentHash: string): string {
+  const modelHash = createHash("sha256").update(modelUrl).digest("hex");
+  const sourceHash = createHash("sha256").update(sourceUrl).digest("hex");
+  return `source_hero:${modelHash}:${sourceHash}:${contentHash}`;
+}
+
 function sourceHeroProvenance(
   sourceRef: string | null,
 ): { modelUrl: string; sourceUrl: string; contentHash: string } | null {
@@ -239,7 +245,7 @@ function persistedCandidates(
       const provenance = sourceHeroProvenance(row.source_ref);
       const currentSourceUrl = currentModelUrl ? canonicalSupportedModelUrl(currentModelUrl) : null;
       const expectedKey = provenance
-        ? `source_hero:${createHash("sha256").update(provenance.sourceUrl).digest("hex")}:${provenance.contentHash}`
+        ? sourceHeroCandidateKey(provenance.modelUrl, provenance.sourceUrl, provenance.contentHash)
         : null;
       let actualHash: string | null = null;
       try {
@@ -662,9 +668,7 @@ function upsertSourceHero(
   ) {
     throw new ProductImageValidationError("Invalid MakerWorld source image provenance");
   }
-  const candidateKey = `source_hero:${createHash("sha256")
-    .update(canonicalSourceUrl)
-    .digest("hex")}:${contentHash}`;
+  const candidateKey = sourceHeroCandidateKey(canonicalModelUrl, canonicalSourceUrl, contentHash);
   const sourceRef = JSON.stringify({
     modelUrl: canonicalModelUrl,
     sourceUrl: canonicalSourceUrl,
