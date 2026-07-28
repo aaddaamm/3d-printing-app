@@ -5,6 +5,7 @@ import {
   createProduct,
   createProductFromJob,
   createProductFromProject,
+  getProductSummaryById,
   listProducts,
   listProductsToPrintNext,
   listSalesCompanionProducts,
@@ -72,7 +73,31 @@ function handleProductError(c: Parameters<typeof jsonError>[0], error: unknown):
 }
 
 function findProduct(id: number) {
-  return listProducts().find((product) => product.id === id) ?? null;
+  return getProductSummaryById(id);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function requireEmptyRefreshBody(
+  c: Parameters<typeof jsonError>[0],
+): Promise<Response | null> {
+  const rawBody = await c.req.text();
+  if (rawBody === "") return null;
+
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBody);
+  } catch {
+    return jsonError(c, "Invalid JSON body", 400);
+  }
+
+  if (!isRecord(body) || unknownFields(body, []).length > 0) {
+    return jsonError(c, "Refresh body must be an empty JSON object", 400);
+  }
+
+  return null;
 }
 
 function publicUploadedPhoto(photo: ReturnType<typeof createManualProductPhoto>["photo"]) {
@@ -169,6 +194,9 @@ products.post("/:id/images/refresh", async (c) => {
   if (idOrError instanceof Response) return idOrError;
   if (!findProduct(idOrError)) return jsonError(c, "Not found", 404);
 
+  const bodyError = await requireEmptyRefreshBody(c);
+  if (bodyError) return bodyError;
+
   try {
     const { product, warnings } = await refreshProductIdentificationImages(idOrError);
     return c.json({ product, candidates: listProductImageCandidates(idOrError), warnings });
@@ -195,13 +223,18 @@ products.post(
       }
     }
 
-    let body: Awaited<ReturnType<typeof c.req.parseBody>>;
+    let body: Record<string, string | File | (string | File)[]>;
     try {
-      body = await c.req.parseBody();
+      body = await c.req.parseBody({ all: true });
     } catch {
       return jsonError(c, "Invalid multipart body", 400);
     }
+
+    const unknown = unknownFields(body as Record<string, unknown>, ["photo"]);
+    if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
+
     const photo = body["photo"];
+    if (Array.isArray(photo)) return jsonError(c, "photo must appear exactly once", 400);
     if (!(photo instanceof File)) return jsonError(c, "photo must be a multipart File", 400);
     if (photo.size > MAX_PHOTO_BYTES) {
       return jsonError(c, "Photo exceeds the 10 MiB limit", 413);

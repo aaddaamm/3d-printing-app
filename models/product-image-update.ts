@@ -1,7 +1,7 @@
 import { db } from "../lib/db.js";
 import { clearAutoSourcePhoto, refreshAutoProductImageBody } from "./product-images.js";
 import {
-  listProducts,
+  getProductSummaryById,
   updateProduct,
   type ProductSummary,
   type UpdateProductInput,
@@ -9,7 +9,7 @@ import {
 
 const updateProductWithAutoImageTransaction = db.transaction(
   (productId: number, input: UpdateProductInput): ProductSummary | null => {
-    const previous = listProducts().find(({ id }) => id === productId) ?? null;
+    const previous = getProductSummaryById(productId);
     if (!previous) return null;
     const updated = updateProduct(productId, input);
     if (!updated) return null;

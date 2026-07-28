@@ -21,7 +21,7 @@ import {
   fetchSupportedSourceImage,
   type RemoteImageDependencies,
 } from "../lib/remote-product-images.js";
-import { listProducts, ProductValidationError, type ProductSummary } from "./products.js";
+import { getProductSummaryById, ProductValidationError, type ProductSummary } from "./products.js";
 
 export type ProductImageSourceType =
   | "manual_upload"
@@ -126,7 +126,7 @@ const SOURCE_TYPES = new Set<ProductImageSourceType>(
 );
 
 function requireProduct(productId: number): ProductSummary {
-  const product = listProducts().find(({ id }) => id === productId);
+  const product = getProductSummaryById(productId);
   if (!product) throw new ProductImageValidationError(`Unknown product_id: ${productId}`);
   return product;
 }

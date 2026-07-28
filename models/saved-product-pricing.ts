@@ -7,7 +7,7 @@ import {
 } from "./price-quotes.js";
 import {
   createProduct,
-  listProducts,
+  getProductSummaryById,
   type CreateProductInput,
   type ProductSummary,
 } from "./products.js";
@@ -1179,7 +1179,7 @@ function normalizeSaveRequest(input: SaveProductPricingRequest): NormalizedSaveR
 }
 
 function findProduct(productId: number): ProductSummary | undefined {
-  return listProducts().find((product) => product.id === productId);
+  return getProductSummaryById(productId) ?? undefined;
 }
 
 function normalizePositiveInteger(value: unknown, field: string): number {

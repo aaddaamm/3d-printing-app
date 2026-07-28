@@ -7,6 +7,7 @@ const {
   mockCreateProductFromJob,
   mockCreateProductFromProject,
   mockEnsureGeneratedProductImageCandidates,
+  mockGetProductSummaryById,
   mockListProductImageCandidates,
   mockListProductPricingHistory,
   mockListProducts,
@@ -35,6 +36,7 @@ const {
     mockCreateProductFromJob: vi.fn(),
     mockCreateProductFromProject: vi.fn(),
     mockEnsureGeneratedProductImageCandidates: vi.fn(),
+    mockGetProductSummaryById: vi.fn(),
     mockListProductImageCandidates: vi.fn(),
     mockListProductPricingHistory: vi.fn(),
     mockListProducts: vi.fn(),
@@ -59,6 +61,7 @@ vi.mock("../models/products.js", () => ({
   createProduct: mockCreateProduct,
   createProductFromJob: mockCreateProductFromJob,
   createProductFromProject: mockCreateProductFromProject,
+  getProductSummaryById: mockGetProductSummaryById,
   listProducts: mockListProducts,
   listProductsToPrintNext: mockListProductsToPrintNext,
   listSalesCompanionProducts: mockListSalesCompanionProducts,
@@ -239,6 +242,7 @@ function oversizedStreamingRequest(transferEncoding?: "chunked"): Request {
 describe("product routes", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    mockGetProductSummaryById.mockReturnValue(sampleProduct);
     mockListProducts.mockReturnValue([sampleProduct]);
     mockListProductsToPrintNext.mockReturnValue([{ ...sampleProduct, restock_priority: "high" }]);
     mockListSalesCompanionProducts.mockReturnValue([
@@ -318,10 +322,12 @@ describe("product routes", () => {
     expect(await res.json()).toEqual({ products: [sampleProduct] });
   });
 
-  it("gets a product by id with editable detail fields", async () => {
+  it("gets a product by id with editable detail fields via targeted lookup", async () => {
     const res = await apiApp().request("/api/products/1");
 
     expect(res.status).toBe(200);
+    expect(mockGetProductSummaryById).toHaveBeenCalledWith(1);
+    expect(mockListProducts).not.toHaveBeenCalled();
     expect(await res.json()).toEqual({ product: sampleProduct });
   });
 
@@ -389,10 +395,11 @@ describe("product routes", () => {
     });
   });
 
-  it("lists ranked image candidates for an existing product", async () => {
+  it("lists ranked image candidates for an existing product via targeted lookup", async () => {
     const res = await apiApp().request("/api/products/1/image-candidates");
 
     expect(res.status).toBe(200);
+    expect(mockGetProductSummaryById).toHaveBeenCalledWith(1);
     expect(mockEnsureGeneratedProductImageCandidates).toHaveBeenCalledWith(1);
     expect(await res.json()).toEqual({ candidates: sampleCandidates, warnings: [] });
   });
@@ -401,6 +408,7 @@ describe("product routes", () => {
     const res = await apiApp().request("/api/products/1/images/refresh", { method: "POST" });
 
     expect(res.status).toBe(200);
+    expect(mockGetProductSummaryById).toHaveBeenCalledWith(1);
     expect(mockRefreshProductIdentificationImages).toHaveBeenCalledWith(1);
     expect(mockListProductImageCandidates).toHaveBeenCalledWith(1);
     expect(await res.json()).toEqual({
@@ -408,6 +416,37 @@ describe("product routes", () => {
       candidates: sampleCandidates,
       warnings: ["MakerWorld source image refresh fell back to generated candidates."],
     });
+  });
+
+  it("accepts an exactly empty JSON object for image refresh", async () => {
+    const res = await apiApp().request("/api/products/1/images/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockRefreshProductIdentificationImages).toHaveBeenCalledWith(1);
+  });
+
+  it.each([
+    { name: "malformed JSON", body: "{", headers: { "Content-Type": "application/json" } },
+    { name: "JSON array", body: "[]", headers: { "Content-Type": "application/json" } },
+    { name: "JSON scalar", body: "1", headers: { "Content-Type": "application/json" } },
+    {
+      name: "unexpected JSON keys",
+      body: JSON.stringify({ force: true }),
+      headers: { "Content-Type": "application/json" },
+    },
+  ])("rejects $name for image refresh", async ({ body, headers }) => {
+    const res = await apiApp().request("/api/products/1/images/refresh", {
+      method: "POST",
+      headers,
+      body,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockRefreshProductIdentificationImages).not.toHaveBeenCalled();
   });
 
   it("uploads, normalizes, and transactionally selects a Manual product photo", async () => {
@@ -420,6 +459,7 @@ describe("product routes", () => {
     });
 
     expect(res.status).toBe(201);
+    expect(mockGetProductSummaryById).toHaveBeenCalledWith(1);
     expect(mockStoreUploadedProductImage).toHaveBeenCalledWith(1, expect.any(Uint8Array));
     expect(mockCreateManualProductPhoto).toHaveBeenCalledWith(
       1,
@@ -484,13 +524,63 @@ describe("product routes", () => {
     expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
   });
 
-  it("requires a multipart File in the photo field", async () => {
+  it.each([
+    {
+      name: "unexpected text fields",
+      build: () => {
+        const form = new FormData();
+        form.set("photo", new File(["image bytes"], "dragon.png", { type: "image/png" }));
+        form.set("caption", "hello");
+        return form;
+      },
+    },
+    {
+      name: "unexpected file fields",
+      build: () => {
+        const form = new FormData();
+        form.set("photo", new File(["image bytes"], "dragon.png", { type: "image/png" }));
+        form.set("extra", new File(["bytes"], "extra.bin"));
+        return form;
+      },
+    },
+  ])("rejects $name on multipart upload", async ({ build }) => {
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: build(),
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate multipart photo fields", async () => {
     const form = new FormData();
-    form.set("photo", "not a file");
+    form.append("photo", new File(["first"], "one.png", { type: "image/png" }));
+    form.append("photo", new File(["second"], "two.png", { type: "image/png" }));
 
     const res = await apiApp().request("/api/products/1/photos", {
       method: "POST",
       body: form,
+    });
+
+    expect(res.status).toBe(400);
+    expect(mockStoreUploadedProductImage).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "a missing photo field", build: () => new FormData() },
+    {
+      name: "a non-file photo field",
+      build: () => {
+        const form = new FormData();
+        form.set("photo", "not a file");
+        return form;
+      },
+    },
+  ])("requires exactly one File for $name", async ({ build }) => {
+    const res = await apiApp().request("/api/products/1/photos", {
+      method: "POST",
+      body: build(),
     });
 
     expect(res.status).toBe(400);
@@ -651,7 +741,7 @@ describe("product routes", () => {
   });
 
   it("returns 404 for image routes when the product does not exist", async () => {
-    mockListProducts.mockReturnValue([]);
+    mockGetProductSummaryById.mockReturnValue(null);
 
     const listRes = await apiApp().request("/api/products/99/image-candidates");
     const uploadForm = new FormData();
@@ -707,7 +797,7 @@ describe("product routes", () => {
   });
 
   it("returns 404 for pricing history when the product does not exist", async () => {
-    mockListProducts.mockReturnValue([]);
+    mockGetProductSummaryById.mockReturnValue(null);
 
     const res = await apiApp().request("/api/products/1/pricing-history");
 

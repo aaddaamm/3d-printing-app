@@ -302,7 +302,11 @@ describe("frontend API endpoint contracts", () => {
     expect(timeoutSpy).toHaveBeenCalledWith(20_000);
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/products/2/images/refresh",
-      expect.objectContaining({ method: "POST", body: "{}" }),
+      expect.objectContaining({
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      }),
     );
   });
 

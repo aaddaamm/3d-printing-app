@@ -293,6 +293,16 @@ describe.sequential("products model", () => {
     expect(productsModule!.listProducts()).toContainEqual(product);
   });
 
+  it("returns a targeted product summary by id", () => {
+    const product = productsModule!.createProduct({
+      name: "Targeted Summary",
+      model_url: "https://example.com/targeted-summary",
+    });
+
+    expect(productsModule!.getProductSummaryById(product.id)).toEqual(product);
+    expect(productsModule!.getProductSummaryById(product.id + 1)).toBeNull();
+  });
+
   it("computes ready-to-list after a main photo is linked", () => {
     const created = productsModule!.createProduct({
       name: "Desk Tray",

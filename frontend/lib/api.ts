@@ -611,7 +611,13 @@ export function refreshProductImages(
   return fetchJson<ProductImagesRefreshResponse>(
     `/api/products/${productId}/images/refresh`,
     "Failed to refresh product images.",
-    { ...options, method: "POST", body: "{}", timeoutMs: 20_000 },
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: "{}",
+      timeoutMs: 20_000,
+    },
   );
 }
 

@@ -402,7 +402,7 @@ function normalizeRestockPriority(value: unknown, fallback = "none"): string {
   return priority;
 }
 
-function getProductSummaryById(id: number): ProductSummary | null {
+export function getProductSummaryById(id: number): ProductSummary | null {
   const row = db.prepare<[number], ProductSummaryRow>(`${PRODUCT_SELECT} WHERE p.id = ?`).get(id);
   return row ? productSummaryFromRow(row) : null;
 }
