@@ -22,7 +22,7 @@ function safeIdentifier(identifier: string, kind: "table" | "column"): string {
 }
 
 const SAFE_BASE_COLUMN_DEFINITION_RE =
-  /^(?:INTEGER|REAL|TEXT|BLOB|NUMERIC)(?:\s+(?:NOT\s+NULL|UNIQUE|PRIMARY\s+KEY))*?(?:\s+DEFAULT\s+(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*'))?(?:\s+REFERENCES\s+[A-Za-z_][A-Za-z0-9_]*\s*\([A-Za-z_][A-Za-z0-9_]*\))?$/i;
+  /^(?:INTEGER|REAL|TEXT|BLOB|NUMERIC)(?:\s+(?:NOT\s+NULL|UNIQUE|PRIMARY\s+KEY))*?(?:\s+DEFAULT\s+(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*'))?(?:\s+REFERENCES\s+[A-Za-z_][A-Za-z0-9_]*\s*\([A-Za-z_][A-Za-z0-9_]*\)(?:\s+ON\s+DELETE\s+SET\s+NULL)?)?$/i;
 const SAFE_SIMPLE_CHECK_RE =
   /^CHECK\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s+IN\s*\(\s*(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*')(?:\s*,\s*(?:NULL|[-+]?\d+(?:\.\d+)?|"[^"]*"|'[^']*'))*\s*\)\s*\)$/i;
 

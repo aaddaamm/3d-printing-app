@@ -65,6 +65,10 @@ vi.mock("../models/products.js", () => ({
   updateProduct: mockUpdateProduct,
 }));
 
+vi.mock("../models/product-image-update.js", () => ({
+  updateProductWithAutoImage: mockUpdateProduct,
+}));
+
 vi.mock("../models/saved-product-pricing.js", () => ({
   SavedProductPricingValidationError: MockSavedProductPricingValidationError,
   listProductPricingHistory: mockListProductPricingHistory,
@@ -806,8 +810,7 @@ describe("product routes", () => {
         main_photo_path: "/ui/product-photos/52",
         main_photo_source_type: "catalog_preview",
       };
-      mockUpdateProduct.mockReturnValue(staleUpdate);
-      mockRefreshAutoProductImage.mockReturnValue(fallback);
+      mockUpdateProduct.mockReturnValue(fallback);
 
       const res = await apiApp().request("/api/products/1", {
         method: "PATCH",
@@ -816,7 +819,7 @@ describe("product routes", () => {
       });
 
       expect(res.status).toBe(200);
-      expect(mockRefreshAutoProductImage).toHaveBeenCalledWith(1);
+      expect(mockUpdateProduct).toHaveBeenCalledWith(1, { model_url: modelUrl });
       expect(await res.json()).toEqual({ product: fallback });
       expect(mockRefreshProductIdentificationImages).not.toHaveBeenCalled();
     },
@@ -840,7 +843,7 @@ describe("product routes", () => {
     });
 
     expect(res.status).toBe(200);
-    expect(mockRefreshAutoProductImage).not.toHaveBeenCalled();
+    expect(mockUpdateProduct).toHaveBeenCalledWith(1, { model_url: manual.model_url });
     expect(await res.json()).toEqual({ product: manual });
   });
 

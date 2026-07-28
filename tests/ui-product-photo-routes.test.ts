@@ -94,30 +94,28 @@ describe.sequential("product photo UI routes", () => {
     expect(await absoluteRes.text()).toBe("absolute bytes");
   });
 
-  it("keeps immutable source-hero IDs byte-stable under 24-hour caching", async () => {
+  it("tracks the current immutable source version while cached photo IDs stay byte-stable", async () => {
     const modelUrl = "https://makerworld.com/en/models/cache-stable";
     const sourceUrl = "https://makerworld.bblmw.com/cache-stable.png";
+    const alternateSourceUrl = "https://makerworld.bblmw.com/cache-alternate.png";
     productsModule!.updateProduct(productId, { model_url: modelUrl });
-    const oldImage = await sharp({
-      create: { width: 24, height: 24, channels: 3, background: "#aa0000" },
-    })
-      .png()
-      .toBuffer();
-    const newImage = await sharp({
-      create: { width: 24, height: 24, channels: 3, background: "#0000aa" },
-    })
-      .png()
-      .toBuffer();
-    const dependencies = (image: Buffer) => ({
+    const image = async (color: string) =>
+      sharp({ create: { width: 24, height: 24, channels: 3, background: color } })
+        .png()
+        .toBuffer();
+    const oldImage = await image("#aa0000");
+    const newImage = await image("#0000aa");
+    const alternateImage = await image("#00aa00");
+    const dependencies = (bytes: Buffer, remoteUrl = sourceUrl) => ({
       fetch: vi
         .fn()
         .mockResolvedValueOnce(
-          new Response(`<meta property="og:image" content="${sourceUrl}">`, {
+          new Response(`<meta property="og:image" content="${remoteUrl}">`, {
             headers: { "Content-Type": "text/html" },
           }),
         )
         .mockResolvedValueOnce(
-          new Response(new Uint8Array(image), { headers: { "Content-Type": "image/png" } }),
+          new Response(new Uint8Array(bytes), { headers: { "Content-Type": "image/png" } }),
         ),
       lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]) as never,
     });
@@ -130,50 +128,66 @@ describe.sequential("product photo UI routes", () => {
     const oldPath = String(
       dbModule!.db.prepare("SELECT path FROM product_photos WHERE id = ?").pluck().get(oldId),
     );
-    const oldCandidate = productImagesModule!
-      .listProductImageCandidates(productId)
-      .find(({ photo_id }) => photo_id === oldId)!;
-    productImagesModule!.selectProductImage(productId, oldCandidate.candidate_key);
     const second = await productImagesModule!.refreshProductIdentificationImages(
       productId,
       dependencies(newImage),
     );
-    const newCandidate = productImagesModule!
-      .listProductImageCandidates(productId)
-      .find(({ source_type, photo_id }) => source_type === "source_hero" && photo_id !== oldId)!;
-    const newId = newCandidate.photo_id!;
-    const unchanged = await productImagesModule!.refreshProductIdentificationImages(
+    const newId = second.product.main_photo_id!;
+    const reverted = await productImagesModule!.refreshProductIdentificationImages(
       productId,
-      dependencies(newImage),
+      dependencies(oldImage),
     );
 
-    expect(second.product).toMatchObject({
-      image_selection_mode: "manual",
+    expect(newId).not.toBe(oldId);
+    expect(reverted.product).toMatchObject({
+      image_selection_mode: "auto",
       main_photo_id: oldId,
       main_photo_path: `/ui/product-photos/${oldId}`,
     });
-    expect(unchanged.product).toMatchObject({
+
+    const newCandidate = productImagesModule!
+      .listProductImageCandidates(productId)
+      .find(({ photo_id }) => photo_id === newId)!;
+    productImagesModule!.selectProductImage(productId, newCandidate.candidate_key);
+    const manualRefresh = await productImagesModule!.refreshProductIdentificationImages(
+      productId,
+      dependencies(oldImage),
+    );
+    expect(manualRefresh.product).toMatchObject({
       image_selection_mode: "manual",
-      main_photo_id: oldId,
+      main_photo_id: newId,
+      main_photo_path: `/ui/product-photos/${newId}`,
     });
-    expect(newId).not.toBe(oldId);
+    expect(productImagesModule!.returnProductImageToAuto(productId)).toMatchObject({
+      image_selection_mode: "auto",
+      main_photo_id: oldId,
+      main_photo_path: `/ui/product-photos/${oldId}`,
+    });
+
+    const alternate = await productImagesModule!.refreshProductIdentificationImages(
+      productId,
+      dependencies(alternateImage, alternateSourceUrl),
+    );
+    expect(alternate.product.main_photo_id).not.toBe(oldId);
+    expect(
+      await productImagesModule!.refreshProductIdentificationImages(
+        productId,
+        dependencies(oldImage, sourceUrl),
+      ),
+    ).toMatchObject({ product: { main_photo_id: oldId, image_selection_mode: "auto" } });
+
     expect(
       dbModule!.db
         .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
         .pluck()
         .get(productId),
-    ).toBe(2);
+    ).toBe(3);
     expect(
       dbModule!.db.prepare("SELECT path FROM product_photos WHERE id = ?").pluck().get(oldId),
     ).toBe(oldPath);
     expect(
       dbModule!.db.prepare("SELECT path FROM product_photos WHERE id = ?").pluck().get(newId),
     ).not.toBe(oldPath);
-    expect(productImagesModule!.returnProductImageToAuto(productId)).toMatchObject({
-      image_selection_mode: "auto",
-      main_photo_id: newId,
-      main_photo_path: `/ui/product-photos/${newId}`,
-    });
 
     const oldResponse = await app().request(`/ui/product-photos/${oldId}`);
     const newResponse = await app().request(`/ui/product-photos/${newId}`);

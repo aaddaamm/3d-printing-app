@@ -276,6 +276,7 @@ for (const sql of [
     model_url TEXT,
     main_file_id INTEGER REFERENCES product_files(id),
     main_photo_id INTEGER REFERENCES product_photos(id),
+    auto_source_photo_id INTEGER REFERENCES product_photos(id) ON DELETE SET NULL,
     etsy_listing_url TEXT,
     default_material TEXT,
     primary_color TEXT,

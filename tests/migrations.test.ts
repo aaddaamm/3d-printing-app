@@ -125,6 +125,20 @@ describe("migration helpers", () => {
     expect(columnExists(database, "things", "mode")).toBe(true);
   });
 
+  it("accepts a bounded SET NULL foreign-key delete action", () => {
+    const database = fakeDb();
+    database.exec("CREATE TABLE things (id INTEGER PRIMARY KEY)");
+
+    addColumnIfMissing(
+      database,
+      "things",
+      "photo_id",
+      "INTEGER REFERENCES photos(id) ON DELETE SET NULL",
+    );
+
+    expect(columnExists(database, "things", "photo_id")).toBe(true);
+  });
+
   it("rejects unsafe or unsupported column definitions", () => {
     const database = fakeDb();
     database.exec("CREATE TABLE things (id INTEGER PRIMARY KEY)");

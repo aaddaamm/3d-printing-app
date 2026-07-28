@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type DbModule = typeof import("../lib/db.js");
 type ProductImageFilesModule = typeof import("../lib/product-image-files.js");
 type ProductImagesModule = typeof import("../models/product-images.js");
+type ProductImageUpdateModule = typeof import("../models/product-image-update.js");
 type ProductsModule = typeof import("../models/products.js");
 
 let tempDir = "";
@@ -19,6 +20,7 @@ let imagesDir = "";
 let dbModule: DbModule | null = null;
 let productImageFilesModule: ProductImageFilesModule | null = null;
 let productImagesModule: ProductImagesModule | null = null;
+let productImageUpdateModule: ProductImageUpdateModule | null = null;
 let productsModule: ProductsModule | null = null;
 
 function cleanupSqliteFiles(basePath: string): void {
@@ -38,6 +40,7 @@ async function loadFreshModules(): Promise<void> {
   productsModule = await import("../models/products.js");
   productImageFilesModule = await import("../lib/product-image-files.js");
   productImagesModule = await import("../models/product-images.js");
+  productImageUpdateModule = await import("../models/product-image-update.js");
 }
 
 function seedCatalogPreview(productId: number, hash: string): number {
@@ -204,6 +207,7 @@ describe.sequential("product image model", () => {
     dbModule = null;
     productImageFilesModule = null;
     productImagesModule = null;
+    productImageUpdateModule = null;
     productsModule = null;
   });
 
@@ -315,6 +319,73 @@ describe.sequential("product image model", () => {
       contentHash,
     });
     expect(await sharp(String(row["path"])).metadata()).toMatchObject({ format: "webp" });
+  });
+
+  it("reuses the older immutable source row after model URL A to B to A", async () => {
+    const modelA = "https://makerworld.com/en/models/model-a";
+    const modelB = "https://makerworld.com/en/models/model-b";
+    const sourceA = "https://makerworld.bblmw.com/model-a.png";
+    const sourceB = "https://makerworld.bblmw.com/model-b.png";
+    const product = productsModule!.createProduct({ name: "Returning Source", model_url: modelA });
+    const makeImage = async (color: string): Promise<Uint8Array<ArrayBuffer>> =>
+      Uint8Array.from(
+        await sharp({ create: { width: 20, height: 20, channels: 3, background: color } })
+          .png()
+          .toBuffer(),
+      );
+    const dependencies = (sourceUrl: string, bytes: Uint8Array<ArrayBuffer>) => ({
+      fetch: vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(`<meta property="og:image" content="${sourceUrl}">`, {
+            headers: { "Content-Type": "text/html" },
+          }),
+        )
+        .mockResolvedValueOnce(new Response(bytes, { headers: { "Content-Type": "image/png" } })),
+      lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]) as never,
+    });
+    const bytesA = await makeImage("#aa0000");
+    const bytesB = await makeImage("#0000aa");
+
+    const first = await productImagesModule!.refreshProductIdentificationImages(
+      product.id,
+      dependencies(sourceA, bytesA),
+    );
+    const photoA = first.product.main_photo_id;
+    expect(
+      productImageUpdateModule!.updateProductWithAutoImage(product.id, { model_url: modelB }),
+    ).toMatchObject({ model_url: modelB, main_photo_id: null, image_selection_mode: "auto" });
+    expect(
+      dbModule!.db
+        .prepare("SELECT auto_source_photo_id FROM products WHERE id = ?")
+        .get(product.id),
+    ).toEqual({ auto_source_photo_id: null });
+
+    const second = await productImagesModule!.refreshProductIdentificationImages(
+      product.id,
+      dependencies(sourceB, bytesB),
+    );
+    expect(second.product.main_photo_id).not.toBe(photoA);
+    expect(
+      productImageUpdateModule!.updateProductWithAutoImage(product.id, { model_url: modelA }),
+    ).toMatchObject({ model_url: modelA, main_photo_id: null, image_selection_mode: "auto" });
+    const returned = await productImagesModule!.refreshProductIdentificationImages(
+      product.id,
+      dependencies(sourceA, bytesA),
+    );
+
+    expect(returned.product).toMatchObject({
+      model_url: modelA,
+      main_photo_id: photoA,
+      main_photo_source_type: "source_hero",
+      image_selection_mode: "auto",
+    });
+    expect(
+      dbModule!.db
+        .prepare("SELECT COUNT(*) FROM product_photos WHERE product_id = ?")
+        .pluck()
+        .get(product.id),
+    ).toBe(2);
   });
 
   it("does not disturb Manual mode during source enrichment", async () => {
@@ -464,16 +535,55 @@ describe.sequential("product image model", () => {
     dbModule!.db
       .prepare(
         `UPDATE products
-         SET main_photo_id = ?, image_selection_mode = 'manual'
+         SET main_photo_id = ?, auto_source_photo_id = ?, image_selection_mode = 'manual'
          WHERE id = ?`,
       )
-      .run(invalidIds[0], product.id);
+      .run(invalidIds[0], validId, product.id);
     expect(productImagesModule!.refreshAutoProductImage(product.id)).toMatchObject({
       main_photo_id: invalidIds[0],
       image_selection_mode: "manual",
     });
     expect(productImagesModule!.returnProductImageToAuto(product.id)).toMatchObject({
       main_photo_id: validId,
+      main_photo_source_type: "source_hero",
+      image_selection_mode: "auto",
+    });
+  });
+
+  it("validates the current source pointer belongs to the Product and current model URL", () => {
+    const modelUrl = "https://makerworld.com/en/models/pointer-owner";
+    const product = productsModule!.createProduct({ name: "Pointer Owner", model_url: modelUrl });
+    seedCatalogPreview(product.id, "7".repeat(64));
+    const validSourceId = addSourceHero(
+      product.id,
+      "owner.webp",
+      modelUrl,
+      "https://makerworld.bblmw.com/owner.webp",
+    );
+    const otherProduct = productsModule!.createProduct({
+      name: "Pointer Other",
+      model_url: "https://makerworld.com/en/models/pointer-other",
+    });
+    const otherSourceId = addSourceHero(
+      otherProduct.id,
+      "other.webp",
+      otherProduct.model_url!,
+      "https://makerworld.bblmw.com/other.webp",
+    );
+
+    dbModule!.db
+      .prepare("UPDATE products SET auto_source_photo_id = ? WHERE id = ?")
+      .run(otherSourceId, product.id);
+    expect(productImagesModule!.refreshAutoProductImage(product.id)).toMatchObject({
+      main_photo_source_type: "catalog_preview",
+      image_selection_mode: "auto",
+    });
+
+    dbModule!.db
+      .prepare("UPDATE products SET auto_source_photo_id = ? WHERE id = ?")
+      .run(validSourceId, product.id);
+    expect(productImagesModule!.refreshAutoProductImage(product.id)).toMatchObject({
+      main_photo_id: validSourceId,
       main_photo_source_type: "source_hero",
       image_selection_mode: "auto",
     });
@@ -905,6 +1015,9 @@ describe.sequential("product image model", () => {
       modelUrl,
       "https://makerworld.bblmw.com/locked-dragon.webp",
     );
+    dbModule!.db
+      .prepare("UPDATE products SET auto_source_photo_id = ? WHERE id = ?")
+      .run(heroId, product.id);
     const refreshed = productImagesModule!.refreshAutoProductImage(product.id);
     expect(refreshed).toMatchObject({
       main_photo_id: selected.main_photo_id,

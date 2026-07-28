@@ -4,11 +4,13 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type DbModule = typeof import("../lib/db.js");
+type ProductImageUpdateModule = typeof import("../models/product-image-update.js");
 type ProductsModule = typeof import("../models/products.js");
 
 let tempDir = "";
 let dbPath = "";
 let dbModule: DbModule | null = null;
+let productImageUpdateModule: ProductImageUpdateModule | null = null;
 let productsModule: ProductsModule | null = null;
 
 function cleanupSqliteFiles(basePath: string): void {
@@ -23,6 +25,7 @@ async function loadFreshModules(): Promise<void> {
   process.env.BAMBU_DB = dbPath;
   dbModule = await import("../lib/db.js");
   productsModule = await import("../models/products.js");
+  productImageUpdateModule = await import("../models/product-image-update.js");
 }
 
 describe.sequential("products model", () => {
@@ -38,6 +41,7 @@ describe.sequential("products model", () => {
     if (tempDir && fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
     delete process.env.BAMBU_DB;
     dbModule = null;
+    productImageUpdateModule = null;
     productsModule = null;
   });
 
@@ -150,8 +154,48 @@ describe.sequential("products model", () => {
       `/ui/product-photos/${photoId}`,
     );
     dbModule!.db
-      .prepare("UPDATE product_photos SET path = ? WHERE id = ?")
+      .prepare(
+        `UPDATE product_photos
+         SET path = ?, source_type = 'source_hero', source_ref = NULL
+         WHERE id = ?`,
+      )
       .run("https://images.example.test/visible.jpg", photoId);
+    productsModule!.updateProduct(visibleProduct.id, {
+      model_url: "https://makerworld.com/en/models/source-a",
+    });
+    dbModule!.db
+      .prepare(
+        `UPDATE products
+         SET image_selection_mode = 'auto', auto_source_photo_id = ?
+         WHERE id = ?`,
+      )
+      .run(photoId, visibleProduct.id);
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_auto_main_photo_update
+      BEFORE UPDATE OF main_photo_id ON products
+      BEGIN
+        SELECT RAISE(ABORT, 'forced auto image failure');
+      END;
+    `);
+
+    expect(() =>
+      productImageUpdateModule!.updateProductWithAutoImage(visibleProduct.id, {
+        model_url: "https://makerworld.com/en/models/source-b",
+      }),
+    ).toThrow(/forced auto image failure/i);
+    dbModule!.db.exec("DROP TRIGGER fail_auto_main_photo_update");
+    expect(
+      dbModule!.db
+        .prepare("SELECT model_url, main_photo_id, auto_source_photo_id FROM products WHERE id = ?")
+        .get(visibleProduct.id),
+    ).toEqual({
+      model_url: "https://makerworld.com/en/models/source-a",
+      main_photo_id: photoId,
+      auto_source_photo_id: photoId,
+    });
+    expect(productsModule!.listSalesCompanionProducts()[0]?.identification_image_url).toBe(
+      "https://images.example.test/visible.jpg",
+    );
 
     const published = productsModule!.listSalesCompanionProducts();
 
@@ -174,6 +218,53 @@ describe.sequential("products model", () => {
     expect(Object.keys(published[0] ?? {})).not.toEqual(
       expect.arrayContaining(["job_ids", "source_url", "notes", "provider", "printer_id", "rates"]),
     );
+  });
+
+  it("atomically clears stale current-source state without unlocking Manual selection", () => {
+    const product = productsModule!.createProduct({
+      name: "Manual Source Change",
+      model_url: "https://makerworld.com/en/models/manual-a",
+    });
+    const manualId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO product_photos (product_id, path, role, source_type)
+           VALUES (?, 'manual.webp', 'gallery', 'manual_upload') RETURNING id`,
+        )
+        .pluck()
+        .get(product.id),
+    );
+    const sourceId = Number(
+      dbModule!.db
+        .prepare(
+          `INSERT INTO product_photos (product_id, path, role, source_type)
+           VALUES (?, 'source.webp', 'gallery', 'source_hero') RETURNING id`,
+        )
+        .pluck()
+        .get(product.id),
+    );
+    dbModule!.db
+      .prepare(
+        `UPDATE products
+         SET main_photo_id = ?, auto_source_photo_id = ?, image_selection_mode = 'manual'
+         WHERE id = ?`,
+      )
+      .run(manualId, sourceId, product.id);
+
+    expect(
+      productImageUpdateModule!.updateProductWithAutoImage(product.id, {
+        model_url: "https://makerworld.com/en/models/manual-b",
+      }),
+    ).toMatchObject({
+      model_url: "https://makerworld.com/en/models/manual-b",
+      main_photo_id: manualId,
+      image_selection_mode: "manual",
+    });
+    expect(
+      dbModule!.db
+        .prepare("SELECT auto_source_photo_id FROM products WHERE id = ?")
+        .get(product.id),
+    ).toEqual({ auto_source_photo_id: null });
   });
 
   it("creates a product with lookup labels and computed sellability fields", () => {

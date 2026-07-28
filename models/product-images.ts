@@ -61,6 +61,7 @@ type PersistedPhotoRow = {
   display_order: number;
   is_app_owned: number;
   is_main: number;
+  is_auto_source: number;
 };
 
 type CatalogPreviewRow = {
@@ -102,6 +103,7 @@ type CandidateDetails = ProductImageCandidate & {
   content_type: string | null;
   display_order: number;
   is_main: boolean;
+  is_current_source?: boolean;
 };
 
 type CatalogPreviewMetadata = {
@@ -216,7 +218,8 @@ function persistedCandidates(
          pp.content_type,
          pp.display_order,
          pp.is_app_owned,
-         CASE WHEN p.main_photo_id = pp.id THEN 1 ELSE 0 END AS is_main
+         CASE WHEN p.main_photo_id = pp.id THEN 1 ELSE 0 END AS is_main,
+         CASE WHEN p.auto_source_photo_id = pp.id THEN 1 ELSE 0 END AS is_auto_source
        FROM product_photos pp
        JOIN products p ON p.id = pp.product_id
        LEFT JOIN catalog_files cf ON cf.id = pp.file_id
@@ -312,6 +315,7 @@ function persistedCandidates(
         content_type: row.content_type,
         display_order: row.display_order,
         is_main: row.is_main === 1,
+        is_current_source: row.is_auto_source === 1,
       },
     ];
   });
@@ -440,6 +444,9 @@ function compareCandidates(left: CandidateDetails, right: CandidateDetails): num
   if (left.priority !== right.priority) return left.priority - right.priority;
   if (left.available !== right.available) return left.available ? -1 : 1;
   if (left.source_type === "source_hero" && right.source_type === "source_hero") {
+    if (left.is_current_source !== right.is_current_source) {
+      return left.is_current_source ? -1 : 1;
+    }
     const leftId = left.photo_id ?? 0;
     const rightId = right.photo_id ?? 0;
     if (leftId !== rightId) return rightId - leftId;
@@ -539,6 +546,8 @@ function upsertContactSheet(
   stored: StoredProductContactSheet,
 ): void {
   const candidateKey = `contact_sheet:${batchId}:${stored.contentHash}`;
+  const caption = `Batch ${batchId} contact sheet`;
+  const sourceRef = `contact_sheet:${batchId}:${stored.sourceFingerprint}`;
   db.prepare(
     `INSERT INTO product_photos (
        product_id, path, role, caption, source_type, source_ref, candidate_key,
@@ -556,8 +565,8 @@ function upsertContactSheet(
   ).run(
     productId,
     stored.path,
-    `Batch ${batchId} contact sheet`,
-    `contact_sheet:${batchId}:${stored.sourceFingerprint}`,
+    caption,
+    sourceRef,
     candidateKey,
     stored.contentType,
     stored.width,
@@ -661,21 +670,60 @@ function upsertSourceHero(
     sourceUrl: canonicalSourceUrl,
     contentHash,
   });
-  db.prepare(
-    `INSERT INTO product_photos (
-       product_id, path, role, caption, source_type, source_ref, candidate_key,
-       is_app_owned, content_type, width, height
-     ) VALUES (?, ?, 'gallery', 'MakerWorld source image', 'source_hero', ?, ?, 1, ?, ?, ?)
-     ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO NOTHING`,
-  ).run(
-    productId,
-    stored.path,
-    sourceRef,
-    candidateKey,
-    stored.contentType,
-    stored.width,
-    stored.height,
-  );
+  db.transaction(() => {
+    const product = requireProduct(productId);
+    if (canonicalSupportedModelUrl(product.model_url ?? "") !== canonicalModelUrl) {
+      throw new ProductImageValidationError(
+        "The Product source URL changed before its source image could be stored",
+      );
+    }
+    db.prepare(
+      `INSERT INTO product_photos (
+         product_id, path, role, caption, source_type, source_ref, candidate_key,
+         is_app_owned, content_type, width, height
+       ) VALUES (?, ?, 'gallery', 'MakerWorld source image', 'source_hero', ?, ?, 1, ?, ?, ?)
+       ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO NOTHING`,
+    ).run(
+      productId,
+      stored.path,
+      sourceRef,
+      candidateKey,
+      stored.contentType,
+      stored.width,
+      stored.height,
+    );
+    const photo = db
+      .prepare<
+        [number, string],
+        { id: number; product_id: number; source_type: string; source_ref: string | null }
+      >(
+        `SELECT id, product_id, source_type, source_ref
+         FROM product_photos
+         WHERE product_id = ? AND candidate_key = ?`,
+      )
+      .get(productId, candidateKey);
+    const provenance = sourceHeroProvenance(photo?.source_ref ?? null);
+    if (
+      !photo ||
+      photo.product_id !== productId ||
+      photo.source_type !== "source_hero" ||
+      provenance?.modelUrl !== canonicalModelUrl ||
+      provenance.sourceUrl !== canonicalSourceUrl ||
+      provenance.contentHash !== contentHash
+    ) {
+      throw new ProductImageValidationError("Invalid current Product source photo");
+    }
+    const pointerUpdate = db
+      .prepare(
+        `UPDATE products
+         SET auto_source_photo_id = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`,
+      )
+      .run(photo.id, productId);
+    if (pointerUpdate.changes !== 1) {
+      throw new ProductImageValidationError("Failed to update the current Product source photo");
+    }
+  })();
 }
 
 function warningMessage(prefix: string, error: unknown): string {
@@ -860,16 +908,43 @@ export function selectProductImage(productId: number, candidateKey: string): Pro
   return selectProductImageTransaction(productId, candidateKey);
 }
 
-const refreshAutoProductImageTransaction = db.transaction((productId: number): ProductSummary => {
+function resolveAutoCandidate(productId: number): CandidateDetails | undefined {
+  const candidates = listCandidateDetails(productId);
+  const currentSource = candidates.find(
+    ({ source_type, is_current_source, available }) =>
+      source_type === "source_hero" && is_current_source === true && available,
+  );
+  return (
+    currentSource ??
+    candidates.find(({ source_type, available }) => source_type !== "source_hero" && available)
+  );
+}
+
+export function clearAutoSourcePhoto(productId: number): void {
+  const result = db
+    .prepare(
+      `UPDATE products
+       SET auto_source_photo_id = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+    )
+    .run(productId);
+  if (result.changes !== 1) {
+    throw new ProductImageValidationError(`Unknown product_id: ${productId}`);
+  }
+}
+
+export function refreshAutoProductImageBody(productId: number): ProductSummary {
   const product = requireProduct(productId);
   if (product.image_selection_mode === "manual") return product;
-  const candidate = listCandidateDetails(productId).find(({ available }) => available);
+  const candidate = resolveAutoCandidate(productId);
   const photoId = candidate ? materializeCandidate(productId, candidate) : null;
   db.prepare(
     `UPDATE products SET main_photo_id = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
   ).run(photoId, productId);
   return summaryAfterUpdate(productId);
-});
+}
+
+const refreshAutoProductImageTransaction = db.transaction(refreshAutoProductImageBody);
 
 export function refreshAutoProductImage(productId: number): ProductSummary {
   return refreshAutoProductImageTransaction(productId);
@@ -880,7 +955,7 @@ const returnProductImageToAutoTransaction = db.transaction((productId: number): 
   db.prepare(
     `UPDATE products SET image_selection_mode = 'auto', updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
   ).run(productId);
-  return refreshAutoProductImageTransaction(productId);
+  return refreshAutoProductImageBody(productId);
 });
 
 export function returnProductImageToAuto(productId: number): ProductSummary {

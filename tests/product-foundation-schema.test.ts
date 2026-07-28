@@ -107,8 +107,16 @@ describe.sequential("saved pricing and image selection schema", () => {
         )
         .get() as { sql: string };
       const product = db
-        .prepare("SELECT sales_companion_visible, image_selection_mode FROM products LIMIT 1")
+        .prepare(
+          "SELECT sales_companion_visible, image_selection_mode, auto_source_photo_id FROM products LIMIT 1",
+        )
         .get() as Row;
+      const productForeignKeys = db.prepare("PRAGMA foreign_key_list(products)").all() as Array<{
+        from: string;
+        table: string;
+        to: string;
+        on_delete: string;
+      }>;
       const indexes = db
         .prepare(
           "SELECT name FROM sqlite_master WHERE type = 'index' AND name IN (?, ?, ?) ORDER BY name",
@@ -120,7 +128,11 @@ describe.sequential("saved pricing and image selection schema", () => {
         ) as Array<{ name: string }>;
 
       expect(productColumns.map(({ name }) => name)).toEqual(
-        expect.arrayContaining(["sales_companion_visible", "image_selection_mode"]),
+        expect.arrayContaining([
+          "sales_companion_visible",
+          "image_selection_mode",
+          "auto_source_photo_id",
+        ]),
       );
       expect(batchColumns.map(({ name }) => name)).toEqual(
         expect.arrayContaining(["source_type", "extra_cost"]),
@@ -137,16 +149,60 @@ describe.sequential("saved pricing and image selection schema", () => {
         ]),
       );
       expect(snapshotSql.sql).toContain("UNIQUE (batch_id, channel)");
-      expect(product).toMatchObject({ sales_companion_visible: 0, image_selection_mode: "auto" });
+      expect(product).toMatchObject({
+        sales_companion_visible: 0,
+        image_selection_mode: "auto",
+        auto_source_photo_id: null,
+      });
+      expect(productForeignKeys).toContainEqual(
+        expect.objectContaining({
+          from: "auto_source_photo_id",
+          table: "product_photos",
+          to: "id",
+          on_delete: "SET NULL",
+        }),
+      );
       expect(indexes.map(({ name }) => name)).toEqual([
         "idx_product_photos_candidate",
         "idx_product_price_snapshots_batch_created",
         "idx_products_sales_companion_visible",
       ]);
     });
+
+    it("enforces the current source photo foreign key and clears it when the photo is deleted", () => {
+      const db = dbModule!.db;
+      const productId = Number(
+        db
+          .prepare(
+            "INSERT INTO products (name, slug) VALUES ('Pointer Product', 'pointer-product') RETURNING id",
+          )
+          .pluck()
+          .get(),
+      );
+      const photoId = Number(
+        db
+          .prepare(
+            "INSERT INTO product_photos (product_id, role, source_type) VALUES (?, 'gallery', 'source_hero') RETURNING id",
+          )
+          .pluck()
+          .get(productId),
+      );
+
+      db.prepare("UPDATE products SET auto_source_photo_id = ? WHERE id = ?").run(
+        photoId,
+        productId,
+      );
+      expect(
+        db.prepare("SELECT auto_source_photo_id FROM products WHERE id = ?").get(productId),
+      ).toEqual({ auto_source_photo_id: photoId });
+      db.prepare("DELETE FROM product_photos WHERE id = ?").run(photoId);
+      expect(
+        db.prepare("SELECT auto_source_photo_id FROM products WHERE id = ?").get(productId),
+      ).toEqual({ auto_source_photo_id: null });
+    });
   });
 
-  describe("migration 20", () => {
+  describe("migrations 20 and 21", () => {
     beforeEach(() => {
       tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "product-foundation-migration-"));
       dbPath = path.join(tempDir, "test.sqlite");
@@ -176,12 +232,23 @@ describe.sequential("saved pricing and image selection schema", () => {
       expect(
         database!
           .prepare(
-            "SELECT id, sales_companion_visible, image_selection_mode FROM products ORDER BY id",
+            `SELECT id, sales_companion_visible, image_selection_mode, auto_source_photo_id
+             FROM products ORDER BY id`,
           )
           .all(),
       ).toEqual([
-        { id: 1, sales_companion_visible: 0, image_selection_mode: "manual" },
-        { id: 2, sales_companion_visible: 0, image_selection_mode: "auto" },
+        {
+          id: 1,
+          sales_companion_visible: 0,
+          image_selection_mode: "manual",
+          auto_source_photo_id: null,
+        },
+        {
+          id: 2,
+          sales_companion_visible: 0,
+          image_selection_mode: "auto",
+          auto_source_photo_id: null,
+        },
       ]);
       expect(
         database!.prepare("SELECT source_type, extra_cost FROM product_batches WHERE id = 1").get(),
@@ -210,8 +277,24 @@ describe.sequential("saved pricing and image selection schema", () => {
         .get() as { sql: string };
       expect(snapshotSql.sql).toContain("UNIQUE (batch_id, channel)");
       expect(
-        database!.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE id = 20").get(),
-      ).toEqual({ count: 1 });
+        database!
+          .prepare(
+            "SELECT id, COUNT(*) AS count FROM schema_migrations WHERE id IN (20, 21) GROUP BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: 20, count: 1 },
+        { id: 21, count: 1 },
+      ]);
+      const foreignKey = database!
+        .prepare("PRAGMA foreign_key_list(products)")
+        .all()
+        .find((row) => (row as Row)["from"] === "auto_source_photo_id") as Row;
+      expect(foreignKey).toMatchObject({
+        table: "product_photos",
+        to: "id",
+        on_delete: "SET NULL",
+      });
     });
   });
 });

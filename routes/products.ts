@@ -8,7 +8,6 @@ import {
   listProducts,
   listProductsToPrintNext,
   listSalesCompanionProducts,
-  updateProduct,
   type CreateProductInput,
   type UpdateProductInput,
 } from "../models/products.js";
@@ -20,7 +19,6 @@ import {
   createManualProductPhoto,
   ensureGeneratedProductImageCandidates,
   listProductImageCandidates,
-  refreshAutoProductImage,
   refreshProductIdentificationImages,
   returnProductImageToAuto,
   selectProductImage,
@@ -31,6 +29,7 @@ import {
   storeUploadedProductImage,
 } from "../lib/product-image-files.js";
 import { jsonError, parseJsonBody, requireId, unknownFields } from "../lib/util.js";
+import { updateProductWithAutoImage } from "../models/product-image-update.js";
 
 export const products = new Hono();
 
@@ -297,14 +296,8 @@ products.patch("/:id", async (c) => {
   if (unknown.length) return jsonError(c, `Unknown fields: ${unknown.join(", ")}`, 400);
 
   try {
-    const previous = findProduct(idOrError);
-    if (!previous) return jsonError(c, "Not found", 404);
-    const updated = updateProduct(idOrError, body as unknown as UpdateProductInput);
-    if (!updated) return jsonError(c, "Not found", 404);
-    const product =
-      previous.model_url !== updated.model_url && updated.image_selection_mode === "auto"
-        ? refreshAutoProductImage(idOrError)
-        : updated;
+    const product = updateProductWithAutoImage(idOrError, body as unknown as UpdateProductInput);
+    if (!product) return jsonError(c, "Not found", 404);
     return c.json({ product });
   } catch (error: unknown) {
     return handleProductError(c, error);

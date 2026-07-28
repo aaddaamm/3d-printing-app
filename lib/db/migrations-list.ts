@@ -1034,6 +1034,18 @@ const DB_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    id: 21,
+    description: "track the current immutable Product source photo",
+    up(database) {
+      addColumnIfMissing(
+        database,
+        "products",
+        "auto_source_photo_id",
+        "INTEGER REFERENCES product_photos(id) ON DELETE SET NULL",
+      );
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {
