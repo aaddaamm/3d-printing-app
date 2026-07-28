@@ -364,7 +364,10 @@ type ProductsResponse = { products: ProductSummary[] };
 type SalesCompanionProductsResponse = { products: SalesCompanionProduct[] };
 type PriceQuoteResponse = { quote: PriceQuoteResult };
 type ProductResponse = { product: ProductSummary };
-type ProductImageCandidatesResponse = { candidates: ProductImageCandidate[] };
+export type ProductImageCandidatesResponse = {
+  candidates: ProductImageCandidate[];
+  warnings: string[];
+};
 export type ProductImageUploadPhoto = {
   id: number;
   product_id: number;
@@ -444,9 +447,17 @@ function requestOptions(options: RequestOptions): RequestInit {
   return { ...requestInit, signal };
 }
 
-function toRequestError(err: unknown, fallback: string): Error {
-  if ((err as { name?: string } | null)?.name === "TimeoutError") {
+function toRequestError(err: unknown, fallback: string, signal?: AbortSignal | null): Error {
+  const reason = signal?.aborted ? signal.reason : err;
+  if ((reason as { name?: string } | null)?.name === "TimeoutError") {
     return new Error(`${fallback} (request timed out)`);
+  }
+  if (signal?.aborted || (err as { name?: string } | null)?.name === "AbortError") {
+    if (reason instanceof Error) return reason;
+    return new DOMException(
+      typeof reason === "string" ? reason : "The operation was aborted.",
+      "AbortError",
+    );
   }
   return new Error(`${fallback} (network error)`);
 }
@@ -457,10 +468,11 @@ export async function fetchJson<T = JsonRecord>(
   options?: RequestOptions,
 ): Promise<T> {
   let res: Response;
+  const resolvedOptions = requestOptions(options);
   try {
-    res = await fetch(url, requestOptions(options));
+    res = await fetch(url, resolvedOptions);
   } catch (err) {
-    throw toRequestError(err, fallback);
+    throw toRequestError(err, fallback, resolvedOptions.signal);
   }
   if (!res.ok) throw new Error(await errorMessage(res, fallback));
   return (await res.json()) as T;
@@ -519,22 +531,34 @@ export async function postJsonOrToast<T = JsonRecord>(
 
 export async function calculatePriceQuote(
   input: PriceQuoteRequest,
-): Promise<PriceQuoteResult | null> {
-  const data = await postJsonOrToast<PriceQuoteResponse>(
+  signal?: AbortSignal,
+): Promise<PriceQuoteResult> {
+  const data = await fetchJson<PriceQuoteResponse>(
     "/api/price-quotes/calculate",
-    input,
     "Failed to calculate price quote.",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      ...(signal ? { signal } : {}),
+    },
   );
-  return data?.quote ?? null;
+  return data.quote;
 }
 
 export async function savePriceQuoteToProduct(
   input: SaveProductPricingRequest,
-): Promise<SavedProductPricingResponse | null> {
-  return postJsonOrToast<SavedProductPricingResponse>(
+  signal?: AbortSignal,
+): Promise<SavedProductPricingResponse> {
+  return fetchJson<SavedProductPricingResponse>(
     "/api/price-quotes/save-to-product",
-    input,
     "Failed to save product pricing.",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+      ...(signal ? { signal } : {}),
+    },
   );
 }
 
@@ -572,13 +596,12 @@ export async function fetchProduct(id: number, options?: RequestInit): Promise<P
 export async function fetchProductImageCandidates(
   productId: number,
   options?: RequestInit,
-): Promise<ProductImageCandidate[]> {
-  const data = await fetchJson<ProductImageCandidatesResponse>(
+): Promise<ProductImageCandidatesResponse> {
+  return fetchJson<ProductImageCandidatesResponse>(
     `/api/products/${productId}/image-candidates`,
     "Failed to load product image candidates.",
     options,
   );
-  return data.candidates;
 }
 
 export function refreshProductImages(

@@ -127,7 +127,7 @@ describe("ProductImagePanel mounted effects", () => {
   });
 
   it("starts local list first, invokes one refresh after an early action, and keeps action state", async () => {
-    const list = deferred<ProductImageCandidate[]>();
+    const list = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
     const action = deferred<ProductSummary>();
     const refresh = deferred<ProductImagesRefreshResponse>();
     const onProductChange = vi.fn();
@@ -165,7 +165,10 @@ describe("ProductImagePanel mounted effects", () => {
     await settle(action, automatic);
     expect(onProductChange).toHaveBeenCalledWith(automatic);
 
-    await settle(list, [candidate("list", "Local list candidate")]);
+    await settle(list, {
+      candidates: [candidate("list", "Local list candidate")],
+      warnings: ["Local list warning"],
+    });
     expect(apiMocks.refreshProductImages).toHaveBeenCalledTimes(1);
     expect(apiMocks.fetchProductImageCandidates.mock.invocationCallOrder[0]).toBeLessThan(
       apiMocks.refreshProductImages.mock.invocationCallOrder[0]!,
@@ -185,9 +188,45 @@ describe("ProductImagePanel mounted effects", () => {
     expect(toastMock).toHaveBeenCalledWith("Product image returned to Auto.", "success");
   });
 
+  it("keeps initial candidate warnings when a later refresh becomes stale", async () => {
+    const list = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
+    const refresh = deferred<ProductImagesRefreshResponse>();
+    const action = deferred<ProductSummary>();
+    const onProductChange = vi.fn();
+    const manual = product({ image_selection_mode: "manual" });
+    apiMocks.fetchProductImageCandidates.mockReturnValue(list.promise);
+    apiMocks.refreshProductImages.mockReturnValue(refresh.promise);
+    apiMocks.returnProductImageToAuto.mockReturnValue(action.promise);
+
+    await act(async () =>
+      render(h(MountedProductImagePanel, { product: manual, onProductChange }), container),
+    );
+    await settle(list, {
+      candidates: [candidate("initial", "Initial candidate")],
+      warnings: ["Initial candidate warning"],
+    });
+    expect(container.textContent).toContain("Initial candidate warning");
+    expect(apiMocks.refreshProductImages).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      [...container.querySelectorAll("button")]
+        .find((item) => item.textContent?.trim() === "Return to Auto")!
+        .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+    await settle(action, product({ image_selection_mode: "auto" }));
+    await settle(refresh, {
+      product: product({ name: "Stale refresh Product" }),
+      candidates: [],
+      warnings: ["Stale refresh warning"],
+    });
+
+    expect(container.textContent).toContain("Initial candidate warning");
+    expect(container.textContent).not.toContain("Stale refresh warning");
+  });
+
   it("aborts and suppresses late list work after Product change and unmount", async () => {
-    const firstList = deferred<ProductImageCandidate[]>();
-    const secondList = deferred<ProductImageCandidate[]>();
+    const firstList = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
+    const secondList = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
     const onProductChange = vi.fn();
     apiMocks.fetchProductImageCandidates
       .mockReturnValueOnce(firstList.promise)
@@ -213,8 +252,14 @@ describe("ProductImagePanel mounted effects", () => {
     await act(async () => render(null, container));
     expect(secondSignal?.aborted).toBe(true);
 
-    await settle(firstList, [candidate("first", "First stale candidate")]);
-    await settle(secondList, [candidate("second", "Second stale candidate")]);
+    await settle(firstList, {
+      candidates: [candidate("first", "First stale candidate")],
+      warnings: [],
+    });
+    await settle(secondList, {
+      candidates: [candidate("second", "Second stale candidate")],
+      warnings: [],
+    });
 
     expect(apiMocks.refreshProductImages).not.toHaveBeenCalled();
     expect(onProductChange).not.toHaveBeenCalled();
@@ -225,8 +270,8 @@ describe("ProductImagePanel mounted effects", () => {
   it.each(["https://makerworld.com/en/models/b", null])(
     "reboots for same-Product model_url %s and ignores stale source A",
     async (nextModelUrl) => {
-      const firstList = deferred<ProductImageCandidate[]>();
-      const secondList = deferred<ProductImageCandidate[]>();
+      const firstList = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
+      const secondList = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
       const firstRefresh = deferred<ProductImagesRefreshResponse>();
       const secondRefresh = deferred<ProductImagesRefreshResponse>();
       const onProductChange = vi.fn();
@@ -253,14 +298,20 @@ describe("ProductImagePanel mounted effects", () => {
       await act(async () =>
         render(h(MountedProductImagePanel, { product: sourceA, onProductChange }), container),
       );
-      await settle(firstList, [candidate("source-a", "Source A")]);
+      await settle(firstList, {
+        candidates: [candidate("source-a", "Source A")],
+        warnings: [],
+      });
       const firstSignal = apiMocks.refreshProductImages.mock.calls[0]?.[1]?.signal;
 
       await act(async () =>
         render(h(MountedProductImagePanel, { product: fallback, onProductChange }), container),
       );
       expect(firstSignal?.aborted).toBe(true);
-      await settle(secondList, [candidate("fallback", "Authoritative fallback")]);
+      await settle(secondList, {
+        candidates: [candidate("fallback", "Authoritative fallback")],
+        warnings: [],
+      });
       expect(container.textContent).toContain("Authoritative fallback");
       expect(container.textContent).not.toContain("Source A");
 
@@ -284,8 +335,8 @@ describe("ProductImagePanel mounted effects", () => {
   );
 
   it("suppresses stale refresh failures and shows only the current refresh failure", async () => {
-    const firstList = deferred<ProductImageCandidate[]>();
-    const secondList = deferred<ProductImageCandidate[]>();
+    const firstList = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
+    const secondList = deferred<{ candidates: ProductImageCandidate[]; warnings: string[] }>();
     const firstRefresh = deferred<ProductImagesRefreshResponse>();
     const secondRefresh = deferred<ProductImagesRefreshResponse>();
     const onProductChange = vi.fn();
@@ -302,7 +353,7 @@ describe("ProductImagePanel mounted effects", () => {
         container,
       ),
     );
-    await settle(firstList, []);
+    await settle(firstList, { candidates: [], warnings: [] });
     const firstRefreshSignal = apiMocks.refreshProductImages.mock.calls[0]?.[1]?.signal;
 
     await act(async () =>
@@ -314,7 +365,7 @@ describe("ProductImagePanel mounted effects", () => {
     expect(firstRefreshSignal?.aborted).toBe(true);
     await fail(firstRefresh, new Error("Stale refresh failure"));
 
-    await settle(secondList, []);
+    await settle(secondList, { candidates: [], warnings: [] });
     expect(apiMocks.refreshProductImages).toHaveBeenCalledTimes(2);
     await fail(secondRefresh, new Error("Current refresh failure"));
 

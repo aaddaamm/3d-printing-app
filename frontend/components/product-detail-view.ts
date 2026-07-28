@@ -24,6 +24,7 @@ const html = (
 
 export type DetailFormState = {
   name: string;
+  designer: string;
   categoryId: string;
   statusId: string;
   sourceId: string;
@@ -237,6 +238,7 @@ export function mergeProductFormResponse(
 export function initialProductDetailForm(product: ProductSummary): DetailFormState {
   return {
     name: product.name,
+    designer: product.designer ?? "",
     categoryId: product.category_id ?? "",
     statusId: product.status_id,
     sourceId: product.source_id ?? "",
@@ -424,6 +426,7 @@ export function ProductDetailView({
 
     const payload: ProductInput = {
       name: form.name,
+      designer: form.designer.trim() || null,
       category_id: form.categoryId || null,
       status_id: form.statusId,
       source_id: form.sourceId || null,
@@ -532,6 +535,15 @@ export function ProductDetailView({
                 value=${form.name}
                 onInput=${(event: Event) =>
                   setField("name", (event.target as HTMLInputElement).value)}
+              />
+            </label>
+            <label class="form-label">
+              Designer
+              <input
+                class="form-input"
+                value=${form.designer}
+                onInput=${(event: Event) =>
+                  setField("designer", (event.target as HTMLInputElement).value)}
               />
             </label>
             <label class="form-label">

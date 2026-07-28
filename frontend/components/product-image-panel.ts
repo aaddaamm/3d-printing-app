@@ -293,12 +293,13 @@ export function ProductImagePanel({
     const bootstrapImages = async () => {
       const list = beginRequest();
       try {
-        const items = await fetchProductImageCandidates(product.id, {
+        const result = await fetchProductImageCandidates(product.id, {
           signal: list.controller.signal,
         });
         if (isCurrentProductImageRequest(requestState.current, list.request)) {
           requestState.current = resolveProductImageRequest(requestState.current, list.request);
-          setCandidates(items);
+          setCandidates(result.candidates);
+          setWarnings(result.warnings);
         }
       } catch (error: unknown) {
         if (isCurrentProductImageRequest(requestState.current, list.request)) {

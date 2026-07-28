@@ -16,11 +16,13 @@ import {
   fetchJsonResult,
   fetchPrintNextProducts,
   fetchProduct,
+  fetchProductImageCandidates,
   fetchProducts,
   fetchProjects,
   patchJsonOrToast,
   postJsonOrToast,
   refreshProductImages,
+  savePriceQuoteToProduct,
   updateBatch,
   updateProduct,
 } from "../frontend/lib/api.js";
@@ -133,7 +135,7 @@ describe("frontend API endpoint contracts", () => {
     vi.unstubAllGlobals();
   });
 
-  it("posts the exact price quote payload and returns quote or null", async () => {
+  it("posts the exact price quote payload and throws without transport-owned toasts", async () => {
     const input = {
       job_ids: [4, 9],
       sellable_units: 3,
@@ -151,9 +153,12 @@ describe("frontend API endpoint contracts", () => {
       .mockResolvedValueOnce(jsonResponse({ error: "Cannot calculate quote" }, 422));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(calculatePriceQuote(input)).resolves.toEqual(quote);
-    await expect(calculatePriceQuote(input)).resolves.toBeNull();
-    expect(toast).toHaveBeenCalledWith("Cannot calculate quote", "error");
+    const controller = new AbortController();
+    await expect(calculatePriceQuote(input, controller.signal)).resolves.toEqual(quote);
+    await expect(calculatePriceQuote(input, controller.signal)).rejects.toThrow(
+      "Cannot calculate quote",
+    );
+    expect(toast).not.toHaveBeenCalled();
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
@@ -173,6 +178,60 @@ describe("frontend API endpoint contracts", () => {
         body: JSON.stringify(input),
       }),
     );
+  });
+
+  it("preserves caller abort identity for specialized quote/save requests", async () => {
+    const calculateController = new AbortController();
+    const saveController = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation((_url, options) => {
+      return new Promise<Response>((_resolve, reject) => {
+        options?.signal?.addEventListener("abort", () => reject(options.signal?.reason), {
+          once: true,
+        });
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const calculation = calculatePriceQuote(
+      {
+        job_ids: [4],
+        sellable_units: 1,
+        batch_labor_minutes: 0,
+        per_unit_labor_minutes: 0,
+        packaging_cost_per_unit: 0,
+        extra_cost: 0,
+        channel: "direct",
+      },
+      calculateController.signal,
+    );
+    const saving = savePriceQuoteToProduct(
+      {
+        product_id: 2,
+        job_ids: [4],
+        sellable_units: 1,
+        batch_labor_minutes: 0,
+        per_unit_labor_minutes: 0,
+        packaging_cost_per_unit: 0,
+        extra_cost: 0,
+      },
+      saveController.signal,
+    );
+    calculateController.abort();
+    saveController.abort(new DOMException("Modal dismissed", "AbortError"));
+
+    await expect(calculation).rejects.toMatchObject({ name: "AbortError" });
+    await expect(saving).rejects.toMatchObject({ name: "AbortError", message: "Modal dismissed" });
+    expect(toast).not.toHaveBeenCalled();
+  });
+
+  it("returns candidate warnings with the candidate list", async () => {
+    const payload = {
+      candidates: [{ candidate_key: "cover" }],
+      warnings: ["Cover scan was incomplete"],
+    };
+    vi.stubGlobal("fetch", vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(payload)));
+
+    await expect(fetchProductImageCandidates(2)).resolves.toEqual(payload);
   });
 
   it("maps every exported domain helper to its expected URL and method", async () => {
@@ -281,7 +340,7 @@ describe("frontend API endpoint contracts", () => {
     const refresh = refreshProductImages(2, { signal: caller.signal });
     caller.abort();
 
-    await expect(refresh).rejects.toThrow("Failed to refresh product images. (network error)");
+    await expect(refresh).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchMock.mock.calls[0]?.[1]?.signal).not.toBe(caller.signal);
     expect(fetchMock.mock.calls[0]?.[1]?.signal?.aborted).toBe(true);
   });

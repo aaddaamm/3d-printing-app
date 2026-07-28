@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useMemo, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { calculatePriceQuote, type PriceQuoteResult } from "../lib/api.js";
@@ -241,6 +241,18 @@ export function PriceThisView({
   const [calculating, setCalculating] = useState(false);
   const [saveModalOpen, setSaveModalOpen] = useState(false);
   const quoteRequestState = useRef(initialPriceQuoteRequestState());
+  const quoteController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      quoteRequestState.current = invalidatePriceQuoteRequests(quoteRequestState.current);
+      quoteController.current?.abort();
+      quoteController.current = null;
+    };
+  }, []);
 
   const jobsById = useMemo(() => new Map(jobs.map((job) => [job.id, job])), [jobs]);
   const selectedIds = useMemo(() => new Set(draft.selectedJobIds), [draft.selectedJobIds]);
@@ -259,6 +271,8 @@ export function PriceThisView({
   const measuredTime = selectedJobs.reduce((total, job) => total + (job?.total_time_s || 0), 0);
 
   const replaceDraft = (next: PriceThisDraft) => {
+    quoteController.current?.abort();
+    quoteController.current = null;
     quoteRequestState.current = invalidatePriceQuoteRequests(quoteRequestState.current);
     setDraft(next);
     setQuote(null);
@@ -280,20 +294,35 @@ export function PriceThisView({
     event.preventDefault();
     if (!canCalculatePriceQuote(draft)) return;
 
+    quoteController.current?.abort();
+    const controller = new AbortController();
+    quoteController.current = controller;
     const started = beginPriceQuoteRequest(quoteRequestState.current);
     quoteRequestState.current = started.state;
     setQuote(null);
     setCalculating(true);
     try {
-      const result = await calculatePriceQuote(priceThisDraftToRequest(draft));
+      const result = await calculatePriceQuote(priceThisDraftToRequest(draft), controller.signal);
       if (
-        result &&
+        mounted.current &&
         isCurrentPriceQuoteRequest(quoteRequestState.current, started.requestGeneration)
       ) {
         setQuote(result);
       }
+    } catch (error: unknown) {
+      if (
+        mounted.current &&
+        !controller.signal.aborted &&
+        isCurrentPriceQuoteRequest(quoteRequestState.current, started.requestGeneration)
+      ) {
+        toast(error instanceof Error ? error.message : "Failed to calculate price quote.", "error");
+      }
     } finally {
-      if (isCurrentPriceQuoteRequest(quoteRequestState.current, started.requestGeneration)) {
+      if (quoteController.current === controller) quoteController.current = null;
+      if (
+        mounted.current &&
+        isCurrentPriceQuoteRequest(quoteRequestState.current, started.requestGeneration)
+      ) {
         quoteRequestState.current = completePriceQuoteRequest(
           quoteRequestState.current,
           started.requestGeneration,

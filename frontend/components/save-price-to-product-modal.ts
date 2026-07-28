@@ -3,7 +3,6 @@ import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { fetchProducts, savePriceQuoteToProduct, type ProductSummary } from "../lib/api.js";
-import { useEscapeClose } from "../hooks/use-escape-close.js";
 import {
   beginSaveProductRequest,
   buildSaveProductPricingRequest,
@@ -48,6 +47,18 @@ function productOptionLabel(product: ProductSummary): string {
   return parts.join(" · ");
 }
 
+function enabledModalControls(dialog: HTMLElement): HTMLElement[] {
+  return [
+    ...dialog.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]"),
+  ].filter(
+    (element) =>
+      !(element as HTMLButtonElement).disabled &&
+      !element.hidden &&
+      element.getAttribute("tabindex") !== "-1" &&
+      !(element instanceof HTMLInputElement && element.type === "hidden"),
+  );
+}
+
 export function SavePriceToProductModal({
   draft,
   selectedJobs,
@@ -59,22 +70,69 @@ export function SavePriceToProductModal({
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [saving, setSaving] = useState(false);
   const saveRequestState = useRef(initialSaveProductRequestState());
+  const saveController = useRef<AbortController | null>(null);
+  const mounted = useRef(true);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
   const existingSelectRef = useRef<HTMLSelectElement | null>(null);
   const nameInputRef = useRef<HTMLInputElement | null>(null);
+  const openingTrigger = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+
+  const restoreOpeningFocus = () => {
+    if (openingTrigger.current?.isConnected) openingTrigger.current.focus();
+  };
 
   useEffect(() => {
+    mounted.current = true;
     return () => {
+      mounted.current = false;
       saveRequestState.current = unmountSaveProductRequests(saveRequestState.current);
+      saveController.current?.abort();
+      saveController.current = null;
+      restoreOpeningFocus();
     };
   }, []);
 
   const dismiss = () => {
-    if (saving) return;
+    saveController.current?.abort();
+    saveController.current = null;
     saveRequestState.current = invalidateSaveProductRequests(saveRequestState.current);
+    restoreOpeningFocus();
     onClose();
   };
 
-  useEscapeClose(dismiss);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dismiss();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const controls = enabledModalControls(dialogRef.current);
+      if (controls.length === 0) {
+        event.preventDefault();
+        dialogRef.current.focus();
+        return;
+      }
+      const first = controls[0]!;
+      const last = controls[controls.length - 1]!;
+      const active = document.activeElement;
+      if (!dialogRef.current.contains(active)) {
+        event.preventDefault();
+        (event.shiftKey ? last : first).focus();
+      } else if (!event.shiftKey && active === last) {
+        event.preventDefault();
+        first.focus();
+      } else if (event.shiftKey && active === first) {
+        event.preventDefault();
+        last.focus();
+      }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -117,22 +175,42 @@ export function SavePriceToProductModal({
     const started = beginSaveProductRequest(saveRequestState.current);
     if (!started) return;
 
+    const controller = new AbortController();
+    saveController.current = controller;
     saveRequestState.current = started.state;
     setSaving(true);
     try {
       const result = await savePriceQuoteToProduct(
         buildSaveProductPricingRequest(draft, saveToProductSelection(modalState)),
+        controller.signal,
       );
       if (
-        result &&
+        mounted.current &&
         isCurrentSaveProductRequest(saveRequestState.current, started.requestGeneration)
       ) {
+        saveRequestState.current = completeSaveProductRequest(
+          saveRequestState.current,
+          started.requestGeneration,
+        );
+        saveController.current = null;
         toast("Saved price quote to product.", "success");
         onClose();
         navigate(`/products/${result.saved.product.id}`);
       }
+    } catch (error: unknown) {
+      if (
+        mounted.current &&
+        !controller.signal.aborted &&
+        isCurrentSaveProductRequest(saveRequestState.current, started.requestGeneration)
+      ) {
+        toast(error instanceof Error ? error.message : "Failed to save product pricing.", "error");
+      }
     } finally {
-      if (isCurrentSaveProductRequest(saveRequestState.current, started.requestGeneration)) {
+      if (saveController.current === controller) saveController.current = null;
+      if (
+        mounted.current &&
+        isCurrentSaveProductRequest(saveRequestState.current, started.requestGeneration)
+      ) {
         saveRequestState.current = completeSaveProductRequest(
           saveRequestState.current,
           started.requestGeneration,
@@ -146,6 +224,7 @@ export function SavePriceToProductModal({
     <div class="overlay" onClick=${overlayClose(dismiss)}>
       <div
         class="modal save-price-modal"
+        ref=${dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="save-price-modal-title"

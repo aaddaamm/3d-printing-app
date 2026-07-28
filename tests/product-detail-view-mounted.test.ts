@@ -269,6 +269,48 @@ describe("ProductDetailView mounted reconciliation", () => {
     },
   );
 
+  it("loads, edits, and persists designer metadata", async () => {
+    const initial = deferred<ProductSummary>();
+    const update = deferred<ProductSummary | null>();
+    const reconciliation = deferred<ProductSummary>();
+    apiMocks.fetchProduct
+      .mockReturnValueOnce(initial.promise)
+      .mockReturnValueOnce(reconciliation.promise);
+    apiMocks.updateProduct.mockReturnValue(update.promise);
+
+    await act(async () =>
+      render(h(MountedProductDetailView, { productId: 1, navigate: vi.fn() }), container),
+    );
+    await settle(initial, product({ designer: "Ada Designer" }));
+
+    const designerLabel = [...container.querySelectorAll("label")].find((label) =>
+      label.textContent?.trim().startsWith("Designer"),
+    );
+    expect(designerLabel).toBeDefined();
+    const designerInput = designerLabel!.querySelector<HTMLInputElement>("input")!;
+    expect(designerInput.value).toBe("Ada Designer");
+
+    await act(async () => {
+      designerInput.value = "Grace Creator";
+      designerInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container
+        .querySelector<HTMLFormElement>(".product-detail-form")!
+        .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+
+    expect(apiMocks.updateProduct.mock.calls[0]?.[1]).toMatchObject({
+      designer: "Grace Creator",
+    });
+    await settle(update, product({ designer: "Grace Creator" }));
+    expect(
+      [...container.querySelectorAll("label")]
+        .find((label) => label.textContent?.trim().startsWith("Designer"))!
+        .querySelector<HTMLInputElement>("input")!.value,
+    ).toBe("Grace Creator");
+  });
+
   it("toasts a current reconciliation failure without undoing the safe image merge", async () => {
     const initial = deferred<ProductSummary>();
     const reconciliation = deferred<ProductSummary>();
