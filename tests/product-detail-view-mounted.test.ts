@@ -40,6 +40,7 @@ vi.mock("../frontend/components/product-image-panel.js", async () => {
           type: "button",
           "data-name": product.name,
           "data-photo": product.main_photo_path ?? "none",
+          "data-model": product.model_url ?? "none",
           "data-ready": String(product.ready_to_list),
           onClick: () => {
             if (imageHarness.response) onProductChange(imageHarness.response);
@@ -215,6 +216,58 @@ describe("ProductDetailView mounted reconciliation", () => {
     expect(button.dataset.photo).toBe("/manual.webp");
     expect(button.dataset.ready).toBe("true");
   });
+
+  it.each(["https://makerworld.com/en/models/b", ""])(
+    "shows the authoritative image fallback immediately after model URL changes to %s",
+    async (value) => {
+      const initial = deferred<ProductSummary>();
+      const update = deferred<ProductSummary | null>();
+      const reconciliation = deferred<ProductSummary>();
+      const modelUrl = value || null;
+      const fallback = product({
+        model_url: modelUrl,
+        main_photo_id: 44,
+        main_photo_path: "/authoritative-fallback.webp",
+        main_photo_source_type: "catalog_preview",
+        image_selection_mode: "auto",
+      });
+      apiMocks.fetchProduct
+        .mockReturnValueOnce(initial.promise)
+        .mockReturnValueOnce(reconciliation.promise);
+      apiMocks.updateProduct.mockReturnValue(update.promise);
+
+      await act(async () =>
+        render(h(MountedProductDetailView, { productId: 1, navigate: vi.fn() }), container),
+      );
+      await settle(
+        initial,
+        product({
+          model_url: "https://makerworld.com/en/models/a",
+          main_photo_id: 33,
+          main_photo_path: "/source-a.webp",
+          main_photo_source_type: "source_hero",
+        }),
+      );
+      const modelInput = [...container.querySelectorAll("label")]
+        .find((label) => label.textContent?.includes("Model URL"))!
+        .querySelector("input")!;
+      await act(async () => {
+        modelInput.value = value;
+        modelInput.dispatchEvent(new Event("input", { bubbles: true }));
+      });
+      await act(async () => {
+        container
+          .querySelector("form")!
+          .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+      await settle(update, fallback);
+
+      expect(apiMocks.updateProduct.mock.calls[0]?.[1]).toMatchObject({ model_url: modelUrl });
+      expect(imageButton(container).dataset.photo).toBe("/authoritative-fallback.webp");
+      expect(imageButton(container).dataset.model).toBe(modelUrl ?? "none");
+      expect(imageButton(container).dataset.photo).not.toBe("/source-a.webp");
+    },
+  );
 
   it("toasts a current reconciliation failure without undoing the safe image merge", async () => {
     const initial = deferred<ProductSummary>();

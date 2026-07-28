@@ -12,6 +12,7 @@ const {
   mockListProducts,
   mockListProductsToPrintNext,
   mockListSalesCompanionProducts,
+  mockRefreshAutoProductImage,
   mockRefreshProductIdentificationImages,
   mockReturnProductImageToAuto,
   mockSelectProductImage,
@@ -39,6 +40,7 @@ const {
     mockListProducts: vi.fn(),
     mockListProductsToPrintNext: vi.fn(),
     mockListSalesCompanionProducts: vi.fn(),
+    mockRefreshAutoProductImage: vi.fn(),
     mockRefreshProductIdentificationImages: vi.fn(),
     mockReturnProductImageToAuto: vi.fn(),
     mockSelectProductImage: vi.fn(),
@@ -73,6 +75,7 @@ vi.mock("../models/product-images.js", () => ({
   createManualProductPhoto: mockCreateManualProductPhoto,
   ensureGeneratedProductImageCandidates: mockEnsureGeneratedProductImageCandidates,
   listProductImageCandidates: mockListProductImageCandidates,
+  refreshAutoProductImage: mockRefreshAutoProductImage,
   refreshProductIdentificationImages: mockRefreshProductIdentificationImages,
   returnProductImageToAuto: mockReturnProductImageToAuto,
   selectProductImage: mockSelectProductImage,
@@ -261,6 +264,7 @@ describe("product routes", () => {
     mockCreateProduct.mockReturnValue(sampleProduct);
     mockCreateProductFromJob.mockReturnValue({ ...sampleProduct, name: "Dragon Egg" });
     mockCreateProductFromProject.mockReturnValue({ ...sampleProduct, name: "Cubee Dragons" });
+    mockRefreshAutoProductImage.mockReturnValue(sampleProduct);
     mockReturnProductImageToAuto.mockReturnValue(sampleProduct);
     mockStoreUploadedProductImage.mockResolvedValue({
       path: "/tmp/product-images/1/uploads/upload.webp",
@@ -783,6 +787,61 @@ describe("product routes", () => {
 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: "sales_companion_visible must be a boolean" });
+  });
+
+  it.each(["https://makerworld.com/en/models/new-source", null])(
+    "synchronously reranks Auto images when model_url changes to %s",
+    async (modelUrl) => {
+      const staleUpdate = {
+        ...sampleProduct,
+        model_url: modelUrl,
+        main_photo_id: 41,
+        main_photo_path: "/ui/product-photos/41",
+        main_photo_source_type: "source_hero",
+        image_selection_mode: "auto",
+      };
+      const fallback = {
+        ...staleUpdate,
+        main_photo_id: 52,
+        main_photo_path: "/ui/product-photos/52",
+        main_photo_source_type: "catalog_preview",
+      };
+      mockUpdateProduct.mockReturnValue(staleUpdate);
+      mockRefreshAutoProductImage.mockReturnValue(fallback);
+
+      const res = await apiApp().request("/api/products/1", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model_url: modelUrl }),
+      });
+
+      expect(res.status).toBe(200);
+      expect(mockRefreshAutoProductImage).toHaveBeenCalledWith(1);
+      expect(await res.json()).toEqual({ product: fallback });
+      expect(mockRefreshProductIdentificationImages).not.toHaveBeenCalled();
+    },
+  );
+
+  it("keeps Manual image selection locked when model_url changes", async () => {
+    const manual = {
+      ...sampleProduct,
+      model_url: "https://makerworld.com/en/models/new-source",
+      main_photo_id: 61,
+      main_photo_path: "/ui/product-photos/61",
+      main_photo_source_type: "source_hero",
+      image_selection_mode: "manual",
+    };
+    mockUpdateProduct.mockReturnValue(manual);
+
+    const res = await apiApp().request("/api/products/1", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model_url: manual.model_url }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(mockRefreshAutoProductImage).not.toHaveBeenCalled();
+    expect(await res.json()).toEqual({ product: manual });
   });
 
   it("patches product status and pricing defaults", async () => {

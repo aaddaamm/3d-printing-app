@@ -345,7 +345,7 @@ export function ProductImagePanel({
       for (const controller of controllers.current) controller.abort();
       controllers.current.clear();
     };
-  }, [product.id]);
+  }, [product.id, product.model_url]);
 
   const chooseCandidate = async (candidate: ProductImageCandidate) => {
     if (!candidate.available || busyAction) return;

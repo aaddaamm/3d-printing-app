@@ -223,10 +223,14 @@ export function mergeProductFormResponse(
     can_sell_level: current.can_sell_level,
     can_sell_label: current.can_sell_label,
     ready_to_list: current.ready_to_list,
-    main_photo_id: current.main_photo_id,
-    main_photo_path: current.main_photo_path,
-    main_photo_source_type: current.main_photo_source_type,
-    image_selection_mode: current.image_selection_mode,
+    ...(current.model_url === response.model_url
+      ? {
+          main_photo_id: current.main_photo_id,
+          main_photo_path: current.main_photo_path,
+          main_photo_source_type: current.main_photo_source_type,
+          image_selection_mode: current.image_selection_mode,
+        }
+      : {}),
   };
 }
 

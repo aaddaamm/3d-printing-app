@@ -222,6 +222,67 @@ describe("ProductImagePanel mounted effects", () => {
     expect(container.textContent).toBe("");
   });
 
+  it.each(["https://makerworld.com/en/models/b", null])(
+    "reboots for same-Product model_url %s and ignores stale source A",
+    async (nextModelUrl) => {
+      const firstList = deferred<ProductImageCandidate[]>();
+      const secondList = deferred<ProductImageCandidate[]>();
+      const firstRefresh = deferred<ProductImagesRefreshResponse>();
+      const secondRefresh = deferred<ProductImagesRefreshResponse>();
+      const onProductChange = vi.fn();
+      const sourceA = product({ model_url: "https://makerworld.com/en/models/a" });
+      const fallback = product({
+        model_url: nextModelUrl,
+        main_photo_id: 20,
+        main_photo_path: "/fallback.webp",
+        main_photo_source_type: "catalog_preview",
+      });
+      const enriched = product({
+        model_url: nextModelUrl,
+        main_photo_id: nextModelUrl ? 30 : 20,
+        main_photo_path: nextModelUrl ? "/source-b.webp" : "/fallback.webp",
+        main_photo_source_type: nextModelUrl ? "source_hero" : "catalog_preview",
+      });
+      apiMocks.fetchProductImageCandidates
+        .mockReturnValueOnce(firstList.promise)
+        .mockReturnValueOnce(secondList.promise);
+      apiMocks.refreshProductImages
+        .mockReturnValueOnce(firstRefresh.promise)
+        .mockReturnValueOnce(secondRefresh.promise);
+
+      await act(async () =>
+        render(h(MountedProductImagePanel, { product: sourceA, onProductChange }), container),
+      );
+      await settle(firstList, [candidate("source-a", "Source A")]);
+      const firstSignal = apiMocks.refreshProductImages.mock.calls[0]?.[1]?.signal;
+
+      await act(async () =>
+        render(h(MountedProductImagePanel, { product: fallback, onProductChange }), container),
+      );
+      expect(firstSignal?.aborted).toBe(true);
+      await settle(secondList, [candidate("fallback", "Authoritative fallback")]);
+      expect(container.textContent).toContain("Authoritative fallback");
+      expect(container.textContent).not.toContain("Source A");
+
+      await settle(firstRefresh, {
+        product: product({ model_url: sourceA.model_url, main_photo_path: "/source-a.webp" }),
+        candidates: [candidate("source-a-late", "Late Source A")],
+        warnings: ["Late A warning"],
+      });
+      await settle(secondRefresh, {
+        product: enriched,
+        candidates: [candidate("source-b", nextModelUrl ? "Source B" : "Cleared fallback")],
+        warnings: [],
+      });
+
+      expect(onProductChange).toHaveBeenCalledTimes(1);
+      expect(onProductChange).toHaveBeenCalledWith(enriched);
+      expect(container.textContent).not.toContain("Late Source A");
+      expect(container.textContent).not.toContain("Late A warning");
+      expect(container.textContent).toContain(nextModelUrl ? "Source B" : "Cleared fallback");
+    },
+  );
+
   it("suppresses stale refresh failures and shows only the current refresh failure", async () => {
     const firstList = deferred<ProductImageCandidate[]>();
     const secondList = deferred<ProductImageCandidate[]>();
