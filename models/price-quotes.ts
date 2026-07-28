@@ -27,14 +27,27 @@ export type QuoteAttempt = {
   production_loss_cost: number;
 };
 
-export type PriceQuoteRateAssumption = {
+export type PriceQuoteMaterialContribution = {
   job_id: number;
   task_id: string;
-  material_type: string;
+  filament_row_id: number | null;
+  ams_id: number | null;
+  slot_id: number | null;
+  recorded_material_type: string | null;
+  resolved_material_type: string;
+  weight_g: number;
   material_rate_per_kg: number;
+  material_cost: number;
+  used_material_fallback: boolean;
+};
+
+export type PriceQuoteMachineContribution = {
+  job_id: number;
+  task_id: string;
+  duration_seconds: number;
   printer: string;
   machine_rate_per_hr: number;
-  used_material_fallback: boolean;
+  machine_cost: number;
   used_machine_fallback: boolean;
 };
 
@@ -47,7 +60,8 @@ export type PriceQuoteResult = {
     fixed_fee_per_order: number;
     failure_buffer_pct: number;
     overhead_buffer_pct: number;
-    resolved_rates: PriceQuoteRateAssumption[];
+    material_contributions: PriceQuoteMaterialContribution[];
+    machine_contributions: PriceQuoteMachineContribution[];
   };
   attempts: QuoteAttempt[];
   warnings: string[];
@@ -81,8 +95,11 @@ interface TaskRow {
 }
 
 interface FilamentRow {
+  id: number;
   filament_type: string | null;
   weight_g: number | null;
+  ams_id: number | null;
+  slot_id: number | null;
 }
 
 interface PricingProfileRow {
@@ -97,7 +114,8 @@ interface ResolvedTaskCost {
   machineCost: number;
   productionLossCost: number;
   printer: string;
-  resolvedRates: PriceQuoteRateAssumption[];
+  materialContributions: PriceQuoteMaterialContribution[];
+  machineContribution: PriceQuoteMachineContribution;
 }
 
 const getJobStatement = db.prepare<[number], SelectedJobRow>(`
@@ -129,7 +147,7 @@ const getTasksStatement = db.prepare<[string], TaskRow>(`
 `);
 
 const getFilamentsStatement = db.prepare<[string], FilamentRow>(`
-  SELECT filament_type, weight_g
+  SELECT id, filament_type, weight_g, ams_id, slot_id
   FROM job_filaments
   WHERE task_id = ?
   ORDER BY id
@@ -175,7 +193,8 @@ export function calculatePriceQuote(input: PriceQuoteRequest): PriceQuoteResult 
   }
 
   const warnings: string[] = [];
-  const resolvedRates: PriceQuoteRateAssumption[] = [];
+  const materialContributions: PriceQuoteMaterialContribution[] = [];
+  const machineContributions: PriceQuoteMachineContribution[] = [];
   let materialCost = 0;
   let machineCost = 0;
   let productionLossCost = 0;
@@ -200,7 +219,8 @@ export function calculatePriceQuote(input: PriceQuoteRequest): PriceQuoteResult 
       attemptMaterialCost += resolved.materialCost;
       attemptMachineCost += resolved.machineCost;
       attemptProductionLossCost += resolved.productionLossCost;
-      resolvedRates.push(...resolved.resolvedRates);
+      materialContributions.push(...resolved.materialContributions);
+      machineContributions.push(resolved.machineContribution);
       if (taskPrinter === "Unknown printer") taskPrinter = resolved.printer;
     }
 
@@ -246,7 +266,8 @@ export function calculatePriceQuote(input: PriceQuoteRequest): PriceQuoteResult 
       fixed_fee_per_order: fixedFeePerOrder,
       failure_buffer_pct: rates.laborConfig.failure_buffer_pct,
       overhead_buffer_pct: rates.laborConfig.overhead_buffer_pct,
-      resolved_rates: dedupeRateAssumptions(resolvedRates),
+      material_contributions: materialContributions,
+      machine_contributions: machineContributions,
     },
     attempts,
     warnings,
@@ -295,7 +316,7 @@ function resolveTaskCost(
   );
 
   let materialCost = 0;
-  const resolvedRates: PriceQuoteRateAssumption[] = [];
+  const materialContributions: PriceQuoteMaterialContribution[] = [];
   if (measuredFilaments.length > 0) {
     for (const filament of measuredFilaments) {
       const configuredRate = filament.filament_type
@@ -307,19 +328,21 @@ function resolveTaskCost(
           `${taskLabel}: no material rate for ${filament.filament_type ? `"${filament.filament_type}"` : "the recorded filament"}; used PLA rate.`,
         );
       }
-      materialCost += filament.weight_g * resolvedRate.rate_per_g;
-      resolvedRates.push(
-        toRateAssumption(
-          job.id,
-          task.id,
-          resolvedRate.filament_type,
-          resolvedRate.rate_per_g,
-          printer,
-          machineRate,
-          !configuredRate,
-          usedMachineFallback,
-        ),
-      );
+      const lineMaterialCost = filament.weight_g * resolvedRate.rate_per_g;
+      materialCost += lineMaterialCost;
+      materialContributions.push({
+        job_id: job.id,
+        task_id: task.id,
+        filament_row_id: filament.id,
+        ams_id: nullableNonnegativeInteger(filament.ams_id),
+        slot_id: nullableNonnegativeInteger(filament.slot_id),
+        recorded_material_type: nonemptyText(filament.filament_type),
+        resolved_material_type: resolvedRate.filament_type,
+        weight_g: filament.weight_g,
+        material_rate_per_kg: resolvedRate.rate_per_g * 1000,
+        material_cost: lineMaterialCost,
+        used_material_fallback: !configuredRate,
+      });
     }
   } else {
     const taskWeight = nonnegative(task.weight);
@@ -329,18 +352,19 @@ function resolveTaskCost(
         ? `${taskLabel}: no usable filament data; used task weight with PLA rate.`
         : `${taskLabel}: no usable filament data or positive task weight; used zero material cost.`,
     );
-    resolvedRates.push(
-      toRateAssumption(
-        job.id,
-        task.id,
-        plaRate.filament_type,
-        plaRate.rate_per_g,
-        printer,
-        machineRate,
-        true,
-        usedMachineFallback,
-      ),
-    );
+    materialContributions.push({
+      job_id: job.id,
+      task_id: task.id,
+      filament_row_id: null,
+      ams_id: null,
+      slot_id: null,
+      recorded_material_type: null,
+      resolved_material_type: plaRate.filament_type,
+      weight_g: taskWeight,
+      material_rate_per_kg: plaRate.rate_per_g * 1000,
+      material_cost: materialCost,
+      used_material_fallback: true,
+    });
   }
 
   const durationSeconds =
@@ -350,43 +374,25 @@ function resolveTaskCost(
   if (durationSeconds === null) {
     warnings.push(`${taskLabel}: missing or invalid print duration; used zero machine time.`);
   }
-  const machineCost = ((durationSeconds ?? 0) / 3600) * machineRate;
+  const resolvedDurationSeconds = durationSeconds ?? 0;
+  const machineCost = (resolvedDurationSeconds / 3600) * machineRate;
   const productionLossCost = task.status === "finish" ? 0 : materialCost + machineCost;
-  return { materialCost, machineCost, productionLossCost, printer, resolvedRates };
-}
-
-function toRateAssumption(
-  jobId: number,
-  taskId: string,
-  materialType: string,
-  materialRatePerG: number,
-  printer: string,
-  machineRatePerHr: number,
-  usedMaterialFallback: boolean,
-  usedMachineFallback: boolean,
-): PriceQuoteRateAssumption {
   return {
-    job_id: jobId,
-    task_id: taskId,
-    material_type: materialType,
-    material_rate_per_kg: materialRatePerG * 1000,
+    materialCost,
+    machineCost,
+    productionLossCost,
     printer,
-    machine_rate_per_hr: machineRatePerHr,
-    used_material_fallback: usedMaterialFallback,
-    used_machine_fallback: usedMachineFallback,
+    materialContributions,
+    machineContribution: {
+      job_id: job.id,
+      task_id: task.id,
+      duration_seconds: resolvedDurationSeconds,
+      printer,
+      machine_rate_per_hr: machineRate,
+      machine_cost: machineCost,
+      used_machine_fallback: usedMachineFallback,
+    },
   };
-}
-
-function dedupeRateAssumptions(
-  assumptions: PriceQuoteRateAssumption[],
-): PriceQuoteRateAssumption[] {
-  const unique = new Set<string>();
-  return assumptions.filter((assumption) => {
-    const key = JSON.stringify(assumption);
-    if (unique.has(key)) return false;
-    unique.add(key);
-    return true;
-  });
 }
 
 function loadSelectedJobs(jobIds: number[]): SelectedJobRow[] {
@@ -468,6 +474,14 @@ function normalizeNonnegative(value: number, field: string): number {
 
 function nonnegative(value: number | null): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+function nullableNonnegativeInteger(value: number | null): number | null {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+function nonemptyText(value: string | null): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
 }
 
 function round2(value: number): number {

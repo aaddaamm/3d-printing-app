@@ -191,14 +191,27 @@ export type PriceQuoteRequest = {
   target_margin_pct?: number;
 };
 
-export type PriceQuoteRateAssumption = {
+export type PriceQuoteMaterialContribution = {
   job_id: number;
   task_id: string;
-  material_type: string;
+  filament_row_id: number | null;
+  ams_id: number | null;
+  slot_id: number | null;
+  recorded_material_type: string | null;
+  resolved_material_type: string;
+  weight_g: number;
   material_rate_per_kg: number;
+  material_cost: number;
+  used_material_fallback: boolean;
+};
+
+export type PriceQuoteMachineContribution = {
+  job_id: number;
+  task_id: string;
+  duration_seconds: number;
   printer: string;
   machine_rate_per_hr: number;
-  used_material_fallback: boolean;
+  machine_cost: number;
   used_machine_fallback: boolean;
 };
 
@@ -211,7 +224,8 @@ export type PriceQuoteResult = {
     fixed_fee_per_order: number;
     failure_buffer_pct: number;
     overhead_buffer_pct: number;
-    resolved_rates: PriceQuoteRateAssumption[];
+    material_contributions: PriceQuoteMaterialContribution[];
+    machine_contributions: PriceQuoteMachineContribution[];
   };
   attempts: Array<{
     job_id: number;

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PriceQuoteResult } from "../models/price-quotes.js";
 import type { ProductSummary } from "../models/products.js";
@@ -25,7 +26,10 @@ type SavedHistoryItem = {
 };
 type SavedProductPricingModule = {
   SavedProductPricingValidationError: typeof Error;
-  saveProductPricing(input: Record<string, unknown>): SavedResult;
+  saveProductPricing(
+    input: Record<string, unknown>,
+    dependencies?: { afterDirectCalculation?: (direct: PriceQuoteResult) => void },
+  ): SavedResult;
   listProductPricingHistory(productId: number): SavedHistoryItem[];
 };
 
@@ -270,6 +274,181 @@ describe.sequential("saved product pricing model", () => {
     }
   });
 
+  it("stores reconstructable mixed-material provenance identically for Direct and Etsy", () => {
+    const plaRowId = dbModule!.db
+      .prepare("SELECT id FROM job_filaments WHERE task_id = 'saved-success-task'")
+      .pluck()
+      .get() as number;
+    const petgRowId = dbModule!.db
+      .prepare(
+        `INSERT INTO job_filaments (task_id, filament_type, weight_g, ams_id, slot_id)
+         VALUES ('saved-success-task', 'PETG', 5, 2, 3)
+         RETURNING id`,
+      )
+      .pluck()
+      .get() as number;
+
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Auditable materials" }, job_ids: [successfulJobId] }),
+    );
+    const assumptions = saved.snapshots.direct.quote.assumptions;
+    const etsyAssumptions = saved.snapshots.etsy.quote.assumptions;
+
+    expect(assumptions.material_contributions).toEqual([
+      {
+        job_id: successfulJobId,
+        task_id: "saved-success-task",
+        filament_row_id: plaRowId,
+        ams_id: null,
+        slot_id: null,
+        recorded_material_type: "PLA",
+        resolved_material_type: "PLA",
+        weight_g: 50,
+        material_rate_per_kg: 20,
+        material_cost: 1,
+        used_material_fallback: false,
+      },
+      {
+        job_id: successfulJobId,
+        task_id: "saved-success-task",
+        filament_row_id: petgRowId,
+        ams_id: 2,
+        slot_id: 3,
+        recorded_material_type: "PETG",
+        resolved_material_type: "PETG",
+        weight_g: 5,
+        material_rate_per_kg: 30,
+        material_cost: 0.15,
+        used_material_fallback: false,
+      },
+    ]);
+    expect(assumptions.machine_contributions).toEqual([
+      {
+        job_id: successfulJobId,
+        task_id: "saved-success-task",
+        duration_seconds: 3600,
+        printer: "P1S",
+        machine_rate_per_hr: 2,
+        machine_cost: 2,
+        used_machine_fallback: false,
+      },
+    ]);
+    expect(etsyAssumptions.material_contributions).toEqual(assumptions.material_contributions);
+    expect(etsyAssumptions.machine_contributions).toEqual(assumptions.machine_contributions);
+    expect(
+      Math.round(
+        assumptions.material_contributions.reduce(
+          (sum, contribution) => sum + contribution.material_cost,
+          0,
+        ) * 100,
+      ) / 100,
+    ).toBe(saved.snapshots.direct.quote.breakdown.materialCost);
+    expect(
+      Math.round(
+        assumptions.machine_contributions.reduce(
+          (sum, contribution) => sum + contribution.machine_cost,
+          0,
+        ) * 100,
+      ) / 100,
+    ).toBe(saved.snapshots.direct.quote.breakdown.machineCost);
+
+    const originalHistory = savedPricingModule!.listProductPricingHistory(saved.product.id);
+    dbModule!.db.exec(`
+      DELETE FROM job_filaments WHERE task_id = 'saved-success-task';
+      UPDATE material_rates SET rate_per_g = rate_per_g * 10;
+      UPDATE machine_rates SET machine_rate_per_hr = machine_rate_per_hr * 10;
+    `);
+    expect(savedPricingModule!.listProductPricingHistory(saved.product.id)).toEqual(
+      originalHistory,
+    );
+  });
+
+  it("holds an IMMEDIATE write lock across both channel calculations", () => {
+    const product = productsModule!.createProduct({ name: "Consistent pair" });
+    const competing = new Database(dbPath);
+    competing.pragma("busy_timeout = 0");
+    let competingError: unknown = null;
+
+    try {
+      const saved = savedPricingModule!.saveProductPricing(validInput({ product_id: product.id }), {
+        afterDirectCalculation: () => {
+          try {
+            competing
+              .prepare("UPDATE material_rates SET rate_per_g = 9 WHERE filament_type = 'PLA'")
+              .run();
+          } catch (error) {
+            competingError = error;
+          }
+        },
+      });
+
+      expect(competingError).toMatchObject({ code: "SQLITE_BUSY" });
+      expect(saved.snapshots.direct.quote.assumptions.material_contributions).toEqual(
+        saved.snapshots.etsy.quote.assumptions.material_contributions,
+      );
+      expect(saved.snapshots.direct.quote.assumptions.machine_contributions).toEqual(
+        saved.snapshots.etsy.quote.assumptions.machine_contributions,
+      );
+      expect(saved.snapshots.direct.quote.assumptions).toMatchObject({
+        labor_hourly_rate: saved.snapshots.etsy.quote.assumptions.labor_hourly_rate,
+        failure_buffer_pct: saved.snapshots.etsy.quote.assumptions.failure_buffer_pct,
+        overhead_buffer_pct: saved.snapshots.etsy.quote.assumptions.overhead_buffer_pct,
+      });
+      expect(saved.snapshots.direct.quote.breakdown.materialCost).toBe(
+        saved.snapshots.etsy.quote.breakdown.materialCost,
+      );
+    } finally {
+      competing.close();
+    }
+  });
+
+  it.each([
+    [
+      "attempts",
+      (direct: PriceQuoteResult) => {
+        direct.attempts[0]!.title = "Injected different attempt";
+      },
+    ],
+    [
+      "warnings",
+      (direct: PriceQuoteResult) => {
+        direct.warnings.push("Injected first-channel warning");
+      },
+    ],
+    [
+      "manufacturing provenance",
+      (direct: PriceQuoteResult) => {
+        direct.assumptions.material_contributions[0]!.weight_g += 1;
+      },
+    ],
+    [
+      "manufacturing costs",
+      (direct: PriceQuoteResult) => {
+        direct.breakdown.materialCost += 1;
+      },
+    ],
+  ] as const)("rejects conflicting calculated %s before creating pricing rows", (_name, mutate) => {
+    const before = {
+      products: dbModule!.db.prepare("SELECT COUNT(*) FROM products").pluck().get(),
+      batches: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batches").pluck().get(),
+      links: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batch_jobs").pluck().get(),
+      snapshots: dbModule!.db.prepare("SELECT COUNT(*) FROM product_price_snapshots").pluck().get(),
+    };
+
+    expect(() =>
+      savedPricingModule!.saveProductPricing(
+        validInput({ new_product: { name: "Reject inconsistent pair" } }),
+        { afterDirectCalculation: mutate },
+      ),
+    ).toThrow(/do not share one manufacturing state/i);
+    expect({
+      products: dbModule!.db.prepare("SELECT COUNT(*) FROM products").pluck().get(),
+      batches: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batches").pluck().get(),
+      links: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batch_jobs").pluck().get(),
+      snapshots: dbModule!.db.prepare("SELECT COUNT(*) FROM product_price_snapshots").pluck().get(),
+    }).toEqual(before);
+  });
+
   it("creates a Product through Product model fields and returns immutable stored history", () => {
     const saved = savedPricingModule!.saveProductPricing(
       validInput({
@@ -364,6 +543,69 @@ describe.sequential("saved product pricing model", () => {
     expect(savedPricingModule!.listProductPricingHistory(kept.product.id)).toHaveLength(1);
   });
 
+  it("rolls back a new Product and Batch when linking product_batch_jobs fails", () => {
+    const before = {
+      products: dbModule!.db.prepare("SELECT COUNT(*) FROM products").pluck().get(),
+      batches: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batches").pluck().get(),
+      links: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batch_jobs").pluck().get(),
+      snapshots: dbModule!.db.prepare("SELECT COUNT(*) FROM product_price_snapshots").pluck().get(),
+    };
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_saved_batch_job
+      BEFORE INSERT ON product_batch_jobs
+      BEGIN
+        SELECT RAISE(ABORT, 'batch job failure');
+      END;
+    `);
+
+    expect(() =>
+      savedPricingModule!.saveProductPricing(
+        validInput({ new_product: { name: "Must roll back link" } }),
+      ),
+    ).toThrow(/batch job failure/i);
+    expect({
+      products: dbModule!.db.prepare("SELECT COUNT(*) FROM products").pluck().get(),
+      batches: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batches").pluck().get(),
+      links: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batch_jobs").pluck().get(),
+      snapshots: dbModule!.db.prepare("SELECT COUNT(*) FROM product_price_snapshots").pluck().get(),
+    }).toEqual(before);
+  });
+
+  it("rolls back a failed final Product projection and preserves the prior projection", () => {
+    const product = productsModule!.createProduct({ name: "Keep prior projection" });
+    const prior = savedPricingModule!.saveProductPricing(
+      validInput({ product_id: product.id, extra_cost: 0 }),
+    );
+    const before = {
+      batches: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batches").pluck().get(),
+      links: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batch_jobs").pluck().get(),
+      snapshots: dbModule!.db.prepare("SELECT COUNT(*) FROM product_price_snapshots").pluck().get(),
+    };
+    dbModule!.db.exec(`
+      CREATE TEMP TRIGGER fail_saved_projection
+      BEFORE UPDATE OF booth_price, etsy_price, target_sale_price ON products
+      BEGIN
+        SELECT RAISE(ABORT, 'projection failure');
+      END;
+    `);
+
+    expect(() =>
+      savedPricingModule!.saveProductPricing(
+        validInput({ product_id: product.id, extra_cost: 50 }),
+      ),
+    ).toThrow(/projection failure/i);
+    expect({
+      batches: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batches").pluck().get(),
+      links: dbModule!.db.prepare("SELECT COUNT(*) FROM product_batch_jobs").pluck().get(),
+      snapshots: dbModule!.db.prepare("SELECT COUNT(*) FROM product_price_snapshots").pluck().get(),
+    }).toEqual(before);
+    expect(productsModule!.listProducts().find(({ id }) => id === product.id)).toMatchObject({
+      booth_price: prior.product.booth_price,
+      etsy_price: prior.product.etsy_price,
+      target_sale_price: prior.product.target_sale_price,
+    });
+  });
+
   it("rolls back new Product, Batch, links, snapshots, and projection on snapshot failure", () => {
     const before = {
       products: dbModule!.db.prepare("SELECT COUNT(*) FROM products").pluck().get(),
@@ -437,6 +679,30 @@ describe.sequential("saved product pricing model", () => {
     mutateSnapshotJson(saved.batch_id, "etsy", "input_json", (input) => {
       input["job_ids"] = [...(input["job_ids"] as number[])].reverse();
       input["attempts"] = [...(input["attempts"] as unknown[])].reverse();
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("rejects conflicting Direct and Etsy contribution provenance", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Conflicting provenance" } }),
+    );
+    mutateSnapshotJson(saved.batch_id, "etsy", "assumptions_json", (assumptions) => {
+      const contributions = assumptions["material_contributions"] as Array<Record<string, unknown>>;
+      contributions[0]!["filament_row_id"] = Number(contributions[0]!["filament_row_id"]) + 100;
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("rejects contribution line costs that do not reconcile with saved breakdowns", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Conflicting contribution cost" } }),
+    );
+    mutateSnapshotJson(saved.batch_id, "direct", "assumptions_json", (assumptions) => {
+      const contributions = assumptions["material_contributions"] as Array<Record<string, unknown>>;
+      contributions[0]!["material_cost"] = Number(contributions[0]!["material_cost"]) + 1;
     });
 
     expectHistoryRejected(saved.product.id);

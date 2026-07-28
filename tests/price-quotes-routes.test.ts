@@ -61,15 +61,29 @@ const sampleQuote = {
     fixed_fee_per_order: 0.45,
     failure_buffer_pct: 0.1,
     overhead_buffer_pct: 0.05,
-    resolved_rates: [
+    material_contributions: [
       {
         job_id: 4,
         task_id: "task-4",
-        material_type: "PLA",
+        filament_row_id: 12,
+        ams_id: 0,
+        slot_id: 1,
+        recorded_material_type: "PLA",
+        resolved_material_type: "PLA",
+        weight_g: 25,
         material_rate_per_kg: 20,
+        material_cost: 0.5,
+        used_material_fallback: false,
+      },
+    ],
+    machine_contributions: [
+      {
+        job_id: 4,
+        task_id: "task-4",
+        duration_seconds: 3600,
         printer: "P1S",
         machine_rate_per_hr: 2,
-        used_material_fallback: false,
+        machine_cost: 2,
         used_machine_fallback: false,
       },
     ],

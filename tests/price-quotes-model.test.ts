@@ -183,30 +183,50 @@ describe.sequential("price quotes model", () => {
       failure_buffer_pct: 0.1,
       overhead_buffer_pct: 0.05,
     });
-    expect(result.assumptions.resolved_rates).toEqual(
+    expect(result.assumptions.material_contributions).toEqual(
       expect.arrayContaining([
-        {
+        expect.objectContaining({
           job_id: successJobId,
           task_id: "bambu-task",
-          material_type: "PLA",
+          recorded_material_type: "PLA",
+          resolved_material_type: "PLA",
+          weight_g: 50,
           material_rate_per_kg: 20,
-          printer: "P1S",
-          machine_rate_per_hr: 2,
+          material_cost: 1,
           used_material_fallback: false,
-          used_machine_fallback: false,
-        },
-        {
+        }),
+        expect.objectContaining({
           job_id: failedJobId,
           task_id: "moon-task",
-          material_type: "PETG",
+          recorded_material_type: "PETG",
+          resolved_material_type: "PETG",
+          weight_g: 20,
           material_rate_per_kg: 30,
-          printer: "Snapmaker U1",
-          machine_rate_per_hr: 4,
+          material_cost: 0.6,
           used_material_fallback: false,
-          used_machine_fallback: false,
-        },
+        }),
       ]),
     );
+    expect(result.assumptions.machine_contributions).toEqual([
+      expect.objectContaining({
+        job_id: successJobId,
+        task_id: "bambu-task",
+        duration_seconds: 3600,
+        printer: "P1S",
+        machine_rate_per_hr: 2,
+        machine_cost: 2,
+        used_machine_fallback: false,
+      }),
+      expect.objectContaining({
+        job_id: failedJobId,
+        task_id: "moon-task",
+        duration_seconds: 1800,
+        printer: "Snapmaker U1",
+        machine_rate_per_hr: 4,
+        machine_cost: 2,
+        used_machine_fallback: false,
+      }),
+    ]);
     expect(result.warnings).toEqual([]);
   });
 
@@ -244,41 +264,91 @@ describe.sequential("price quotes model", () => {
     expect(result.breakdown.machineCost).toBe(4);
   });
 
-  it("preserves each resolved material-rate contribution for multi-material tasks", () => {
-    dbModule!.db
-      .prepare(
-        `INSERT INTO job_filaments (task_id, filament_type, weight_g)
-         VALUES ('bambu-task', 'PETG', 5)`,
-      )
-      .run();
+  it("preserves immutable same-task material contributions without deduping machine provenance", () => {
+    const existingPlaId = dbModule!.db
+      .prepare("SELECT id FROM job_filaments WHERE task_id = 'bambu-task'")
+      .pluck()
+      .get() as number;
+    const insertFilament = dbModule!.db.prepare(
+      `INSERT INTO job_filaments (task_id, filament_type, weight_g, ams_id, slot_id)
+       VALUES ('bambu-task', 'PETG', 5, 1, 2)
+       RETURNING id`,
+    );
+    const firstPetgId = insertFilament.pluck().get() as number;
+    const secondPetgId = insertFilament.pluck().get() as number;
 
     const result = priceQuotesModule!.calculatePriceQuote(validInput({ job_ids: [successJobId] }));
 
-    expect(result.attempts[0]).toMatchObject({ material_cost: 1.15, machine_cost: 2 });
-    expect(result.assumptions.resolved_rates).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          job_id: successJobId,
-          task_id: "bambu-task",
-          material_type: "PLA",
-          material_rate_per_kg: 20,
-          printer: "P1S",
-          machine_rate_per_hr: 2,
-          used_material_fallback: false,
-          used_machine_fallback: false,
-        }),
-        expect.objectContaining({
-          job_id: successJobId,
-          task_id: "bambu-task",
-          material_type: "PETG",
-          material_rate_per_kg: 30,
-          printer: "P1S",
-          machine_rate_per_hr: 2,
-          used_material_fallback: false,
-          used_machine_fallback: false,
-        }),
-      ]),
-    );
+    expect(result.attempts[0]).toMatchObject({ material_cost: 1.3, machine_cost: 2 });
+    const assumptions = result.assumptions;
+    expect(assumptions.material_contributions).toEqual([
+      {
+        job_id: successJobId,
+        task_id: "bambu-task",
+        filament_row_id: existingPlaId,
+        ams_id: null,
+        slot_id: null,
+        recorded_material_type: "PLA",
+        resolved_material_type: "PLA",
+        weight_g: 50,
+        material_rate_per_kg: 20,
+        material_cost: 1,
+        used_material_fallback: false,
+      },
+      {
+        job_id: successJobId,
+        task_id: "bambu-task",
+        filament_row_id: firstPetgId,
+        ams_id: 1,
+        slot_id: 2,
+        recorded_material_type: "PETG",
+        resolved_material_type: "PETG",
+        weight_g: 5,
+        material_rate_per_kg: 30,
+        material_cost: 0.15,
+        used_material_fallback: false,
+      },
+      {
+        job_id: successJobId,
+        task_id: "bambu-task",
+        filament_row_id: secondPetgId,
+        ams_id: 1,
+        slot_id: 2,
+        recorded_material_type: "PETG",
+        resolved_material_type: "PETG",
+        weight_g: 5,
+        material_rate_per_kg: 30,
+        material_cost: 0.15,
+        used_material_fallback: false,
+      },
+    ]);
+    expect(assumptions.machine_contributions).toEqual([
+      {
+        job_id: successJobId,
+        task_id: "bambu-task",
+        duration_seconds: 3600,
+        printer: "P1S",
+        machine_rate_per_hr: 2,
+        machine_cost: 2,
+        used_machine_fallback: false,
+      },
+    ]);
+    expect(
+      Math.round(
+        assumptions.material_contributions.reduce(
+          (sum, contribution) => sum + contribution.material_cost,
+          0,
+        ) * 100,
+      ) / 100,
+    ).toBe(result.breakdown.materialCost);
+    expect(
+      Math.round(
+        assumptions.machine_contributions.reduce(
+          (sum, contribution) => sum + contribution.machine_cost,
+          0,
+        ) * 100,
+      ) / 100,
+    ).toBe(result.breakdown.machineCost);
   });
 
   it("uses effective material rates including configured waste buffers", () => {
@@ -305,17 +375,18 @@ describe.sequential("price quotes model", () => {
     const result = priceQuotesModule!.calculatePriceQuote(validInput());
 
     expect(result.attempts[1]!.material_cost).toBe(0.4);
-    expect(result.assumptions.resolved_rates).toEqual(
+    expect(result.assumptions.material_contributions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           job_id: failedJobId,
           task_id: "moon-task",
-          material_type: "PLA",
+          filament_row_id: null,
+          recorded_material_type: null,
+          resolved_material_type: "PLA",
+          weight_g: 20,
           material_rate_per_kg: 20,
-          printer: "Snapmaker U1",
-          machine_rate_per_hr: 4,
+          material_cost: 0.4,
           used_material_fallback: true,
-          used_machine_fallback: false,
         }),
       ]),
     );
@@ -333,6 +404,21 @@ describe.sequential("price quotes model", () => {
     const result = priceQuotesModule!.calculatePriceQuote(validInput());
 
     expect(result.attempts[1]!.material_cost).toBe(0.4);
+    expect(result.assumptions.material_contributions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          job_id: failedJobId,
+          task_id: "moon-task",
+          filament_row_id: expect.any(Number),
+          recorded_material_type: "ABS",
+          resolved_material_type: "PLA",
+          weight_g: 20,
+          material_rate_per_kg: 20,
+          material_cost: 0.4,
+          used_material_fallback: true,
+        }),
+      ]),
+    );
     expect(result.warnings).toEqual([
       expect.stringMatching(/job .*Dragon retry.*task .*Dragon body retry.*ABS.*PLA/i),
     ]);
@@ -359,16 +445,15 @@ describe.sequential("price quotes model", () => {
     const result = priceQuotesModule!.calculatePriceQuote(validInput());
 
     expect(result.attempts[1]!.machine_cost).toBe(1);
-    expect(result.assumptions.resolved_rates).toEqual(
+    expect(result.assumptions.machine_contributions).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           job_id: failedJobId,
           task_id: "moon-task",
-          material_type: "PETG",
-          material_rate_per_kg: 30,
+          duration_seconds: 1800,
           printer: "P1S",
           machine_rate_per_hr: 2,
-          used_material_fallback: false,
+          machine_cost: 1,
           used_machine_fallback: true,
         }),
       ]),
@@ -418,7 +503,8 @@ describe.sequential("price quotes model", () => {
       failure_buffer_pct: 0,
       overhead_buffer_pct: 0,
     });
-    expect(direct.assumptions.resolved_rates).toHaveLength(2);
+    expect(direct.assumptions.material_contributions).toHaveLength(2);
+    expect(direct.assumptions.machine_contributions).toHaveLength(2);
     expect(etsy.assumptions).toMatchObject({
       labor_hourly_rate: 30,
       target_margin_pct: 0.5,
@@ -427,7 +513,8 @@ describe.sequential("price quotes model", () => {
       failure_buffer_pct: 0,
       overhead_buffer_pct: 0,
     });
-    expect(etsy.assumptions.resolved_rates).toHaveLength(2);
+    expect(etsy.assumptions.material_contributions).toHaveLength(2);
+    expect(etsy.assumptions.machine_contributions).toHaveLength(2);
     expect(overridden.assumptions.target_margin_pct).toBe(0.25);
     expect(etsy.breakdown.suggestedPrice).toBeGreaterThan(direct.breakdown.suggestedPrice);
   });

@@ -77,6 +77,10 @@ type NormalizedSaveRequest = {
 
 type SnapshotChannel = "direct" | "etsy";
 
+export type SaveProductPricingDependencies = {
+  afterDirectCalculation?: (direct: PriceQuoteResult) => void;
+};
+
 type SnapshotRow = {
   id: number;
   batch_id: number;
@@ -269,9 +273,16 @@ const updateProductProjectionStatement = db.prepare(`
 const saveTransaction = db.transaction(
   (
     normalized: NormalizedSaveRequest,
-    direct: PriceQuoteResult,
-    etsy: PriceQuoteResult,
+    dependencies: SaveProductPricingDependencies,
   ): SavedProductPricing => {
+    const commonQuoteInput = toCommonQuoteInput(normalized);
+    const directInput: PriceQuoteRequest = { ...commonQuoteInput, channel: "direct" };
+    const etsyInput: PriceQuoteRequest = { ...commonQuoteInput, channel: "etsy" };
+    const direct = calculatePriceQuote(directInput);
+    dependencies.afterDirectCalculation?.(direct);
+    const etsy = calculatePriceQuote(etsyInput);
+    validateCalculatedQuotePair(directInput, etsyInput, direct, etsy);
+
     const product = normalized.newProduct
       ? createProduct(normalized.newProduct)
       : findProduct(normalized.productId!);
@@ -320,9 +331,16 @@ const saveTransaction = db.transaction(
   },
 );
 
-export function saveProductPricing(input: SaveProductPricingRequest): SavedProductPricing {
+export function saveProductPricing(
+  input: SaveProductPricingRequest,
+  dependencies: SaveProductPricingDependencies = {},
+): SavedProductPricing {
   const normalized = normalizeSaveRequest(input);
-  const commonQuoteInput = {
+  return saveTransaction.immediate(normalized, dependencies);
+}
+
+function toCommonQuoteInput(normalized: NormalizedSaveRequest): Omit<PriceQuoteRequest, "channel"> {
+  return {
     job_ids: normalized.jobIds,
     sellable_units: normalized.sellableUnits,
     batch_labor_minutes: normalized.batchLaborMinutes,
@@ -333,10 +351,6 @@ export function saveProductPricing(input: SaveProductPricingRequest): SavedProdu
       ? {}
       : { target_margin_pct: normalized.targetMarginPct }),
   };
-  const direct = calculatePriceQuote({ ...commonQuoteInput, channel: "direct" });
-  const etsy = calculatePriceQuote({ ...commonQuoteInput, channel: "etsy" });
-
-  return saveTransaction(normalized, direct, etsy);
 }
 
 export function listProductPricingHistory(productId: number): SavedProductPricingBatch[] {
@@ -508,9 +522,60 @@ function validateSnapshotRecord(
       ) &&
     breakdown.packagingCost === round2(input.sellable_units * input.packaging_cost_per_unit) &&
     breakdown.extraCost === round2(input.extra_cost);
-  const resolvedJobsMatch = assumptions.resolved_rates.every((rate) =>
-    inputJobIds.includes(rate.job_id),
+  const contributionJobsMatch = [
+    ...assumptions.material_contributions,
+    ...assumptions.machine_contributions,
+  ].every((contribution) => inputJobIds.includes(contribution.job_id));
+  const materialTaskIds = assumptions.material_contributions.map(
+    (contribution) => `${contribution.job_id}:${contribution.task_id}`,
   );
+  const machineTaskIds = assumptions.machine_contributions.map(
+    (contribution) => `${contribution.job_id}:${contribution.task_id}`,
+  );
+  const machineTasksAreUnique = new Set(machineTaskIds).size === machineTaskIds.length;
+  const filamentRowKeys = assumptions.material_contributions
+    .filter((contribution) => contribution.filament_row_id !== null)
+    .map(
+      (contribution) =>
+        `${contribution.job_id}:${contribution.task_id}:${contribution.filament_row_id}`,
+    );
+  const fallbackTaskKeys = assumptions.material_contributions
+    .filter((contribution) => contribution.filament_row_id === null)
+    .map((contribution) => `${contribution.job_id}:${contribution.task_id}`);
+  const materialIdentitiesAreUnique =
+    new Set(filamentRowKeys).size === filamentRowKeys.length &&
+    new Set(fallbackTaskKeys).size === fallbackTaskKeys.length;
+  const contributionTasksMatch =
+    machineTasksAreUnique &&
+    materialIdentitiesAreUnique &&
+    materialTaskIds.every((taskId) => machineTaskIds.includes(taskId)) &&
+    machineTaskIds.every((taskId) => materialTaskIds.includes(taskId));
+  const contributionLinesReconcile =
+    assumptions.material_contributions.every((contribution) =>
+      nearlyEqual(
+        contribution.material_cost,
+        (contribution.weight_g * contribution.material_rate_per_kg) / 1000,
+      ),
+    ) &&
+    assumptions.machine_contributions.every((contribution) =>
+      nearlyEqual(
+        contribution.machine_cost,
+        (contribution.duration_seconds * contribution.machine_rate_per_hr) / 3600,
+      ),
+    );
+  const contributionCostsMatch =
+    round2(
+      assumptions.material_contributions.reduce(
+        (sum, contribution) => sum + contribution.material_cost,
+        0,
+      ),
+    ) === breakdown.materialCost &&
+    round2(
+      assumptions.machine_contributions.reduce(
+        (sum, contribution) => sum + contribution.machine_cost,
+        0,
+      ),
+    ) === breakdown.machineCost;
 
   if (
     !deepEqual(inputJobIds, attemptJobIds) ||
@@ -518,7 +583,10 @@ function validateSnapshotRecord(
     !hasValidChannelFees ||
     !requestedMarginMatches ||
     !inputCostsMatch ||
-    !resolvedJobsMatch ||
+    !contributionJobsMatch ||
+    !contributionTasksMatch ||
+    !contributionLinesReconcile ||
+    !contributionCostsMatch ||
     !snapshotScalarsMatchJson(row, assumptions, breakdown)
   ) {
     throw new Error("invalid saved quote invariants");
@@ -554,6 +622,50 @@ function snapshotScalarsMatchJson(
   );
 }
 
+function validateCalculatedQuotePair(
+  directInput: PriceQuoteRequest,
+  etsyInput: PriceQuoteRequest,
+  direct: PriceQuoteResult,
+  etsy: PriceQuoteResult,
+): void {
+  const sharedAssumptionsMatch =
+    direct.assumptions.labor_hourly_rate === etsy.assumptions.labor_hourly_rate &&
+    direct.assumptions.failure_buffer_pct === etsy.assumptions.failure_buffer_pct &&
+    direct.assumptions.overhead_buffer_pct === etsy.assumptions.overhead_buffer_pct &&
+    deepEqual(direct.assumptions.material_contributions, etsy.assumptions.material_contributions) &&
+    deepEqual(direct.assumptions.machine_contributions, etsy.assumptions.machine_contributions);
+  const manufacturingFields = [
+    "materialCost",
+    "machineCost",
+    "productionLossCost",
+    "batchLaborCost",
+    "perUnitLaborCost",
+    "packagingCost",
+    "extraCost",
+    "subtotalCost",
+    "bufferCost",
+    "totalCost",
+    "unitCost",
+  ] as const;
+  const manufacturingCostsMatch = manufacturingFields.every(
+    (field) => direct.breakdown[field] === etsy.breakdown[field],
+  );
+
+  if (
+    direct.channel !== "direct" ||
+    etsy.channel !== "etsy" ||
+    !deepEqual({ ...directInput, channel: undefined }, { ...etsyInput, channel: undefined }) ||
+    !deepEqual(direct.attempts, etsy.attempts) ||
+    !deepEqual(direct.warnings, etsy.warnings) ||
+    !sharedAssumptionsMatch ||
+    !manufacturingCostsMatch
+  ) {
+    throw new SavedProductPricingValidationError(
+      "Calculated Direct and Etsy quotes do not share one manufacturing state",
+    );
+  }
+}
+
 function validateSnapshotPair(
   batchId: number,
   direct: ValidatedSnapshot,
@@ -567,7 +679,14 @@ function validateSnapshotPair(
     directQuote.assumptions.labor_hourly_rate === etsyQuote.assumptions.labor_hourly_rate &&
     directQuote.assumptions.failure_buffer_pct === etsyQuote.assumptions.failure_buffer_pct &&
     directQuote.assumptions.overhead_buffer_pct === etsyQuote.assumptions.overhead_buffer_pct &&
-    deepEqual(directQuote.assumptions.resolved_rates, etsyQuote.assumptions.resolved_rates);
+    deepEqual(
+      directQuote.assumptions.material_contributions,
+      etsyQuote.assumptions.material_contributions,
+    ) &&
+    deepEqual(
+      directQuote.assumptions.machine_contributions,
+      etsyQuote.assumptions.machine_contributions,
+    );
   const manufacturingFields = [
     "materialCost",
     "machineCost",
@@ -587,6 +706,7 @@ function validateSnapshotPair(
 
   if (
     !deepEqual(directInput, etsyInput) ||
+    !deepEqual(directQuote.attempts, etsyQuote.attempts) ||
     !deepEqual(directQuote.warnings, etsyQuote.warnings) ||
     !sharedAssumptionsMatch ||
     !manufacturingCostsMatch
@@ -670,20 +790,43 @@ function isQuoteAssumptions(value: unknown): value is PriceQuoteResult["assumpti
   ]) {
     if (!isNonnegativeNumber(value[field])) return false;
   }
-  const resolvedRates = value["resolved_rates"];
-  return Array.isArray(resolvedRates) && resolvedRates.every(isResolvedRateAssumption);
+  const materialContributions = value["material_contributions"];
+  const machineContributions = value["machine_contributions"];
+  return (
+    Array.isArray(materialContributions) &&
+    materialContributions.every(isMaterialContribution) &&
+    Array.isArray(machineContributions) &&
+    machineContributions.every(isMachineContribution)
+  );
 }
 
-function isResolvedRateAssumption(value: unknown): boolean {
+function isMaterialContribution(value: unknown): boolean {
   return (
     isRecord(value) &&
     isPositiveInteger(value["job_id"]) &&
-    typeof value["task_id"] === "string" &&
-    typeof value["material_type"] === "string" &&
+    isNonemptyString(value["task_id"]) &&
+    isNullablePositiveInteger(value["filament_row_id"]) &&
+    isNullableNonnegativeInteger(value["ams_id"]) &&
+    isNullableNonnegativeInteger(value["slot_id"]) &&
+    (value["recorded_material_type"] === null ||
+      isNonemptyString(value["recorded_material_type"])) &&
+    isNonemptyString(value["resolved_material_type"]) &&
+    isNonnegativeNumber(value["weight_g"]) &&
     isNonnegativeNumber(value["material_rate_per_kg"]) &&
-    typeof value["printer"] === "string" &&
+    isNonnegativeNumber(value["material_cost"]) &&
+    typeof value["used_material_fallback"] === "boolean"
+  );
+}
+
+function isMachineContribution(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isPositiveInteger(value["job_id"]) &&
+    isNonemptyString(value["task_id"]) &&
+    isNonnegativeNumber(value["duration_seconds"]) &&
+    isNonemptyString(value["printer"]) &&
     isNonnegativeNumber(value["machine_rate_per_hr"]) &&
-    typeof value["used_material_fallback"] === "boolean" &&
+    isNonnegativeNumber(value["machine_cost"]) &&
     typeof value["used_machine_fallback"] === "boolean"
   );
 }
@@ -721,12 +864,28 @@ function isPositiveInteger(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value > 0;
 }
 
+function isNullablePositiveInteger(value: unknown): value is number | null {
+  return value === null || isPositiveInteger(value);
+}
+
+function isNullableNonnegativeInteger(value: unknown): value is number | null {
+  return value === null || (typeof value === "number" && Number.isInteger(value) && value >= 0);
+}
+
+function isNonemptyString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0;
+}
+
 function isNonnegativeNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function round2(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function nearlyEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) <= 1e-9;
 }
 
 function normalizeSaveRequest(input: SaveProductPricingRequest): NormalizedSaveRequest {

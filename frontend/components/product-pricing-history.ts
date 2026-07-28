@@ -182,7 +182,8 @@ function ChannelCard({ card }: { card: ProductPricingCard }) {
       <span>Fixed fee ${fmtCurrency(assumptions.fixed_fee_per_order)}</span>
       <span>Failure buffer ${percent(assumptions.failure_buffer_pct)}</span>
       <span>Overhead buffer ${percent(assumptions.overhead_buffer_pct)}</span>
-      <span>${assumptions.resolved_rates.length} stored material/printer rate assumptions</span>
+      <span>${assumptions.material_contributions.length} stored material contributions</span>
+      <span>${assumptions.machine_contributions.length} stored task machine contributions</span>
     </div>
     ${card.warningCount > 0
       ? html`<div class="product-pricing-warnings">
