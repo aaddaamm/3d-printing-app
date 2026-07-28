@@ -126,9 +126,13 @@ function tagEnd(html: string, start: number): number {
 }
 
 function withoutFragment(url: URL): URL {
-  const normalized = new URL(url.href);
-  normalized.hash = "";
-  return normalized;
+  try {
+    const normalized = new URL(url.href);
+    normalized.hash = "";
+    return normalized;
+  } catch {
+    throw new Error("Invalid public image URL");
+  }
 }
 
 export function extractOpenGraphImage(html: string, pageUrl: URL): URL | null {
