@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DB_MIGRATIONS } from "../lib/db/migrations-list.js";
 import {
   addColumnIfMissing,
   columnExists,
@@ -172,6 +173,16 @@ describe("migration helpers", () => {
     dropColumnIfExists(database, "things", "old_value");
 
     expect(columnExists(database, "things", "old_value")).toBe(false);
+  });
+});
+
+describe("database migration registry", () => {
+  it("keeps migration ids unique, ordered, and current", () => {
+    const ids = DB_MIGRATIONS.map(({ id }) => id);
+
+    expect(ids).toEqual([...ids].sort((a, b) => a - b));
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids.at(-1)).toBe(22);
   });
 });
 

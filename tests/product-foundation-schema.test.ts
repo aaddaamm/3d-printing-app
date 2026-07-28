@@ -7,6 +7,13 @@ import { runDatabaseMigrations } from "../lib/db/migrations-list.js";
 
 type DbModule = typeof import("../lib/db.js");
 type Row = Record<string, unknown>;
+type IndexListRow = {
+  name: string;
+};
+
+const PRODUCT_BATCH_LOOKUP_INDEX = "idx_product_batches_product_source_created_id";
+const PRODUCT_BATCH_LOOKUP_INDEX_SQL =
+  "CREATE INDEX idx_product_batches_product_source_created_id ON product_batches(product_id, source_type, created_at DESC, id DESC)";
 
 let tempDir = "";
 let dbPath = "";
@@ -24,6 +31,19 @@ async function loadFreshDbModule(): Promise<void> {
   vi.resetModules();
   process.env.BAMBU_DB = dbPath;
   dbModule = await import("../lib/db.js");
+}
+
+function getIndexSql(db: Database.Database, name: string): string | null {
+  const row = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
+    .get(name) as { sql: string } | undefined;
+  return row?.sql.replace(/\s+/g, " ").trim() ?? null;
+}
+
+function expectProductBatchLookupIndex(db: Database.Database): void {
+  const indexes = db.prepare("PRAGMA index_list(product_batches)").all() as IndexListRow[];
+  expect(indexes.map(({ name }) => name)).toContain(PRODUCT_BATCH_LOOKUP_INDEX);
+  expect(getIndexSql(db, PRODUCT_BATCH_LOOKUP_INDEX)).toBe(PRODUCT_BATCH_LOOKUP_INDEX_SQL);
 }
 
 function createPreTaskOneSchema(): void {
@@ -167,6 +187,7 @@ describe.sequential("saved pricing and image selection schema", () => {
         "idx_product_price_snapshots_batch_created",
         "idx_products_sales_companion_visible",
       ]);
+      expectProductBatchLookupIndex(db);
     });
 
     it("enforces the current source photo foreign key and clears it when the photo is deleted", () => {
@@ -202,7 +223,7 @@ describe.sequential("saved pricing and image selection schema", () => {
     });
   });
 
-  describe("migrations 20 and 21", () => {
+  describe("migrations 20 through 22", () => {
     beforeEach(() => {
       tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "product-foundation-migration-"));
       dbPath = path.join(tempDir, "test.sqlite");
@@ -223,8 +244,8 @@ describe.sequential("saved pricing and image selection schema", () => {
         .prepare("INSERT INTO product_batches (product_id, pricing_profile_id) VALUES (?, ?)")
         .run(1, "booth");
       database!
-        .prepare("INSERT INTO product_photos (product_id, path) VALUES (?, ?)")
-        .run(1, "/photos/manual-photo.jpg");
+        .prepare("INSERT INTO product_photos (id, product_id, path) VALUES (?, ?, ?)")
+        .run(101, 1, "/photos/manual-photo.jpg");
 
       runDatabaseMigrations(database!);
       runDatabaseMigrations(database!);
@@ -232,22 +253,36 @@ describe.sequential("saved pricing and image selection schema", () => {
       expect(
         database!
           .prepare(
-            `SELECT id, sales_companion_visible, image_selection_mode, auto_source_photo_id
-             FROM products ORDER BY id`,
+            `SELECT p.id,
+                    p.main_photo_id,
+                    p.sales_companion_visible,
+                    p.image_selection_mode,
+                    p.auto_source_photo_id,
+                    pp.id AS photo_id,
+                    pp.path AS photo_path
+             FROM products p
+             LEFT JOIN product_photos pp ON pp.id = p.main_photo_id
+             ORDER BY p.id`,
           )
           .all(),
       ).toEqual([
         {
           id: 1,
+          main_photo_id: 101,
           sales_companion_visible: 0,
           image_selection_mode: "manual",
           auto_source_photo_id: null,
+          photo_id: 101,
+          photo_path: "/photos/manual-photo.jpg",
         },
         {
           id: 2,
+          main_photo_id: null,
           sales_companion_visible: 0,
           image_selection_mode: "auto",
           auto_source_photo_id: null,
+          photo_id: null,
+          photo_path: null,
         },
       ]);
       expect(
@@ -257,7 +292,7 @@ describe.sequential("saved pricing and image selection schema", () => {
         database!
           .prepare(
             `SELECT source_type, source_ref, candidate_key, is_app_owned, content_type, width, height
-             FROM product_photos WHERE id = 1`,
+             FROM product_photos WHERE id = 101`,
           )
           .get(),
       ).toEqual({
@@ -279,13 +314,15 @@ describe.sequential("saved pricing and image selection schema", () => {
       expect(
         database!
           .prepare(
-            "SELECT id, COUNT(*) AS count FROM schema_migrations WHERE id IN (20, 21) GROUP BY id",
+            "SELECT id, COUNT(*) AS count FROM schema_migrations WHERE id IN (20, 21, 22) GROUP BY id",
           )
           .all(),
       ).toEqual([
         { id: 20, count: 1 },
         { id: 21, count: 1 },
+        { id: 22, count: 1 },
       ]);
+      expectProductBatchLookupIndex(database!);
       const foreignKey = database!
         .prepare("PRAGMA foreign_key_list(products)")
         .all()

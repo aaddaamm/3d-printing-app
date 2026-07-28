@@ -281,7 +281,7 @@ function seedStarterProducts(database: Database.Database): void {
   }
 }
 
-const DB_MIGRATIONS: Migration[] = [
+export const DB_MIGRATIONS: Migration[] = [
   {
     id: 1,
     description: "rename legacy tasks table to print_tasks",
@@ -1043,6 +1043,16 @@ const DB_MIGRATIONS: Migration[] = [
         "products",
         "auto_source_photo_id",
         "INTEGER REFERENCES product_photos(id) ON DELETE SET NULL",
+      );
+    },
+  },
+  {
+    id: 22,
+    description: "index Product batch lookups by Product, source, and recency",
+    up(database) {
+      database.exec(
+        `CREATE INDEX IF NOT EXISTS idx_product_batches_product_source_created_id
+          ON product_batches(product_id, source_type, created_at DESC, id DESC)`,
       );
     },
   },

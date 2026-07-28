@@ -8,7 +8,7 @@ Safe to re-run — provider records are upserted, then jobs/projects are re-norm
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 20.9.0+
 - `npm install`
 - Local network access to LAN-only printer APIs such as Moonraker, when using those providers
 
