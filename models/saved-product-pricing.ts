@@ -32,12 +32,44 @@ export type SaveProductPricingRequest = {
   notes?: string | null;
 };
 
+export type LegacyPriceQuoteRateAssumption = {
+  job_id: number;
+  task_id: string;
+  material_type: string;
+  material_rate_per_kg: number;
+  printer: string;
+  machine_rate_per_hr: number;
+  used_material_fallback: boolean;
+  used_machine_fallback: boolean;
+};
+
+export type LegacyPriceQuoteResult = Omit<PriceQuoteResult, "assumptions"> & {
+  assumptions: Omit<
+    PriceQuoteResult["assumptions"],
+    "material_contributions" | "machine_contributions"
+  > & {
+    resolved_rates: LegacyPriceQuoteRateAssumption[];
+  };
+};
+
 export type SavedPriceSnapshot = {
   id: number;
   batch_id: number;
   channel: "direct" | "etsy";
+  provenance: "current";
+  snapshot_version: 2;
   created_at: string;
   quote: PriceQuoteResult;
+};
+
+export type LegacySavedPriceSnapshot = {
+  id: number;
+  batch_id: number;
+  channel: "direct" | "etsy";
+  provenance: "legacy_v1";
+  snapshot_version: 1;
+  created_at: string;
+  quote: LegacyPriceQuoteResult;
 };
 
 export type SavedProductPricing = {
@@ -46,14 +78,23 @@ export type SavedProductPricing = {
   snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
 };
 
-export type SavedProductPricingBatch = {
+type SavedProductPricingBatchBase = {
   batch_id: number;
   created_at: string;
   sellable_units: number;
   job_ids: number[];
   notes: string | null;
-  snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
 };
+
+export type SavedProductPricingBatch =
+  | (SavedProductPricingBatchBase & {
+      provenance: "current";
+      snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
+    })
+  | (SavedProductPricingBatchBase & {
+      provenance: "legacy_v1";
+      snapshots: { direct: LegacySavedPriceSnapshot; etsy: LegacySavedPriceSnapshot };
+    });
 
 export class SavedProductPricingValidationError extends Error {
   constructor(message: string) {
@@ -85,6 +126,7 @@ type SnapshotRow = {
   id: number;
   batch_id: number;
   channel: SnapshotChannel;
+  snapshot_version: number;
   target_margin_pct: number;
   platform_fee_pct: number;
   fixed_fee_per_order: number;
@@ -122,10 +164,19 @@ type StoredSnapshotInput = PriceQuoteRequest & {
   attempts: QuoteAttempt[];
 };
 
-type ValidatedSnapshot = {
-  input: StoredSnapshotInput;
-  snapshot: SavedPriceSnapshot;
-};
+type LegacyQuoteAssumptions = LegacyPriceQuoteResult["assumptions"];
+
+type ValidatedSnapshot =
+  | {
+      provenance: "current";
+      input: StoredSnapshotInput;
+      snapshot: SavedPriceSnapshot;
+    }
+  | {
+      provenance: "legacy_v1";
+      input: StoredSnapshotInput;
+      snapshot: LegacySavedPriceSnapshot;
+    };
 
 const insertBatchStatement = db.prepare(`
   INSERT INTO product_batches (
@@ -168,6 +219,7 @@ const insertSnapshotStatement = db.prepare(`
   INSERT INTO product_price_snapshots (
     batch_id,
     channel,
+    snapshot_version,
     target_margin_pct,
     platform_fee_pct,
     fixed_fee_per_order,
@@ -195,6 +247,7 @@ const insertSnapshotStatement = db.prepare(`
   ) VALUES (
     @batch_id,
     @channel,
+    2,
     @target_margin_pct,
     @platform_fee_pct,
     @fixed_fee_per_order,
@@ -227,6 +280,7 @@ const SNAPSHOT_SELECT = `
     id,
     batch_id,
     channel,
+    snapshot_version,
     target_margin_pct,
     platform_fee_pct,
     fixed_fee_per_order,
@@ -383,17 +437,30 @@ export function listProductPricingHistory(productId: number): SavedProductPricin
     const etsy = snapshotFromRow(etsyRows[0]!);
     validateSnapshotPair(batch.id, direct, etsy);
 
-    return {
+    const base = {
       batch_id: batch.id,
       created_at: batch.created_at,
       sellable_units: direct.input.sellable_units,
       job_ids: direct.input.job_ids,
       notes: batch.notes,
-      snapshots: {
-        direct: direct.snapshot,
-        etsy: etsy.snapshot,
-      },
     };
+    if (direct.provenance === "current" && etsy.provenance === "current") {
+      return {
+        ...base,
+        provenance: "current" as const,
+        snapshots: { direct: direct.snapshot, etsy: etsy.snapshot },
+      };
+    }
+    if (direct.provenance === "legacy_v1" && etsy.provenance === "legacy_v1") {
+      return {
+        ...base,
+        provenance: "legacy_v1" as const,
+        snapshots: { direct: direct.snapshot, etsy: etsy.snapshot },
+      };
+    }
+    throw new SavedProductPricingValidationError(
+      `Saved pricing Batch ${batch.id} mixes legacy and current snapshots`,
+    );
   });
 }
 
@@ -451,10 +518,22 @@ function insertSnapshot(
       `Price snapshot not found after insert for Batch ${batchId}: ${quote.channel}`,
     );
   }
-  return snapshotFromRow(row).snapshot;
+  const validated = snapshotFromRow(row);
+  if (validated.provenance !== "current") {
+    throw new SavedProductPricingValidationError(
+      `Newly inserted snapshot for Batch ${batchId} was not version 2`,
+    );
+  }
+  return validated.snapshot;
 }
 
 function snapshotFromRow(row: SnapshotRow): ValidatedSnapshot {
+  if (row.snapshot_version !== 1 && row.snapshot_version !== 2) {
+    throw new SavedProductPricingValidationError(
+      `Saved pricing snapshot ${row.id} uses unsupported snapshot version ${row.snapshot_version}`,
+    );
+  }
+
   try {
     const input = JSON.parse(row.input_json) as unknown;
     const assumptions = JSON.parse(row.assumptions_json) as unknown;
@@ -462,31 +541,60 @@ function snapshotFromRow(row: SnapshotRow): ValidatedSnapshot {
     const breakdown = JSON.parse(row.breakdown_json) as unknown;
     if (
       !isStoredSnapshotInput(input, row.channel) ||
-      !isQuoteAssumptions(assumptions) ||
       !Array.isArray(warnings) ||
       !warnings.every((warning) => typeof warning === "string") ||
       !isQuoteBreakdown(breakdown)
     ) {
       throw new Error("invalid saved quote JSON");
     }
-    validateSnapshotRecord(row, input, assumptions, breakdown);
 
-    return {
-      input,
-      snapshot: {
-        id: row.id,
-        batch_id: row.batch_id,
-        channel: row.channel,
-        created_at: row.created_at,
-        quote: {
+    if (isQuoteAssumptions(assumptions)) {
+      validateCurrentSnapshotRecord(row, input, assumptions, breakdown);
+      return {
+        provenance: "current",
+        input,
+        snapshot: {
+          id: row.id,
+          batch_id: row.batch_id,
           channel: row.channel,
-          assumptions,
-          attempts: input.attempts,
-          warnings,
-          breakdown,
+          provenance: "current",
+          snapshot_version: 2,
+          created_at: row.created_at,
+          quote: {
+            channel: row.channel,
+            assumptions,
+            attempts: input.attempts,
+            warnings,
+            breakdown,
+          },
         },
-      },
-    };
+      };
+    }
+
+    if (row.snapshot_version === 1 && isLegacyQuoteAssumptions(assumptions)) {
+      validateLegacySnapshotRecord(row, input, assumptions, breakdown);
+      return {
+        provenance: "legacy_v1",
+        input,
+        snapshot: {
+          id: row.id,
+          batch_id: row.batch_id,
+          channel: row.channel,
+          provenance: "legacy_v1",
+          snapshot_version: 1,
+          created_at: row.created_at,
+          quote: {
+            channel: row.channel,
+            assumptions,
+            attempts: input.attempts,
+            warnings,
+            breakdown,
+          },
+        },
+      };
+    }
+
+    throw new Error("invalid saved quote JSON");
   } catch (error) {
     if (error instanceof SavedProductPricingValidationError) throw error;
     throw new SavedProductPricingValidationError(
@@ -495,24 +603,51 @@ function snapshotFromRow(row: SnapshotRow): ValidatedSnapshot {
   }
 }
 
-function validateSnapshotRecord(
+function validateCurrentSnapshotRecord(
   row: SnapshotRow,
   input: StoredSnapshotInput,
   assumptions: PriceQuoteResult["assumptions"],
   breakdown: PriceQuoteResult["breakdown"],
 ): void {
-  const inputJobIds = input.job_ids;
+  if (
+    !snapshotCommonInvariantsMatch(row, input, assumptions, breakdown) ||
+    !canonicalContributionGraphMatches(input, assumptions, breakdown)
+  ) {
+    throw new Error("invalid saved quote invariants");
+  }
+}
+
+function validateLegacySnapshotRecord(
+  row: SnapshotRow,
+  input: StoredSnapshotInput,
+  assumptions: LegacyQuoteAssumptions,
+  breakdown: PriceQuoteResult["breakdown"],
+): void {
+  const inputJobIds = new Set(input.job_ids);
+  if (
+    !snapshotCommonInvariantsMatch(row, input, assumptions, breakdown) ||
+    !assumptions.resolved_rates.every((rate) => inputJobIds.has(rate.job_id))
+  ) {
+    throw new Error("invalid saved quote invariants");
+  }
+}
+
+function snapshotCommonInvariantsMatch(
+  row: SnapshotRow,
+  input: StoredSnapshotInput,
+  assumptions: PriceQuoteResult["assumptions"] | LegacyQuoteAssumptions,
+  breakdown: PriceQuoteResult["breakdown"],
+): boolean {
   const attemptJobIds = input.attempts.map((attempt) => attempt.job_id);
-  const hasValidMargin =
+  return (
+    new Set(input.job_ids).size === input.job_ids.length &&
+    deepEqual(input.job_ids, attemptJobIds) &&
     assumptions.target_margin_pct < 0.95 &&
-    assumptions.target_margin_pct + assumptions.platform_fee_pct < 0.95;
-  const hasValidChannelFees =
-    row.channel === "etsy" ||
-    (assumptions.platform_fee_pct === 0 && assumptions.fixed_fee_per_order === 0);
-  const requestedMarginMatches =
-    input.target_margin_pct === undefined ||
-    input.target_margin_pct === assumptions.target_margin_pct;
-  const inputCostsMatch =
+    assumptions.target_margin_pct + assumptions.platform_fee_pct < 0.95 &&
+    (row.channel === "etsy" ||
+      (assumptions.platform_fee_pct === 0 && assumptions.fixed_fee_per_order === 0)) &&
+    (input.target_margin_pct === undefined ||
+      input.target_margin_pct === assumptions.target_margin_pct) &&
     breakdown.sellableUnits === input.sellable_units &&
     breakdown.batchLaborCost ===
       round2((input.batch_labor_minutes * assumptions.labor_hourly_rate) / 60) &&
@@ -521,49 +656,109 @@ function validateSnapshotRecord(
         (input.sellable_units * input.per_unit_labor_minutes * assumptions.labor_hourly_rate) / 60,
       ) &&
     breakdown.packagingCost === round2(input.sellable_units * input.packaging_cost_per_unit) &&
-    breakdown.extraCost === round2(input.extra_cost);
-  const contributionJobsMatch = [
-    ...assumptions.material_contributions,
-    ...assumptions.machine_contributions,
-  ].every((contribution) => inputJobIds.includes(contribution.job_id));
-  const materialTaskIds = assumptions.material_contributions.map(
-    (contribution) => `${contribution.job_id}:${contribution.task_id}`,
+    breakdown.extraCost === round2(input.extra_cost) &&
+    snapshotScalarsMatchJson(row, assumptions, breakdown)
   );
-  const machineTaskIds = assumptions.machine_contributions.map(
-    (contribution) => `${contribution.job_id}:${contribution.task_id}`,
-  );
-  const machineTasksAreUnique = new Set(machineTaskIds).size === machineTaskIds.length;
-  const filamentRowKeys = assumptions.material_contributions
-    .filter((contribution) => contribution.filament_row_id !== null)
-    .map(
-      (contribution) =>
-        `${contribution.job_id}:${contribution.task_id}:${contribution.filament_row_id}`,
+}
+
+function canonicalContributionGraphMatches(
+  input: StoredSnapshotInput,
+  assumptions: PriceQuoteResult["assumptions"],
+  breakdown: PriceQuoteResult["breakdown"],
+): boolean {
+  const attemptJobIds = new Set(input.attempts.map((attempt) => attempt.job_id));
+  const taskJobs = new Map<string, number>();
+  const machineTaskIds = new Set<string>();
+  const materialByTask = new Map<
+    string,
+    PriceQuoteResult["assumptions"]["material_contributions"]
+  >();
+  const measuredFilamentRowIds = new Set<number>();
+
+  for (const machine of assumptions.machine_contributions) {
+    if (!attemptJobIds.has(machine.job_id) || machineTaskIds.has(machine.task_id)) return false;
+    machineTaskIds.add(machine.task_id);
+    taskJobs.set(machine.task_id, machine.job_id);
+    if (
+      !nearlyEqual(
+        machine.machine_cost,
+        (machine.duration_seconds * machine.machine_rate_per_hr) / 3600,
+      )
+    ) {
+      return false;
+    }
+  }
+
+  for (const material of assumptions.material_contributions) {
+    if (!attemptJobIds.has(material.job_id)) return false;
+    const taskJobId = taskJobs.get(material.task_id);
+    if (taskJobId !== undefined && taskJobId !== material.job_id) return false;
+    taskJobs.set(material.task_id, material.job_id);
+    const taskMaterials = materialByTask.get(material.task_id) ?? [];
+    taskMaterials.push(material);
+    materialByTask.set(material.task_id, taskMaterials);
+    if (
+      !nearlyEqual(
+        material.material_cost,
+        (material.weight_g * material.material_rate_per_kg) / 1000,
+      )
+    ) {
+      return false;
+    }
+  }
+
+  if (
+    machineTaskIds.size !== materialByTask.size ||
+    [...machineTaskIds].some((taskId) => !materialByTask.has(taskId))
+  ) {
+    return false;
+  }
+
+  for (const materials of materialByTask.values()) {
+    const fallbackLines = materials.filter((material) => material.filament_row_id === null);
+    if (fallbackLines.length > 0) {
+      const fallback = fallbackLines[0]!;
+      if (
+        materials.length !== 1 ||
+        fallbackLines.length !== 1 ||
+        fallback.ams_id !== null ||
+        fallback.slot_id !== null ||
+        fallback.recorded_material_type !== null ||
+        !fallback.used_material_fallback
+      ) {
+        return false;
+      }
+      continue;
+    }
+
+    for (const material of materials) {
+      if (
+        material.filament_row_id === null ||
+        measuredFilamentRowIds.has(material.filament_row_id) ||
+        material.weight_g <= 0 ||
+        (!material.used_material_fallback &&
+          (material.recorded_material_type === null ||
+            material.recorded_material_type !== material.resolved_material_type))
+      ) {
+        return false;
+      }
+      measuredFilamentRowIds.add(material.filament_row_id);
+    }
+  }
+
+  const attemptCostsMatch = input.attempts.every((attempt) => {
+    const materialCost = assumptions.material_contributions
+      .filter((line) => line.job_id === attempt.job_id)
+      .reduce((sum, line) => sum + line.material_cost, 0);
+    const machineCost = assumptions.machine_contributions
+      .filter((line) => line.job_id === attempt.job_id)
+      .reduce((sum, line) => sum + line.machine_cost, 0);
+    return (
+      round2(materialCost) === attempt.material_cost && round2(machineCost) === attempt.machine_cost
     );
-  const fallbackTaskKeys = assumptions.material_contributions
-    .filter((contribution) => contribution.filament_row_id === null)
-    .map((contribution) => `${contribution.job_id}:${contribution.task_id}`);
-  const materialIdentitiesAreUnique =
-    new Set(filamentRowKeys).size === filamentRowKeys.length &&
-    new Set(fallbackTaskKeys).size === fallbackTaskKeys.length;
-  const contributionTasksMatch =
-    machineTasksAreUnique &&
-    materialIdentitiesAreUnique &&
-    materialTaskIds.every((taskId) => machineTaskIds.includes(taskId)) &&
-    machineTaskIds.every((taskId) => materialTaskIds.includes(taskId));
-  const contributionLinesReconcile =
-    assumptions.material_contributions.every((contribution) =>
-      nearlyEqual(
-        contribution.material_cost,
-        (contribution.weight_g * contribution.material_rate_per_kg) / 1000,
-      ),
-    ) &&
-    assumptions.machine_contributions.every((contribution) =>
-      nearlyEqual(
-        contribution.machine_cost,
-        (contribution.duration_seconds * contribution.machine_rate_per_hr) / 3600,
-      ),
-    );
-  const contributionCostsMatch =
+  });
+  return (
+    attemptCostsMatch &&
     round2(
       assumptions.material_contributions.reduce(
         (sum, contribution) => sum + contribution.material_cost,
@@ -575,27 +770,13 @@ function validateSnapshotRecord(
         (sum, contribution) => sum + contribution.machine_cost,
         0,
       ),
-    ) === breakdown.machineCost;
-
-  if (
-    !deepEqual(inputJobIds, attemptJobIds) ||
-    !hasValidMargin ||
-    !hasValidChannelFees ||
-    !requestedMarginMatches ||
-    !inputCostsMatch ||
-    !contributionJobsMatch ||
-    !contributionTasksMatch ||
-    !contributionLinesReconcile ||
-    !contributionCostsMatch ||
-    !snapshotScalarsMatchJson(row, assumptions, breakdown)
-  ) {
-    throw new Error("invalid saved quote invariants");
-  }
+    ) === breakdown.machineCost
+  );
 }
 
 function snapshotScalarsMatchJson(
   row: SnapshotRow,
-  assumptions: PriceQuoteResult["assumptions"],
+  assumptions: PriceQuoteResult["assumptions"] | LegacyQuoteAssumptions,
   breakdown: PriceQuoteResult["breakdown"],
 ): boolean {
   return (
@@ -675,18 +856,27 @@ function validateSnapshotPair(
   const etsyInput = { ...etsy.input, channel: undefined };
   const directQuote = direct.snapshot.quote;
   const etsyQuote = etsy.snapshot.quote;
-  const sharedAssumptionsMatch =
+  const sharedScalarAssumptionsMatch =
     directQuote.assumptions.labor_hourly_rate === etsyQuote.assumptions.labor_hourly_rate &&
     directQuote.assumptions.failure_buffer_pct === etsyQuote.assumptions.failure_buffer_pct &&
-    directQuote.assumptions.overhead_buffer_pct === etsyQuote.assumptions.overhead_buffer_pct &&
-    deepEqual(
-      directQuote.assumptions.material_contributions,
-      etsyQuote.assumptions.material_contributions,
-    ) &&
-    deepEqual(
-      directQuote.assumptions.machine_contributions,
-      etsyQuote.assumptions.machine_contributions,
+    directQuote.assumptions.overhead_buffer_pct === etsyQuote.assumptions.overhead_buffer_pct;
+  let sharedProvenanceMatches = false;
+  if (direct.provenance === "current" && etsy.provenance === "current") {
+    sharedProvenanceMatches =
+      deepEqual(
+        direct.snapshot.quote.assumptions.material_contributions,
+        etsy.snapshot.quote.assumptions.material_contributions,
+      ) &&
+      deepEqual(
+        direct.snapshot.quote.assumptions.machine_contributions,
+        etsy.snapshot.quote.assumptions.machine_contributions,
+      );
+  } else if (direct.provenance === "legacy_v1" && etsy.provenance === "legacy_v1") {
+    sharedProvenanceMatches = deepEqual(
+      direct.snapshot.quote.assumptions.resolved_rates,
+      etsy.snapshot.quote.assumptions.resolved_rates,
     );
+  }
   const manufacturingFields = [
     "materialCost",
     "machineCost",
@@ -708,7 +898,8 @@ function validateSnapshotPair(
     !deepEqual(directInput, etsyInput) ||
     !deepEqual(directQuote.attempts, etsyQuote.attempts) ||
     !deepEqual(directQuote.warnings, etsyQuote.warnings) ||
-    !sharedAssumptionsMatch ||
+    !sharedScalarAssumptionsMatch ||
+    !sharedProvenanceMatches ||
     !manufacturingCostsMatch
   ) {
     throw new SavedProductPricingValidationError(
@@ -797,6 +988,36 @@ function isQuoteAssumptions(value: unknown): value is PriceQuoteResult["assumpti
     materialContributions.every(isMaterialContribution) &&
     Array.isArray(machineContributions) &&
     machineContributions.every(isMachineContribution)
+  );
+}
+
+function isLegacyQuoteAssumptions(value: unknown): value is LegacyQuoteAssumptions {
+  if (!isRecord(value)) return false;
+  for (const field of [
+    "labor_hourly_rate",
+    "target_margin_pct",
+    "platform_fee_pct",
+    "fixed_fee_per_order",
+    "failure_buffer_pct",
+    "overhead_buffer_pct",
+  ]) {
+    if (!isNonnegativeNumber(value[field])) return false;
+  }
+  const resolvedRates = value["resolved_rates"];
+  return Array.isArray(resolvedRates) && resolvedRates.every(isLegacyRateAssumption);
+}
+
+function isLegacyRateAssumption(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    isPositiveInteger(value["job_id"]) &&
+    isNonemptyString(value["task_id"]) &&
+    isNonemptyString(value["material_type"]) &&
+    isNonnegativeNumber(value["material_rate_per_kg"]) &&
+    isNonemptyString(value["printer"]) &&
+    isNonnegativeNumber(value["machine_rate_per_hr"]) &&
+    typeof value["used_material_fallback"] === "boolean" &&
+    typeof value["used_machine_fallback"] === "boolean"
   );
 }
 

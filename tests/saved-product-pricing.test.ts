@@ -9,7 +9,21 @@ import type { ProductSummary } from "../models/products.js";
 type DbModule = typeof import("../lib/db.js");
 type ProductsModule = typeof import("../models/products.js");
 type SavedSnapshot = {
+  provenance: "current";
+  snapshot_version: 2;
   quote: PriceQuoteResult;
+};
+
+type LegacySavedSnapshot = {
+  provenance: "legacy_v1";
+  snapshot_version: 1;
+  quote: {
+    channel: "direct" | "etsy";
+    assumptions: Record<string, unknown>;
+    attempts: PriceQuoteResult["attempts"];
+    warnings: string[];
+    breakdown: PriceQuoteResult["breakdown"];
+  };
 };
 type SavedResult = {
   product: ProductSummary;
@@ -22,8 +36,16 @@ type SavedHistoryItem = {
   sellable_units: number;
   job_ids: number[];
   notes: string | null;
-  snapshots: { direct: SavedSnapshot; etsy: SavedSnapshot };
-};
+} & (
+  | {
+      provenance: "current";
+      snapshots: { direct: SavedSnapshot; etsy: SavedSnapshot };
+    }
+  | {
+      provenance: "legacy_v1";
+      snapshots: { direct: LegacySavedSnapshot; etsy: LegacySavedSnapshot };
+    }
+);
 type SavedProductPricingModule = {
   SavedProductPricingValidationError: typeof Error;
   saveProductPricing(
@@ -169,6 +191,67 @@ function mutateSnapshotJson(
     .run(JSON.stringify(value), batchId, channel);
 }
 
+function mutateBothSnapshotAssumptions(
+  batchId: number,
+  mutate: (assumptions: Record<string, unknown>) => void,
+): void {
+  for (const channel of ["direct", "etsy"] as const) {
+    mutateSnapshotJson(batchId, channel, "assumptions_json", mutate);
+  }
+}
+
+function convertBatchToLegacyV1(batchId: number): Record<string, Record<string, unknown>> {
+  const expectedByChannel: Record<string, Record<string, unknown>> = {};
+  for (const channel of ["direct", "etsy"] as const) {
+    const raw = dbModule!.db
+      .prepare(
+        `SELECT assumptions_json
+         FROM product_price_snapshots
+         WHERE batch_id = ? AND channel = ?`,
+      )
+      .pluck()
+      .get(batchId, channel) as string;
+    const current = JSON.parse(raw) as Record<string, unknown>;
+    const materialContributions = current["material_contributions"] as Array<
+      Record<string, unknown>
+    >;
+    const machineContributions = current["machine_contributions"] as Array<Record<string, unknown>>;
+    const resolvedRates = materialContributions.map((material) => {
+      const machine = machineContributions.find(
+        (candidate) => candidate["task_id"] === material["task_id"],
+      )!;
+      return {
+        job_id: material["job_id"],
+        task_id: material["task_id"],
+        material_type: material["resolved_material_type"],
+        material_rate_per_kg: material["material_rate_per_kg"],
+        printer: machine["printer"],
+        machine_rate_per_hr: machine["machine_rate_per_hr"],
+        used_material_fallback: material["used_material_fallback"],
+        used_machine_fallback: machine["used_machine_fallback"],
+      };
+    });
+    const legacy = {
+      labor_hourly_rate: current["labor_hourly_rate"],
+      target_margin_pct: current["target_margin_pct"],
+      platform_fee_pct: current["platform_fee_pct"],
+      fixed_fee_per_order: current["fixed_fee_per_order"],
+      failure_buffer_pct: current["failure_buffer_pct"],
+      overhead_buffer_pct: current["overhead_buffer_pct"],
+      resolved_rates: resolvedRates,
+    };
+    expectedByChannel[channel] = legacy;
+    dbModule!.db
+      .prepare(
+        `UPDATE product_price_snapshots
+         SET snapshot_version = 1, assumptions_json = ?
+         WHERE batch_id = ? AND channel = ?`,
+      )
+      .run(JSON.stringify(legacy), batchId, channel);
+  }
+  return expectedByChannel;
+}
+
 function expectHistoryRejected(productId: number): void {
   expect(() => savedPricingModule!.listProductPricingHistory(productId)).toThrowError(
     savedPricingModule!.SavedProductPricingValidationError,
@@ -255,11 +338,12 @@ describe.sequential("saved product pricing model", () => {
 
     const snapshotRows = dbModule!.db
       .prepare(
-        `SELECT channel, input_json, assumptions_json, warnings_json, breakdown_json
+        `SELECT channel, snapshot_version, input_json, assumptions_json, warnings_json, breakdown_json
          FROM product_price_snapshots WHERE batch_id = ? ORDER BY channel`,
       )
       .all(saved.batch_id) as Array<{
       channel: string;
+      snapshot_version: number;
       input_json: string;
       assumptions_json: string;
       warnings_json: string;
@@ -267,11 +351,80 @@ describe.sequential("saved product pricing model", () => {
     }>;
     expect(snapshotRows).toHaveLength(2);
     for (const row of snapshotRows) {
+      expect(row.snapshot_version).toBe(2);
       expect(() => JSON.parse(row.input_json)).not.toThrow();
       expect(() => JSON.parse(row.assumptions_json)).not.toThrow();
       expect(() => JSON.parse(row.warnings_json)).not.toThrow();
       expect(() => JSON.parse(row.breakdown_json)).not.toThrow();
     }
+  });
+
+  it("reads genuine legacy v1 snapshots without inventing contribution provenance", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Legacy history" } }),
+    );
+    const expectedAssumptions = convertBatchToLegacyV1(saved.batch_id);
+
+    const history = savedPricingModule!.listProductPricingHistory(saved.product.id);
+
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({
+      provenance: "legacy_v1",
+      snapshots: {
+        direct: {
+          provenance: "legacy_v1",
+          snapshot_version: 1,
+          quote: { assumptions: expectedAssumptions["direct"] },
+        },
+        etsy: {
+          provenance: "legacy_v1",
+          snapshot_version: 1,
+          quote: { assumptions: expectedAssumptions["etsy"] },
+        },
+      },
+    });
+    expect(history[0]!.snapshots.direct.quote.assumptions).not.toHaveProperty(
+      "material_contributions",
+    );
+
+    dbModule!.db.exec(`
+      DELETE FROM job_filaments;
+      UPDATE material_rates SET rate_per_g = 99;
+      UPDATE machine_rates SET machine_rate_per_hr = 99;
+    `);
+    expect(savedPricingModule!.listProductPricingHistory(saved.product.id)).toEqual(history);
+  });
+
+  it("shape-discriminates transitional contribution snapshots stored as version 1", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Transitional current history" } }),
+    );
+    dbModule!.db
+      .prepare("UPDATE product_price_snapshots SET snapshot_version = 1 WHERE batch_id = ?")
+      .run(saved.batch_id);
+
+    expect(savedPricingModule!.listProductPricingHistory(saved.product.id)).toEqual([
+      expect.objectContaining({
+        provenance: "current",
+        snapshots: {
+          direct: expect.objectContaining({ provenance: "current", snapshot_version: 2 }),
+          etsy: expect.objectContaining({ provenance: "current", snapshot_version: 2 }),
+        },
+      }),
+    ]);
+  });
+
+  it("rejects unknown future snapshot versions even when their JSON matches v2", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Future history" } }),
+    );
+    dbModule!.db
+      .prepare("UPDATE product_price_snapshots SET snapshot_version = 99 WHERE batch_id = ?")
+      .run(saved.batch_id);
+
+    expect(() => savedPricingModule!.listProductPricingHistory(saved.product.id)).toThrow(
+      /unsupported snapshot version 99/i,
+    );
   });
 
   it("stores reconstructable mixed-material provenance identically for Direct and Etsy", () => {
@@ -670,6 +823,72 @@ describe.sequential("saved product pricing model", () => {
     expect(() => savedPricingModule!.listProductPricingHistory(saved.product.id)).toThrow(
       /invalid JSON/i,
     );
+  });
+
+  it("rejects an identical-both-channel duplicate task assigned across jobs", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Duplicate task graph" } }),
+    );
+    mutateBothSnapshotAssumptions(saved.batch_id, (assumptions) => {
+      const materials = assumptions["material_contributions"] as Array<Record<string, unknown>>;
+      const machines = assumptions["machine_contributions"] as Array<Record<string, unknown>>;
+      materials.find((line) => line["job_id"] === failedJobId)!["task_id"] = "saved-success-task";
+      machines.find((line) => line["job_id"] === failedJobId)!["task_id"] = "saved-success-task";
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("rejects identical-both-channel mixed measured and task-fallback material graphs", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Mixed fallback graph" } }),
+    );
+    mutateBothSnapshotAssumptions(saved.batch_id, (assumptions) => {
+      const materials = assumptions["material_contributions"] as Array<Record<string, unknown>>;
+      materials.push({
+        job_id: successfulJobId,
+        task_id: "saved-success-task",
+        filament_row_id: null,
+        ams_id: null,
+        slot_id: null,
+        recorded_material_type: null,
+        resolved_material_type: "PLA",
+        weight_g: 0,
+        material_rate_per_kg: 20,
+        material_cost: 0,
+        used_material_fallback: true,
+      });
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("rejects identical-both-channel contribution job IDs inconsistent with attempts", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Inconsistent contribution jobs" } }),
+    );
+    mutateBothSnapshotAssumptions(saved.batch_id, (assumptions) => {
+      const materials = assumptions["material_contributions"] as Array<Record<string, unknown>>;
+      const machines = assumptions["machine_contributions"] as Array<Record<string, unknown>>;
+      materials.find((line) => line["job_id"] === successfulJobId)!["job_id"] = failedJobId;
+      machines.find((line) => line["job_id"] === successfulJobId)!["job_id"] = failedJobId;
+    });
+
+    expectHistoryRejected(saved.product.id);
+  });
+
+  it("rejects identical-both-channel per-attempt cost mismatches", () => {
+    const saved = savedPricingModule!.saveProductPricing(
+      validInput({ new_product: { name: "Attempt cost mismatch" } }),
+    );
+    for (const channel of ["direct", "etsy"] as const) {
+      mutateSnapshotJson(saved.batch_id, channel, "input_json", (input) => {
+        const attempts = input["attempts"] as Array<Record<string, unknown>>;
+        attempts[0]!["material_cost"] = Number(attempts[0]!["material_cost"]) + 0.01;
+      });
+    }
+
+    expectHistoryRejected(saved.product.id);
   });
 
   it("rejects conflicting Direct and Etsy job identity", () => {

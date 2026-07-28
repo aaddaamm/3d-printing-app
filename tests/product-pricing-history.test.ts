@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type {
+  LegacySavedPriceSnapshot,
   PriceQuoteResult,
   SavedPriceSnapshot,
   SavedProductPricingBatch,
@@ -70,6 +71,8 @@ function snapshot(
     id,
     batch_id: batchId,
     channel,
+    provenance: "current",
+    snapshot_version: 2,
     created_at: createdAt,
     quote: quote(channel, overrides),
   };
@@ -81,6 +84,7 @@ function batch(
   overrides: Parameters<typeof quote>[1] = {},
 ): SavedProductPricingBatch {
   return {
+    provenance: "current",
     batch_id: batchId,
     created_at: createdAt,
     sellable_units: 4,
@@ -89,6 +93,40 @@ function batch(
     snapshots: {
       direct: snapshot(batchId * 2, batchId, "direct", createdAt, overrides),
       etsy: snapshot(batchId * 2 + 1, batchId, "etsy", createdAt, overrides),
+    },
+  };
+}
+
+function legacySnapshot(id: number, channel: "direct" | "etsy"): LegacySavedPriceSnapshot {
+  return {
+    id,
+    batch_id: 8,
+    channel,
+    provenance: "legacy_v1",
+    snapshot_version: 1,
+    created_at: "2026-07-25 11:00:00",
+    quote: {
+      ...quote(channel),
+      assumptions: {
+        labor_hourly_rate: 30,
+        target_margin_pct: 0.5,
+        platform_fee_pct: channel === "etsy" ? 0.12 : 0,
+        fixed_fee_per_order: channel === "etsy" ? 0.45 : 0,
+        failure_buffer_pct: 0.1,
+        overhead_buffer_pct: 0.05,
+        resolved_rates: [
+          {
+            job_id: 2,
+            task_id: "legacy-task",
+            material_type: "PLA",
+            material_rate_per_kg: 20,
+            printer: "P1S",
+            machine_rate_per_hr: 2,
+            used_material_fallback: false,
+            used_machine_fallback: false,
+          },
+        ],
+      },
     },
   };
 }
@@ -183,6 +221,38 @@ describe("saved Product pricing history view model", () => {
         unitCost: 9.5,
         productionLossCost: 2.25,
         warningCount: 1,
+      }),
+    ]);
+  });
+
+  it("marks genuine v1 cards as limited-provenance legacy history", () => {
+    const legacyBatch: SavedProductPricingBatch = {
+      provenance: "legacy_v1",
+      batch_id: 8,
+      created_at: "2026-07-25 11:00:00",
+      sellable_units: 4,
+      job_ids: [2, 8],
+      notes: null,
+      snapshots: {
+        direct: legacySnapshot(20, "direct"),
+        etsy: legacySnapshot(21, "etsy"),
+      },
+    };
+
+    const cards = latestPricingCards([legacyBatch]);
+
+    expect(cards).toEqual([
+      expect.objectContaining({
+        channel: "direct",
+        provenance: "legacy_v1",
+        provenanceLabel: "Legacy snapshot — limited material provenance",
+        storedRateCount: 1,
+      }),
+      expect.objectContaining({
+        channel: "etsy",
+        provenance: "legacy_v1",
+        provenanceLabel: "Legacy snapshot — limited material provenance",
+        storedRateCount: 1,
       }),
     ]);
   });

@@ -278,12 +278,44 @@ export type SaveProductPricingRequest = {
   notes?: string | null;
 };
 
+export type LegacyPriceQuoteRateAssumption = {
+  job_id: number;
+  task_id: string;
+  material_type: string;
+  material_rate_per_kg: number;
+  printer: string;
+  machine_rate_per_hr: number;
+  used_material_fallback: boolean;
+  used_machine_fallback: boolean;
+};
+
+export type LegacyPriceQuoteResult = Omit<PriceQuoteResult, "assumptions"> & {
+  assumptions: Omit<
+    PriceQuoteResult["assumptions"],
+    "material_contributions" | "machine_contributions"
+  > & {
+    resolved_rates: LegacyPriceQuoteRateAssumption[];
+  };
+};
+
 export type SavedPriceSnapshot = {
   id: number;
   batch_id: number;
   channel: "direct" | "etsy";
+  provenance: "current";
+  snapshot_version: 2;
   created_at: string;
   quote: PriceQuoteResult;
+};
+
+export type LegacySavedPriceSnapshot = {
+  id: number;
+  batch_id: number;
+  channel: "direct" | "etsy";
+  provenance: "legacy_v1";
+  snapshot_version: 1;
+  created_at: string;
+  quote: LegacyPriceQuoteResult;
 };
 
 export type SavedProductPricing = {
@@ -292,14 +324,23 @@ export type SavedProductPricing = {
   snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
 };
 
-export type SavedProductPricingBatch = {
+type SavedProductPricingBatchBase = {
   batch_id: number;
   created_at: string;
   sellable_units: number;
   job_ids: number[];
   notes: string | null;
-  snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
 };
+
+export type SavedProductPricingBatch =
+  | (SavedProductPricingBatchBase & {
+      provenance: "current";
+      snapshots: { direct: SavedPriceSnapshot; etsy: SavedPriceSnapshot };
+    })
+  | (SavedProductPricingBatchBase & {
+      provenance: "legacy_v1";
+      snapshots: { direct: LegacySavedPriceSnapshot; etsy: LegacySavedPriceSnapshot };
+    });
 
 export type SalesCompanionProduct = {
   id: number;

@@ -4,6 +4,7 @@ import htm from "htm";
 
 import {
   fetchProductPricingHistory,
+  type LegacyPriceQuoteResult,
   type PriceQuoteResult,
   type SavedProductPricingBatch,
 } from "../lib/api.js";
@@ -18,7 +19,7 @@ const html = (
 
 type PricingChannel = "direct" | "etsy";
 
-export type ProductPricingCard = {
+type ProductPricingCardBase = {
   batchId: number;
   channel: PricingChannel;
   price: number;
@@ -31,8 +32,19 @@ export type ProductPricingCard = {
   warnings: string[];
   linkedJobCount: number;
   successfulQuantity: number;
-  assumptions: PriceQuoteResult["assumptions"];
+  provenanceLabel: string;
+  storedRateCount: number;
 };
+
+export type ProductPricingCard =
+  | (ProductPricingCardBase & {
+      provenance: "current";
+      assumptions: PriceQuoteResult["assumptions"];
+    })
+  | (ProductPricingCardBase & {
+      provenance: "legacy_v1";
+      assumptions: LegacyPriceQuoteResult["assumptions"];
+    });
 
 export type ProductPricingHistoryRequestState = {
   generation: number;
@@ -124,7 +136,7 @@ export function latestPricingCards(
   const latest = sortedPricingHistory(history)[0];
   if (!latest) return [];
 
-  return (["direct", "etsy"] as const).map((channel) => {
+  const cardBase = (channel: PricingChannel) => {
     const snapshot = latest.snapshots[channel];
     const { breakdown } = snapshot.quote;
     return {
@@ -140,7 +152,31 @@ export function latestPricingCards(
       warnings: snapshot.quote.warnings,
       linkedJobCount: latest.job_ids.length,
       successfulQuantity: latest.sellable_units,
-      assumptions: snapshot.quote.assumptions,
+    };
+  };
+
+  if (latest.provenance === "legacy_v1") {
+    return (["direct", "etsy"] as const).map((channel) => {
+      const assumptions = latest.snapshots[channel].quote.assumptions;
+      return {
+        ...cardBase(channel),
+        provenance: "legacy_v1" as const,
+        provenanceLabel: "Legacy snapshot — limited material provenance",
+        storedRateCount: assumptions.resolved_rates.length,
+        assumptions,
+      };
+    });
+  }
+
+  return (["direct", "etsy"] as const).map((channel) => {
+    const assumptions = latest.snapshots[channel].quote.assumptions;
+    return {
+      ...cardBase(channel),
+      provenance: "current" as const,
+      provenanceLabel: "Complete contribution provenance",
+      storedRateCount:
+        assumptions.material_contributions.length + assumptions.machine_contributions.length,
+      assumptions,
     };
   });
 }
@@ -182,8 +218,19 @@ function ChannelCard({ card }: { card: ProductPricingCard }) {
       <span>Fixed fee ${fmtCurrency(assumptions.fixed_fee_per_order)}</span>
       <span>Failure buffer ${percent(assumptions.failure_buffer_pct)}</span>
       <span>Overhead buffer ${percent(assumptions.overhead_buffer_pct)}</span>
-      <span>${assumptions.material_contributions.length} stored material contributions</span>
-      <span>${assumptions.machine_contributions.length} stored task machine contributions</span>
+      <strong>${card.provenanceLabel}</strong>
+      ${card.provenance === "legacy_v1"
+        ? html`<span>${card.storedRateCount} legacy material/printer rate assumptions</span>
+            <span
+              >Material weights, line costs, and task-level machine lines were not recorded.</span
+            >`
+        : html`<span
+              >${card.assumptions.material_contributions.length} stored material contributions</span
+            >
+            <span
+              >${card.assumptions.machine_contributions.length} stored task machine
+              contributions</span
+            >`}
     </div>
     ${card.warningCount > 0
       ? html`<div class="product-pricing-warnings">
@@ -208,6 +255,9 @@ function HistoryRow({ batch }: { batch: SavedProductPricingBatch }) {
     <div>
       <strong>${fmtDate(batch.created_at)}</strong>
       <span>Batch #${batch.batch_id}</span>
+      ${batch.provenance === "legacy_v1"
+        ? html`<span>Legacy snapshot — limited material provenance</span>`
+        : null}
     </div>
     <div>
       <span>${batch.sellable_units} successful</span>
