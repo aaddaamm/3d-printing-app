@@ -78,6 +78,7 @@ const HTTP_TIMEOUT_MS = 10_000;
 const GATE_TIMEOUT_MS = 10 * 60_000;
 const HEALTH_WAIT_MS = 30_000;
 const SERVER_EXIT_TIMEOUT_MS = 5_000;
+const PROCESS_GROUP_POLL_MS = 50;
 const LOCAL_HOST = "127.0.0.1";
 
 const GATES: Array<{ command: string; args: string[]; label: string }> = [
@@ -296,8 +297,8 @@ async function prepareSmokeData(
 }
 
 async function createTempDb(): Promise<SmokeContext> {
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "printworks-smoke-"));
   const port = await choosePort();
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "printworks-smoke-"));
   return {
     tempDir,
     dbPath: path.join(tempDir, "smoke.sqlite"),
@@ -909,11 +910,15 @@ async function runWorkflowSmoke(ctx: SmokeContext): Promise<void> {
   pass(`linked project jobs to batch; unit cost $${unitCost.toFixed(2)}`);
 }
 
+function leaderExited(child: ChildProcessWithoutNullStreams): boolean {
+  return child.exitCode !== null || child.signalCode !== null;
+}
+
 async function waitForChildExit(
   child: ChildProcessWithoutNullStreams,
   timeoutMs: number,
 ): Promise<boolean> {
-  if (child.exitCode !== null || child.signalCode !== null) return true;
+  if (leaderExited(child)) return true;
   return await new Promise<boolean>((resolve) => {
     const onExit = () => {
       clearTimeout(timeout);
@@ -921,46 +926,136 @@ async function waitForChildExit(
     };
     const timeout = setTimeout(() => {
       child.off("exit", onExit);
-      resolve(false);
+      resolve(leaderExited(child));
     }, timeoutMs);
     child.once("exit", onExit);
   });
 }
 
+type ProcessGroupProbeResult = {
+  absent: boolean;
+  permissionDenied: boolean;
+};
+
+function probeProcessGroup(pid: number): ProcessGroupProbeResult {
+  try {
+    process.kill(-pid, 0);
+    return { absent: false, permissionDenied: false };
+  } catch (error: unknown) {
+    const errno = error as NodeJS.ErrnoException;
+    if (errno.code === "ESRCH") return { absent: true, permissionDenied: false };
+    if (errno.code === "EPERM") return { absent: false, permissionDenied: true };
+    throw new Error(`Failed to probe smoke API process group -${pid}: ${errno.message}`, {
+      cause: error,
+    });
+  }
+}
+
+async function waitForProcessGroupExit(
+  pid: number,
+  timeoutMs: number,
+): Promise<ProcessGroupProbeResult> {
+  const deadline = Date.now() + timeoutMs;
+  let probe = probeProcessGroup(pid);
+  while (!probe.absent && Date.now() < deadline) {
+    const remainingMs = Math.max(0, deadline - Date.now());
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.min(PROCESS_GROUP_POLL_MS, remainingMs)),
+    );
+    probe = probeProcessGroup(pid);
+  }
+  return probe;
+}
+
+async function waitForServerExit(server: StartedServer, timeoutMs: number): Promise<boolean> {
+  const { child, useProcessGroup } = server;
+  if (!useProcessGroup) return await waitForChildExit(child, timeoutMs);
+
+  if (typeof child.pid !== "number") {
+    if (leaderExited(child)) return true;
+    throw new Error("Smoke API server did not expose a PID for process-group shutdown");
+  }
+
+  void waitForChildExit(child, timeoutMs);
+  const probe = await waitForProcessGroupExit(child.pid, timeoutMs);
+  if (!probe.absent) return false;
+
+  await waitForChildExit(child, PROCESS_GROUP_POLL_MS);
+  return true;
+}
+
 function signalServer(server: StartedServer, signal: NodeJS.Signals): void {
   const { child, useProcessGroup } = server;
-  if (child.exitCode !== null || child.signalCode !== null) return;
 
   try {
     if (useProcessGroup) {
       if (typeof child.pid !== "number") {
+        if (leaderExited(child)) return;
         throw new Error("Smoke API server did not expose a PID for process-group shutdown");
       }
       process.kill(-child.pid, signal);
       return;
     }
 
-    if (!child.kill(signal) && child.exitCode === null && child.signalCode === null) {
+    if (leaderExited(child)) return;
+    if (!child.kill(signal) && !leaderExited(child)) {
       throw new Error(`child.kill(${signal}) returned false`);
     }
   } catch (error: unknown) {
-    if (child.exitCode !== null || child.signalCode !== null) return;
+    const errno = error as NodeJS.ErrnoException;
+    if (useProcessGroup && errno.code === "ESRCH") return;
+    if (!useProcessGroup && leaderExited(child)) return;
     throw new Error(`Failed to send ${signal} to the smoke API server`, { cause: error });
   }
 }
 
 async function stopServer(server: StartedServer): Promise<void> {
-  const { child } = server;
-  if (child.exitCode !== null || child.signalCode !== null) return;
+  const { child, useProcessGroup } = server;
+
+  if (!useProcessGroup) {
+    if (leaderExited(child)) return;
+
+    signalServer(server, "SIGTERM");
+    if (await waitForChildExit(child, SERVER_EXIT_TIMEOUT_MS)) return;
+
+    signalServer(server, "SIGKILL");
+    if (await waitForChildExit(child, SERVER_EXIT_TIMEOUT_MS)) return;
+
+    throw new Error(
+      `Smoke API server did not exit within ${SERVER_EXIT_TIMEOUT_MS}ms after SIGTERM/SIGKILL`,
+    );
+  }
+
+  if (typeof child.pid !== "number") {
+    if (leaderExited(child)) return;
+    throw new Error("Smoke API server did not expose a PID for process-group shutdown");
+  }
+
+  if (probeProcessGroup(child.pid).absent) {
+    await waitForChildExit(child, PROCESS_GROUP_POLL_MS);
+    return;
+  }
 
   signalServer(server, "SIGTERM");
-  if (await waitForChildExit(child, SERVER_EXIT_TIMEOUT_MS)) return;
+  if (await waitForServerExit(server, SERVER_EXIT_TIMEOUT_MS)) return;
 
   signalServer(server, "SIGKILL");
-  if (await waitForChildExit(child, SERVER_EXIT_TIMEOUT_MS)) return;
+  if (await waitForServerExit(server, SERVER_EXIT_TIMEOUT_MS)) return;
+
+  const finalProbe = probeProcessGroup(child.pid);
+  if (finalProbe.absent) {
+    await waitForChildExit(child, PROCESS_GROUP_POLL_MS);
+    return;
+  }
+
+  if (finalProbe.permissionDenied) {
+    throw new Error(
+      `Smoke API process group -${child.pid} still existed after SIGTERM/SIGKILL, and permission errors prevented confirming cleanup`,
+    );
+  }
 
   throw new Error(
-    `Smoke API server did not exit within ${SERVER_EXIT_TIMEOUT_MS}ms after SIGTERM/SIGKILL`,
+    `Smoke API process group -${child.pid} still existed after ${SERVER_EXIT_TIMEOUT_MS}ms waits for both SIGTERM and SIGKILL`,
   );
 }
 
