@@ -1,5 +1,8 @@
 import { expect, it } from "vitest";
-import { jobsForInventoryPrinter } from "../frontend/components/jobs-printer-breakdown.js";
+import {
+  getPrinterPhotoUrl,
+  jobsForInventoryPrinter,
+} from "../frontend/components/jobs-printer-breakdown.js";
 import type { Job, PrinterInventory } from "../frontend/components/jobs-view-types.js";
 
 function printer(id: number): PrinterInventory {
@@ -24,4 +27,10 @@ it("matches inventory printer jobs by printer_id instead of shared model/name", 
 
   expect(jobsForInventoryPrinter(printer(7), jobs).map((job) => job.id)).toEqual([101]);
   expect(jobsForInventoryPrinter(printer(3), jobs).map((job) => job.id)).toEqual([102]);
+});
+
+it("maps Snapmaker U1 inventory models to the local printer photo", () => {
+  expect(getPrinterPhotoUrl("Snapmaker U1")).toBe("/ui/printers/snapmaker-u1");
+  expect(getPrinterPhotoUrl("SNAPMAKER U1")).toBe("/ui/printers/snapmaker-u1");
+  expect(getPrinterPhotoUrl("Unknown Printer")).toBeNull();
 });

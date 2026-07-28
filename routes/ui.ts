@@ -44,6 +44,13 @@ const PRINTER_PHOTO_CANDIDATES = new Map<string, string[]>([
       path.resolve(process.cwd(), "dist/frontend/public/printers/p1s.webp"),
     ],
   ],
+  [
+    "snapmaker-u1",
+    [
+      path.resolve(process.cwd(), "frontend/public/printers/snapmaker-u1.webp"),
+      path.resolve(process.cwd(), "dist/frontend/public/printers/snapmaker-u1.webp"),
+    ],
+  ],
 ]);
 
 const isProd = process.env["NODE_ENV"] === "production";
@@ -260,6 +267,7 @@ function registerStaticRoutes(ui: Hono): void {
   ui.get("/product-photos/:photoId", (c) => serveProductPhotoFile(c));
 
   ui.get("/printers/:slug", (c) => servePrinterPhotoFile(c));
+  ui.get("/printers/*", (c) => notFound(c));
 }
 
 function registerDataRoutes(ui: Hono): void {
