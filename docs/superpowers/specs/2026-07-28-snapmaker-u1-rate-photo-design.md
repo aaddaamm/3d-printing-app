@@ -19,12 +19,12 @@ It will not add a database-backed image registry, remote image loading at runtim
 
 Use the same assumptions as the existing A1 Mini and P1S rates:
 
-| Input | Value |
-| --- | ---: |
-| Purchase price | $899.00 |
-| Lifetime | 3,000 hours |
-| Electricity | $0.10/hour |
-| Maintenance buffer | $0.50/hour |
+| Input              |       Value |
+| ------------------ | ----------: |
+| Purchase price     |     $899.00 |
+| Lifetime           | 3,000 hours |
+| Electricity        |  $0.10/hour |
+| Maintenance buffer |  $0.50/hour |
 
 PrintWorks calculates:
 
