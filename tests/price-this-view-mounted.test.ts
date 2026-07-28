@@ -148,6 +148,40 @@ describe("PriceThisView mounted request ownership", () => {
     expect(container.textContent).toBe("");
   });
 
+  it.each(["draft invalidation", "unmount"])(
+    "suppresses a late calculation success after %s",
+    async (lifecycle) => {
+      const calculation = deferred<PriceQuoteResult>();
+      apiMocks.calculatePriceQuote.mockReturnValue(calculation.promise);
+      await act(async () =>
+        render(h(MountedPriceThisView, { jobs, initialJobIds: [7], navigate: vi.fn() }), container),
+      );
+      await act(async () => submit(container));
+      const signal = apiMocks.calculatePriceQuote.mock.calls[0]?.[1] as AbortSignal;
+
+      if (lifecycle === "draft invalidation") {
+        const quantity = [
+          ...container.querySelectorAll<HTMLInputElement>("input[type=number]"),
+        ].find((input) => input.closest("label")?.textContent?.includes("Sellable units"))!;
+        await act(async () => {
+          quantity.value = "2";
+          quantity.dispatchEvent(new Event("input", { bubbles: true }));
+        });
+      } else {
+        await act(async () => render(null, container));
+      }
+      expect(signal.aborted).toBe(true);
+
+      await act(async () => {
+        calculation.resolve(quote());
+        await Promise.resolve();
+      });
+
+      expect(container.textContent).not.toContain("Recommended direct price");
+      expect(toastMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("aborts a prior recalculation and toasts only the current failure", async () => {
     const first = deferred<PriceQuoteResult>();
     const second = deferred<PriceQuoteResult>();

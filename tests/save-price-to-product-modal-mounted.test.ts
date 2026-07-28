@@ -148,6 +148,44 @@ describe("SavePriceToProductModal mounted request ownership", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  it.each(["dismiss", "unmount"])("suppresses a late save success after %s", async (lifecycle) => {
+    const save = deferred<SavedProductPricingResponse>();
+    const navigate = vi.fn();
+    const onClose = vi.fn();
+    apiMocks.savePriceQuoteToProduct.mockReturnValue(save.promise);
+    if (lifecycle === "dismiss") {
+      await act(async () => render(h(Harness, { navigate, onClose }), container));
+    } else {
+      await act(async () =>
+        render(h(MountedModal, { draft, selectedJobs, navigate, onClose }), container),
+      );
+    }
+
+    await act(async () => submit(container));
+    const signal = apiMocks.savePriceQuoteToProduct.mock.calls[0]?.[1] as AbortSignal;
+    if (lifecycle === "dismiss") {
+      await act(async () => {
+        container
+          .querySelector<HTMLElement>(".overlay")!
+          .dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    } else {
+      await act(async () => render(null, container));
+    }
+    expect(signal.aborted).toBe(true);
+    const closeCountAfterLifecycle = lifecycle === "dismiss" ? 1 : 0;
+    expect(onClose).toHaveBeenCalledTimes(closeCountAfterLifecycle);
+
+    await act(async () => {
+      save.resolve(savedResponse(42));
+      await Promise.resolve();
+    });
+
+    expect(toastMock).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    expect(onClose).toHaveBeenCalledTimes(closeCountAfterLifecycle);
+  });
+
   it("toasts one current failure and unlocks the form", async () => {
     apiMocks.savePriceQuoteToProduct.mockRejectedValue(new Error("Current save failure"));
     await act(async () =>
@@ -239,6 +277,72 @@ describe("SavePriceToProductModal mounted focus containment", () => {
     expect(document.activeElement).toBe(enabled[0]);
 
     enabled[0]!.focus();
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
+    );
+    expect(document.activeElement).toBe(enabled.at(-1));
+  });
+
+  it("retains Tab and Shift+Tab on the dialog when every control is disabled", async () => {
+    await mount();
+    const dialog = container.querySelector<HTMLElement>(".modal")!;
+    expect(dialog.getAttribute("tabindex")).toBe("-1");
+    for (const control of dialog.querySelectorAll<
+      HTMLButtonElement | HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
+    >("button, input, select, textarea")) {
+      control.disabled = true;
+    }
+
+    dialog.focus();
+    expect(document.activeElement).toBe(dialog);
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(document.activeElement).toBe(dialog);
+
+    trigger.focus();
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
+    );
+    expect(document.activeElement).toBe(dialog);
+  });
+
+  it("skips disabled and hidden controls while wrapping focus", async () => {
+    await mount();
+    const controls = [
+      ...container.querySelectorAll<HTMLElement>("button, input, select, textarea"),
+    ];
+    const disabledFirst = controls[0] as HTMLButtonElement;
+    disabledFirst.disabled = true;
+    const hiddenSecond = controls[1]!;
+    hiddenSecond.hidden = true;
+    const expectedFirst = controls[2]!;
+    const expectedLast = controls.at(-1)!;
+
+    expectedLast.focus();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(document.activeElement).toBe(expectedFirst);
+
+    expectedFirst.focus();
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
+    );
+    expect(document.activeElement).toBe(expectedLast);
+  });
+
+  it("redirects a programmatically focused non-control to a directional edge", async () => {
+    await mount();
+    const dialog = container.querySelector<HTMLElement>(".modal")!;
+    const programmatic = document.createElement("div");
+    programmatic.tabIndex = -1;
+    dialog.append(programmatic);
+    const enabled = [
+      ...dialog.querySelectorAll<HTMLElement>("button, input, select, textarea"),
+    ].filter((element) => !(element as HTMLButtonElement).disabled && !element.hidden);
+
+    programmatic.focus();
+    document.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true }));
+    expect(document.activeElement).toBe(enabled[0]);
+
+    programmatic.focus();
     document.dispatchEvent(
       new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, bubbles: true }),
     );

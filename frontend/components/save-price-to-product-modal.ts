@@ -52,8 +52,8 @@ function enabledModalControls(dialog: HTMLElement): HTMLElement[] {
     ...dialog.querySelectorAll<HTMLElement>("a[href], button, input, select, textarea, [tabindex]"),
   ].filter(
     (element) =>
-      !(element as HTMLButtonElement).disabled &&
-      !element.hidden &&
+      !element.matches(":disabled") &&
+      element.closest("[hidden]") === null &&
       element.getAttribute("tabindex") !== "-1" &&
       !(element instanceof HTMLInputElement && element.type === "hidden"),
   );
@@ -119,7 +119,7 @@ export function SavePriceToProductModal({
       const first = controls[0]!;
       const last = controls[controls.length - 1]!;
       const active = document.activeElement;
-      if (!dialogRef.current.contains(active)) {
+      if (!(active instanceof HTMLElement) || !controls.includes(active)) {
         event.preventDefault();
         (event.shiftKey ? last : first).focus();
       } else if (!event.shiftKey && active === last) {
@@ -226,6 +226,7 @@ export function SavePriceToProductModal({
         class="modal save-price-modal"
         ref=${dialogRef}
         role="dialog"
+        tabindex=${-1}
         aria-modal="true"
         aria-labelledby="save-price-modal-title"
         onClick=${(event: MouseEvent) => event.stopPropagation()}
