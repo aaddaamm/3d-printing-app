@@ -114,21 +114,29 @@ describe.sequential("product image files", () => {
     expect(first.path).toContain(`${path.sep}2${path.sep}remote${path.sep}`);
   });
 
-  it("generates deterministic deduplicated content-addressed contact sheets", async () => {
+  it("preserves explicit order and deduplicates rerun covers by exact content", async () => {
     const plateAPath = path.join(tempDir, "plate-a.png");
+    const plateARerunPath = path.join(tempDir, "plate-a-rerun.png");
     const plateBPath = path.join(tempDir, "plate-b.png");
     await sharp(await png(800, 600, "#cc0000")).toFile(plateAPath);
+    fs.copyFileSync(plateAPath, plateARerunPath);
     await sharp(await png(600, 800, "#0000cc")).toFile(plateBPath);
-    const plateA = { key: "plate:a", label: 'A <plate> & "one"', path: plateAPath };
-    const plateB = { key: "plate:b", label: "B's plate", path: plateBPath };
+    const plateA = { key: "plate:2", label: 'A <plate> & "one"', path: plateAPath };
+    const plateARerun = { key: "plate:22", label: "A rerun", path: plateARerunPath };
+    const plateB = { key: "plate:10", label: "B's plate", path: plateBPath };
 
-    const firstSnapshot = createProductContactSheetSnapshot([plateA, plateB, plateA]);
-    const secondSnapshot = createProductContactSheetSnapshot([plateB, plateA]);
+    const firstSnapshot = createProductContactSheetSnapshot([plateA, plateB, plateARerun]);
+    const sameSnapshot = createProductContactSheetSnapshot([plateA, plateB]);
+    const reversedSnapshot = createProductContactSheetSnapshot([plateB, plateA]);
+    const rerunFirstSnapshot = createProductContactSheetSnapshot([plateARerun, plateB, plateA]);
     const first = await generateProductContactSheet(3, 8, firstSnapshot);
-    const second = await generateProductContactSheet(3, 8, secondSnapshot);
+    const second = await generateProductContactSheet(3, 8, sameSnapshot);
 
     expect(first).not.toBeNull();
-    expect(firstSnapshot.fingerprint).toBe(secondSnapshot.fingerprint);
+    expect(firstSnapshot.inputCount).toBe(2);
+    expect(firstSnapshot.fingerprint).toBe(sameSnapshot.fingerprint);
+    expect(reversedSnapshot.fingerprint).not.toBe(firstSnapshot.fingerprint);
+    expect(rerunFirstSnapshot.fingerprint).not.toBe(firstSnapshot.fingerprint);
     expect(first).toMatchObject({
       createdOrRepaired: true,
       sourceFingerprint: firstSnapshot.fingerprint,
@@ -136,7 +144,7 @@ describe.sequential("product image files", () => {
     expect(second).toMatchObject({
       path: first!.path,
       contentHash: first!.contentHash,
-      sourceFingerprint: secondSnapshot.fingerprint,
+      sourceFingerprint: sameSnapshot.fingerprint,
       createdOrRepaired: false,
     });
     expect(first!.path).toContain(`${path.sep}3${path.sep}contact-sheets${path.sep}`);

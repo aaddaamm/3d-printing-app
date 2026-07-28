@@ -73,6 +73,8 @@ type CoverRow = {
   batch_id: number;
   task_id: string;
   title: string | null;
+  plate_index: number | null;
+  start_time: string | null;
 };
 
 type ContactSheetContext = {
@@ -167,18 +169,29 @@ function previewExtension(contentType: CatalogPreviewContentType): "jpg" | "png"
 
 function sourceHeroProvenance(
   sourceRef: string | null,
-): { modelUrl: string; sourceUrl: string } | null {
+): { modelUrl: string; sourceUrl: string; contentHash: string } | null {
   if (!sourceRef?.startsWith("{")) return null;
   try {
     const parsed = JSON.parse(sourceRef) as Record<string, unknown>;
-    if (typeof parsed["modelUrl"] !== "string" || typeof parsed["sourceUrl"] !== "string") {
+    if (
+      typeof parsed["modelUrl"] !== "string" ||
+      typeof parsed["sourceUrl"] !== "string" ||
+      typeof parsed["contentHash"] !== "string"
+    ) {
       return null;
     }
     const modelUrl = canonicalSupportedModelUrl(parsed["modelUrl"]);
     const sourceUrl = canonicalSupportedImageUrl(parsed["sourceUrl"]);
-    if (!modelUrl || !sourceUrl) return null;
-    if (parsed["modelUrl"] !== modelUrl || parsed["sourceUrl"] !== sourceUrl) return null;
-    return { modelUrl, sourceUrl };
+    const contentHash = parsed["contentHash"].toLowerCase();
+    if (!modelUrl || !sourceUrl || !/^[a-f0-9]{64}$/.test(contentHash)) return null;
+    if (
+      parsed["modelUrl"] !== modelUrl ||
+      parsed["sourceUrl"] !== sourceUrl ||
+      parsed["contentHash"] !== contentHash
+    ) {
+      return null;
+    }
+    return { modelUrl, sourceUrl, contentHash };
   } catch {
     return null;
   }
@@ -223,13 +236,21 @@ function persistedCandidates(
       const provenance = sourceHeroProvenance(row.source_ref);
       const currentSourceUrl = currentModelUrl ? canonicalSupportedModelUrl(currentModelUrl) : null;
       const expectedKey = provenance
-        ? `source_hero:${createHash("sha256").update(provenance.sourceUrl).digest("hex")}`
+        ? `source_hero:${createHash("sha256").update(provenance.sourceUrl).digest("hex")}:${provenance.contentHash}`
         : null;
+      let actualHash: string | null = null;
+      try {
+        if (row.path) actualHash = appOwnedProductImageContentHash(row.path, "remote");
+      } catch {
+        actualHash = null;
+      }
       const validSourceHero =
         provenance !== null &&
         provenance.modelUrl === currentSourceUrl &&
         row.is_app_owned === 1 &&
-        candidateKey === expectedKey;
+        candidateKey === expectedKey &&
+        path.basename(row.path ?? "") === `${provenance.contentHash}.webp` &&
+        actualHash === provenance.contentHash;
       available = available && validSourceHero;
       if (!available) {
         warning =
@@ -346,12 +367,22 @@ function latestSavedBatchCoverRows(productId: number): CoverRow[] {
          ORDER BY created_at DESC, id DESC
          LIMIT 1
        )
-       SELECT DISTINCT latest.id AS batch_id, pt.id AS task_id, pt.title
+       SELECT DISTINCT
+         latest.id AS batch_id,
+         pt.id AS task_id,
+         pt.title,
+         pt.plateIndex AS plate_index,
+         pt.startTime AS start_time
        FROM latest_saved_batch latest
        JOIN product_batch_jobs pbj ON pbj.batch_id = latest.id
        JOIN jobs j ON j.id = pbj.job_id
        JOIN print_tasks pt ON pt.session_id = j.session_id
-       ORDER BY pt.id`,
+       ORDER BY
+         pt.plateIndex IS NULL,
+         pt.plateIndex,
+         pt.startTime IS NULL,
+         pt.startTime,
+         pt.id`,
     )
     .all(productId);
 }
@@ -408,6 +439,11 @@ function placeholderCandidate(): CandidateDetails {
 function compareCandidates(left: CandidateDetails, right: CandidateDetails): number {
   if (left.priority !== right.priority) return left.priority - right.priority;
   if (left.available !== right.available) return left.available ? -1 : 1;
+  if (left.source_type === "source_hero" && right.source_type === "source_hero") {
+    const leftId = left.photo_id ?? 0;
+    const rightId = right.photo_id ?? 0;
+    if (leftId !== rightId) return rightId - leftId;
+  }
   if (left.is_main !== right.is_main) return left.is_main ? -1 : 1;
   if (left.display_order !== right.display_order) return left.display_order - right.display_order;
   return left.candidate_key.localeCompare(right.candidate_key);
@@ -601,30 +637,36 @@ function upsertSourceHero(
 ): void {
   const canonicalModelUrl = canonicalSupportedModelUrl(modelUrl);
   const canonicalSourceUrl = canonicalSupportedImageUrl(sourceUrl);
-  if (!canonicalModelUrl || !canonicalSourceUrl) {
+  const contentHash = stored.contentHash.toLowerCase();
+  let actualHash: string | null;
+  try {
+    actualHash = appOwnedProductImageContentHash(stored.path, "remote");
+  } catch {
+    actualHash = null;
+  }
+  if (
+    !canonicalModelUrl ||
+    !canonicalSourceUrl ||
+    !/^[a-f0-9]{64}$/.test(contentHash) ||
+    path.basename(stored.path) !== `${contentHash}.webp` ||
+    actualHash !== contentHash
+  ) {
     throw new ProductImageValidationError("Invalid MakerWorld source image provenance");
   }
   const candidateKey = `source_hero:${createHash("sha256")
     .update(canonicalSourceUrl)
-    .digest("hex")}`;
+    .digest("hex")}:${contentHash}`;
   const sourceRef = JSON.stringify({
     modelUrl: canonicalModelUrl,
     sourceUrl: canonicalSourceUrl,
+    contentHash,
   });
   db.prepare(
     `INSERT INTO product_photos (
        product_id, path, role, caption, source_type, source_ref, candidate_key,
        is_app_owned, content_type, width, height
      ) VALUES (?, ?, 'gallery', 'MakerWorld source image', 'source_hero', ?, ?, 1, ?, ?, ?)
-     ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO UPDATE SET
-       path = excluded.path,
-       caption = excluded.caption,
-       source_ref = excluded.source_ref,
-       is_app_owned = excluded.is_app_owned,
-       content_type = excluded.content_type,
-       width = excluded.width,
-       height = excluded.height,
-       updated_at = CURRENT_TIMESTAMP`,
+     ON CONFLICT(product_id, candidate_key) WHERE candidate_key IS NOT NULL DO NOTHING`,
   ).run(
     productId,
     stored.path,

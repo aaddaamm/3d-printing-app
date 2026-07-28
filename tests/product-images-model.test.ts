@@ -133,23 +133,29 @@ function addPersistedPhoto(
   return addPersistedPhotoAtPath(productId, sourceType, candidateKey, imagePath, filename);
 }
 
-function sourceHeroKey(sourceUrl: string): string {
+function sourceHeroKey(sourceUrl: string, contentHash: string): string {
   const url = new URL(sourceUrl);
   url.hash = "";
-  return `source_hero:${createHash("sha256").update(url.href).digest("hex")}`;
+  return `source_hero:${createHash("sha256").update(url.href).digest("hex")}:${contentHash}`;
 }
 
 function addSourceHero(
   productId: number,
-  filename: string,
+  _filename: string,
   modelUrl: string,
   sourceUrl: string,
   options: { candidateKey?: string; isAppOwned?: number; sourceRef?: string | null } = {},
 ): number {
-  const imagePath = path.join(tempDir, filename);
-  fs.writeFileSync(imagePath, "source hero");
+  void _filename;
+  const content = Buffer.from("source hero");
+  const contentHash = createHash("sha256").update(content).digest("hex");
+  const imagePath = path.join(imagesDir, String(productId), "remote", `${contentHash}.webp`);
+  fs.mkdirSync(path.dirname(imagePath), { recursive: true });
+  fs.writeFileSync(imagePath, content);
   const sourceRef =
-    options.sourceRef === undefined ? JSON.stringify({ modelUrl, sourceUrl }) : options.sourceRef;
+    options.sourceRef === undefined
+      ? JSON.stringify({ modelUrl, sourceUrl, contentHash })
+      : options.sourceRef;
   return Number(
     dbModule!.db
       .prepare(
@@ -163,7 +169,7 @@ function addSourceHero(
         productId,
         imagePath,
         sourceRef,
-        options.candidateKey ?? sourceHeroKey(sourceUrl),
+        options.candidateKey ?? sourceHeroKey(sourceUrl, contentHash),
         options.isAppOwned ?? 1,
       ),
   );
@@ -279,7 +285,14 @@ describe.sequential("product image model", () => {
       main_photo_source_type: "source_hero",
       main_photo_id: expect.any(Number),
     });
-    const expectedKey = sourceHeroKey(canonicalSourceUrl);
+    const row = dbModule!.db
+      .prepare(
+        `SELECT path, source_ref, is_app_owned, content_type, width, height
+         FROM product_photos WHERE id = ?`,
+      )
+      .get(result.product.main_photo_id) as Record<string, unknown>;
+    const contentHash = path.basename(String(row["path"]), ".webp");
+    const expectedKey = sourceHeroKey(canonicalSourceUrl, contentHash);
     const candidate = productImagesModule!
       .listProductImageCandidates(product.id)
       .find(({ candidate_key }) => candidate_key === expectedKey);
@@ -289,12 +302,6 @@ describe.sequential("product image model", () => {
       warning: null,
       photo_id: result.product.main_photo_id,
     });
-    const row = dbModule!.db
-      .prepare(
-        `SELECT path, source_ref, is_app_owned, content_type, width, height
-         FROM product_photos WHERE id = ?`,
-      )
-      .get(result.product.main_photo_id) as Record<string, unknown>;
     expect(row).toMatchObject({
       path: expect.stringContaining(path.join(String(product.id), "remote")),
       is_app_owned: 1,
@@ -305,6 +312,7 @@ describe.sequential("product image model", () => {
     expect(JSON.parse(String(row["source_ref"]))).toEqual({
       modelUrl: canonicalModelUrl,
       sourceUrl: canonicalSourceUrl,
+      contentHash,
     });
     expect(await sharp(String(row["path"])).metadata()).toMatchObject({ format: "webp" });
   });
@@ -414,7 +422,12 @@ describe.sequential("product image model", () => {
     });
     const source = (name: string) => `https://makerworld.bblmw.com/${name}.webp`;
 
+    const badPathId = addSourceHero(product.id, "bad-path.webp", modelUrl, source("bad-path"));
+    const badPath = path.join(tempDir, "not-content-addressed.webp");
+    fs.writeFileSync(badPath, "source hero");
+    dbModule!.db.prepare("UPDATE product_photos SET path = ? WHERE id = ?").run(badPath, badPathId);
     const invalidIds = [
+      badPathId,
       addSourceHero(product.id, "missing.webp", modelUrl, source("missing"), { sourceRef: null }),
       addSourceHero(product.id, "malformed.webp", modelUrl, source("malformed"), {
         sourceRef: "{bad json",
@@ -436,7 +449,7 @@ describe.sequential("product image model", () => {
     const candidates = productImagesModule!
       .listProductImageCandidates(product.id)
       .filter(({ source_type }) => source_type === "source_hero");
-    expect(candidates).toHaveLength(8);
+    expect(candidates).toHaveLength(9);
     expect(candidates.find(({ photo_id }) => photo_id === validId)).toMatchObject({
       available: true,
       warning: null,
@@ -536,6 +549,40 @@ describe.sequential("product image model", () => {
         .pluck()
         .get(product.id),
     ).toBe(1);
+  });
+
+  it("orders contact covers by numeric plate, start time, and task ID before content dedupe", async () => {
+    const product = productsModule!.createProduct({ name: "Ordered Contact Dragon" });
+    const batchId = seedSavedBatchCovers(product.id, ["10", "tie-b", "rerun-2", "tie-a", "2"]);
+    await writeValidCover("10", "#0000aa");
+    await writeValidCover("2", "#aa0000");
+    await writeValidCover("tie-a", "#00aa00");
+    await writeValidCover("tie-b", "#aaaa00");
+    fs.copyFileSync(path.join(coversDir, "2.png"), path.join(coversDir, "rerun-2.png"));
+    const updateTask = dbModule!.db.prepare(
+      "UPDATE print_tasks SET plateIndex = ?, startTime = ? WHERE id = ?",
+    );
+    updateTask.run(10, "2026-07-25 10:00:00", "10");
+    updateTask.run(2, "2026-07-25 09:00:00", "rerun-2");
+    updateTask.run(2, "2026-07-25 08:00:00", "2");
+    updateTask.run(3, "2026-07-25 09:30:00", "tie-b");
+    updateTask.run(3, "2026-07-25 09:30:00", "tie-a");
+
+    const expectedSnapshot = productImageFilesModule!.createProductContactSheetSnapshot([
+      { key: "print_cover:2", label: "Plate 5", path: path.join(coversDir, "2.png") },
+      { key: "print_cover:tie-a", label: "Plate 4", path: path.join(coversDir, "tie-a.png") },
+      { key: "print_cover:tie-b", label: "Plate 2", path: path.join(coversDir, "tie-b.png") },
+      { key: "print_cover:10", label: "Plate 1", path: path.join(coversDir, "10.png") },
+    ]);
+    const result = await productImagesModule!.ensureGeneratedProductImageCandidates(product.id);
+    const contact = result.candidates.find(({ source_type }) => source_type === "contact_sheet");
+    const sourceRef = dbModule!.db
+      .prepare("SELECT source_ref FROM product_photos WHERE id = ?")
+      .pluck()
+      .get(contact!.photo_id);
+
+    expect(expectedSnapshot.inputCount).toBe(4);
+    expect(sourceRef).toBe(`contact_sheet:${batchId}:${expectedSnapshot.fingerprint}`);
   });
 
   it("returns a warning candidate and cover fallback when contact-sheet decoding fails", async () => {

@@ -49,7 +49,12 @@ const CELL_PADDING = 16;
 const OWNED_FILE_RE = /^\d+\/(?:uploads|remote|contact-sheets)\/[a-f0-9]{64}\.webp$/;
 
 type OwnedImageKind = "uploads" | "remote" | "contact-sheets";
-type ContactSheetSnapshotInput = { key: string; label: string; bytes: Buffer };
+type ContactSheetSnapshotInput = {
+  key: string;
+  label: string;
+  bytes: Buffer;
+  contentHash: string;
+};
 
 const contactSheetSnapshotData = new WeakMap<
   ProductContactSheetSnapshot,
@@ -279,22 +284,16 @@ function escapeXml(value: string): string {
 }
 
 function normalizedContactSheetInputs(inputs: ContactSheetInput[]): ContactSheetInput[] {
-  const sorted = inputs
-    .map((input) => ({
+  const unique = new Map<string, ContactSheetInput>();
+  for (const input of inputs) {
+    const normalized = {
       key: input.key.trim(),
       label: input.label.trim().slice(0, 120),
       path: path.resolve(input.path),
-    }))
-    .filter(({ key }) => key !== "")
-    .sort(
-      (left, right) =>
-        left.key.localeCompare(right.key) ||
-        left.label.localeCompare(right.label) ||
-        left.path.localeCompare(right.path),
-    );
-  const unique = new Map<string, ContactSheetInput>();
-  for (const input of sorted) {
-    if (!unique.has(input.key)) unique.set(input.key, input);
+    };
+    if (normalized.key !== "" && !unique.has(normalized.key)) {
+      unique.set(normalized.key, normalized);
+    }
   }
   if (unique.size > MAX_CONTACT_SHEET_CELLS) {
     throw new Error(`Contact sheets support at most ${MAX_CONTACT_SHEET_CELLS} unique images`);
@@ -339,7 +338,7 @@ function fingerprintContactSheetSnapshotInputs(
     const label = Buffer.from(input.label);
     fingerprint.update(String(key.byteLength)).update(":").update(key);
     fingerprint.update(String(label.byteLength)).update(":").update(label);
-    fingerprint.update(sha256(input.bytes));
+    fingerprint.update(input.contentHash);
   }
   return fingerprint.digest("hex");
 }
@@ -347,11 +346,20 @@ function fingerprintContactSheetSnapshotInputs(
 export function createProductContactSheetSnapshot(
   inputs: ContactSheetInput[],
 ): ProductContactSheetSnapshot {
-  const snapshotInputs = normalizedContactSheetInputs(inputs).map((input) => ({
-    key: input.key,
-    label: input.label,
-    bytes: Buffer.from(readRegularInput(input.path)),
-  }));
+  const snapshotInputs: ContactSheetSnapshotInput[] = [];
+  const seenContent = new Set<string>();
+  for (const input of normalizedContactSheetInputs(inputs)) {
+    const bytes = Buffer.from(readRegularInput(input.path));
+    const contentHash = sha256(bytes);
+    if (seenContent.has(contentHash)) continue;
+    seenContent.add(contentHash);
+    snapshotInputs.push({
+      key: input.key,
+      label: input.label,
+      bytes,
+      contentHash,
+    });
+  }
   const snapshot = Object.freeze({
     fingerprint: fingerprintContactSheetSnapshotInputs(snapshotInputs),
     inputCount: snapshotInputs.length,
