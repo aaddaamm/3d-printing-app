@@ -407,8 +407,6 @@ for (const sql of [
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
   )`,
-  `CREATE INDEX IF NOT EXISTS idx_product_batches_product_source_created_id
-    ON product_batches(product_id, source_type, created_at DESC, id DESC)`,
   `CREATE TABLE IF NOT EXISTS product_batch_jobs (
     batch_id INTEGER NOT NULL REFERENCES product_batches(id) ON DELETE CASCADE,
     job_id INTEGER NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,

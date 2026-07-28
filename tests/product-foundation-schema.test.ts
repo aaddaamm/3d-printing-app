@@ -10,6 +10,11 @@ type Row = Record<string, unknown>;
 type IndexListRow = {
   name: string;
 };
+type IndexInfoRow = {
+  name: string;
+  desc: 0 | 1;
+  cid: number;
+};
 
 const PRODUCT_BATCH_LOOKUP_INDEX = "idx_product_batches_product_source_created_id";
 const PRODUCT_BATCH_LOOKUP_INDEX_SQL =
@@ -33,6 +38,11 @@ async function loadFreshDbModule(): Promise<void> {
   dbModule = await import("../lib/db.js");
 }
 
+function closeLoadedDbModule(): void {
+  dbModule?.db.close();
+  dbModule = null;
+}
+
 function getIndexSql(db: Database.Database, name: string): string | null {
   const row = db
     .prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?")
@@ -46,7 +56,21 @@ function expectProductBatchLookupIndex(db: Database.Database): void {
   expect(getIndexSql(db, PRODUCT_BATCH_LOOKUP_INDEX)).toBe(PRODUCT_BATCH_LOOKUP_INDEX_SQL);
 }
 
-function createPreTaskOneSchema(): void {
+function expectProductBatchLookupIndexOrder(db: Database.Database): void {
+  const columns = db
+    .prepare(`PRAGMA index_xinfo(${PRODUCT_BATCH_LOOKUP_INDEX})`)
+    .all()
+    .filter((row) => (row as IndexInfoRow).cid >= 0) as IndexInfoRow[];
+
+  expect(columns.map(({ name, desc }) => ({ name, desc }))).toEqual([
+    { name: "product_id", desc: 0 },
+    { name: "source_type", desc: 0 },
+    { name: "created_at", desc: 1 },
+    { name: "id", desc: 1 },
+  ]);
+}
+
+function createSchemaVersion19Database(): void {
   database!.exec(`
     CREATE TABLE schema_migrations (
       id INTEGER PRIMARY KEY,
@@ -54,26 +78,115 @@ function createPreTaskOneSchema(): void {
       applied_at TEXT NOT NULL
     );
 
+    CREATE TABLE pricing_profiles (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      target_margin_pct REAL NOT NULL,
+      platform_fee_pct REAL NOT NULL DEFAULT 0,
+      fixed_fee_per_order REAL NOT NULL DEFAULT 0,
+      failure_buffer_pct REAL NOT NULL DEFAULT 0,
+      overhead_buffer_pct REAL NOT NULL DEFAULT 0,
+      default_packaging_cost REAL NOT NULL DEFAULT 0,
+      default_setup_minutes REAL NOT NULL DEFAULT 0,
+      default_handling_minutes REAL NOT NULL DEFAULT 0,
+      minimum_price REAL,
+      rounding_mode TEXT NOT NULL DEFAULT 'friendly_99',
+      is_active INTEGER NOT NULL DEFAULT 1,
+      sort_order INTEGER NOT NULL
+    );
+
+    CREATE TABLE product_categories (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    );
+
+    CREATE TABLE product_statuses (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    );
+
+    CREATE TABLE product_sources (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      sort_order INTEGER NOT NULL
+    );
+
+    CREATE TABLE product_licenses (
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      allows_commercial_sale INTEGER NOT NULL DEFAULT 0,
+      requires_attribution INTEGER NOT NULL DEFAULT 0,
+      allows_stl_redistribution INTEGER NOT NULL DEFAULT 0,
+      warning TEXT,
+      sort_order INTEGER NOT NULL
+    );
+
     CREATE TABLE products (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
-      main_photo_id INTEGER,
+      description TEXT,
+      status TEXT NOT NULL DEFAULT 'needs_review',
+      designer TEXT,
+      marketplace TEXT,
+      source_url TEXT,
+      license_summary TEXT,
+      category_id TEXT REFERENCES product_categories(id),
+      status_id TEXT NOT NULL DEFAULT 'idea' REFERENCES product_statuses(id),
+      source_id TEXT REFERENCES product_sources(id),
+      license_id TEXT REFERENCES product_licenses(id),
+      model_url TEXT,
+      main_file_id INTEGER,
+      main_photo_id INTEGER REFERENCES product_photos(id),
+      etsy_listing_url TEXT,
+      default_material TEXT,
+      primary_color TEXT,
+      accent_color TEXT,
+      preferred_printer_id INTEGER,
+      estimated_print_time_s INTEGER,
+      estimated_filament_g REAL,
+      target_sale_price REAL,
+      booth_price REAL,
+      etsy_price REAL,
+      packaging_cost REAL,
+      handling_minutes REAL,
+      target_margin_pct REAL,
+      pricing_notes TEXT,
+      notes TEXT,
+      is_original_design INTEGER NOT NULL DEFAULT 0,
+      restock_priority TEXT NOT NULL DEFAULT 'none',
+      metadata_json TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE product_batches (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_id INTEGER NOT NULL,
-      pricing_profile_id TEXT NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+      pricing_profile_id TEXT NOT NULL REFERENCES pricing_profiles(id),
+      planned_quantity INTEGER NOT NULL DEFAULT 1,
+      completed_quantity INTEGER NOT NULL DEFAULT 0,
+      failed_quantity INTEGER NOT NULL DEFAULT 0,
+      material_type TEXT,
+      primary_color TEXT,
+      printer_id INTEGER,
+      total_filament_g REAL,
+      total_print_time_s INTEGER,
+      setup_minutes REAL,
+      handling_minutes_per_unit REAL,
+      packaging_cost_per_unit REAL,
+      target_margin_pct REAL,
+      platform_fee_pct REAL,
+      notes TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
 
     CREATE TABLE product_photos (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      product_id INTEGER NOT NULL,
+      product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
       file_id INTEGER,
       path TEXT,
       role TEXT NOT NULL DEFAULT 'gallery',
@@ -90,16 +203,19 @@ function createPreTaskOneSchema(): void {
   for (let id = 1; id <= 19; id += 1) {
     insertMigration.run(id, `migration-${id}`, new Date(Date.UTC(2026, 0, id)).toISOString());
   }
+
+  database!
+    .prepare("INSERT INTO product_statuses (id, label, sort_order) VALUES (?, ?, ?)")
+    .run("idea", "Idea", 10);
 }
 
 describe.sequential("saved pricing and image selection schema", () => {
   afterEach(() => {
-    dbModule?.db.close();
+    closeLoadedDbModule();
     database?.close();
     cleanupSqliteFiles(dbPath);
     if (tempDir && fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
     delete process.env.BAMBU_DB;
-    dbModule = null;
     database = null;
   });
 
@@ -188,6 +304,7 @@ describe.sequential("saved pricing and image selection schema", () => {
         "idx_products_sales_companion_visible",
       ]);
       expectProductBatchLookupIndex(db);
+      expectProductBatchLookupIndexOrder(db);
     });
 
     it("enforces the current source photo foreign key and clears it when the photo is deleted", () => {
@@ -223,6 +340,87 @@ describe.sequential("saved pricing and image selection schema", () => {
     });
   });
 
+  describe("lib/db bootstrap from schema version 19", () => {
+    beforeEach(() => {
+      tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "product-foundation-bootstrap-"));
+      dbPath = path.join(tempDir, "test.sqlite");
+      database = new Database(dbPath);
+      database.pragma("foreign_keys = ON");
+    });
+
+    it("upgrades through migrations 20 to 22 and stays idempotent across imports", async () => {
+      createSchemaVersion19Database();
+
+      database!
+        .prepare(
+          `INSERT INTO pricing_profiles (
+             id, label, target_margin_pct, platform_fee_pct, fixed_fee_per_order,
+             failure_buffer_pct, overhead_buffer_pct, default_packaging_cost,
+             default_setup_minutes, default_handling_minutes, minimum_price, sort_order
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run("booth", "Booth", 0.5, 0.035, 0, 0.08, 0.05, 0.75, 10, 3, 5, 20);
+      database!
+        .prepare("INSERT INTO products (name, slug, main_photo_id) VALUES (?, ?, ?)")
+        .run("Bootstrap Product", "bootstrap-product", null);
+      database!
+        .prepare("INSERT INTO product_photos (id, product_id, path) VALUES (?, ?, ?)")
+        .run(101, 1, "/photos/bootstrap-photo.jpg");
+      database!.prepare("UPDATE products SET main_photo_id = ? WHERE id = ?").run(101, 1);
+      database!
+        .prepare("INSERT INTO product_batches (product_id, pricing_profile_id) VALUES (?, ?)")
+        .run(1, "booth");
+      database?.close();
+      database = null;
+
+      await loadFreshDbModule();
+
+      const firstBootstrapDb = dbModule!.db;
+      expect(
+        firstBootstrapDb
+          .prepare(
+            "SELECT id, COUNT(*) AS count FROM schema_migrations WHERE id IN (20, 21, 22) GROUP BY id ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: 20, count: 1 },
+        { id: 21, count: 1 },
+        { id: 22, count: 1 },
+      ]);
+      expect(firstBootstrapDb.prepare("PRAGMA table_info(product_batches)").all()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "source_type" })]),
+      );
+      expect(firstBootstrapDb.prepare("PRAGMA table_info(products)").all()).toEqual(
+        expect.arrayContaining([expect.objectContaining({ name: "auto_source_photo_id" })]),
+      );
+      expect(
+        firstBootstrapDb.prepare("SELECT source_type, extra_cost FROM product_batches").all(),
+      ).toEqual([{ source_type: "planned", extra_cost: 0 }]);
+      expectProductBatchLookupIndex(firstBootstrapDb);
+      expectProductBatchLookupIndexOrder(firstBootstrapDb);
+      expect(firstBootstrapDb.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+
+      closeLoadedDbModule();
+      await loadFreshDbModule();
+
+      const secondBootstrapDb = dbModule!.db;
+      expect(
+        secondBootstrapDb
+          .prepare(
+            "SELECT id, COUNT(*) AS count FROM schema_migrations WHERE id IN (20, 21, 22) GROUP BY id ORDER BY id",
+          )
+          .all(),
+      ).toEqual([
+        { id: 20, count: 1 },
+        { id: 21, count: 1 },
+        { id: 22, count: 1 },
+      ]);
+      expectProductBatchLookupIndex(secondBootstrapDb);
+      expectProductBatchLookupIndexOrder(secondBootstrapDb);
+      expect(secondBootstrapDb.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    });
+  });
+
   describe("migrations 20 through 22", () => {
     beforeEach(() => {
       tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "product-foundation-migration-"));
@@ -232,11 +430,20 @@ describe.sequential("saved pricing and image selection schema", () => {
     });
 
     it("preserves existing main photos as manual and remains idempotent", () => {
-      createPreTaskOneSchema();
+      createSchemaVersion19Database();
 
       database!
+        .prepare(
+          `INSERT INTO pricing_profiles (
+             id, label, target_margin_pct, platform_fee_pct, fixed_fee_per_order,
+             failure_buffer_pct, overhead_buffer_pct, default_packaging_cost,
+             default_setup_minutes, default_handling_minutes, minimum_price, sort_order
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run("booth", "Booth", 0.5, 0.035, 0, 0.08, 0.05, 0.75, 10, 3, 5, 20);
+      database!
         .prepare("INSERT INTO products (name, slug, main_photo_id) VALUES (?, ?, ?)")
-        .run("Manual Photo Product", "manual-photo-product", 101);
+        .run("Manual Photo Product", "manual-photo-product", null);
       database!
         .prepare("INSERT INTO products (name, slug, main_photo_id) VALUES (?, ?, ?)")
         .run("Auto Product", "auto-product", null);
@@ -246,6 +453,7 @@ describe.sequential("saved pricing and image selection schema", () => {
       database!
         .prepare("INSERT INTO product_photos (id, product_id, path) VALUES (?, ?, ?)")
         .run(101, 1, "/photos/manual-photo.jpg");
+      database!.prepare("UPDATE products SET main_photo_id = ? WHERE id = ?").run(101, 1);
 
       runDatabaseMigrations(database!);
       runDatabaseMigrations(database!);
@@ -323,6 +531,7 @@ describe.sequential("saved pricing and image selection schema", () => {
         { id: 22, count: 1 },
       ]);
       expectProductBatchLookupIndex(database!);
+      expectProductBatchLookupIndexOrder(database!);
       const foreignKey = database!
         .prepare("PRAGMA foreign_key_list(products)")
         .all()
