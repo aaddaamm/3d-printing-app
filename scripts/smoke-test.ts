@@ -157,7 +157,9 @@ async function choosePort(): Promise<number> {
   if (!requested) return await reserveLocalPort(0);
 
   if (!/^\d+$/.test(requested)) {
-    throw new Error(`SMOKE_PORT must be an integer TCP port, received ${JSON.stringify(requested)}`);
+    throw new Error(
+      `SMOKE_PORT must be an integer TCP port, received ${JSON.stringify(requested)}`,
+    );
   }
   const port = Number(requested);
   if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -412,7 +414,11 @@ async function waitForHealth(origin: string): Promise<void> {
   let lastError: unknown = null;
   while (Date.now() < deadline) {
     try {
-      const health = await fetchJson<{ ok?: unknown }>(`${origin}/health`, undefined, "GET /health");
+      const health = await fetchJson<{ ok?: unknown }>(
+        `${origin}/health`,
+        undefined,
+        "GET /health",
+      );
       if (health.ok === true) {
         pass("health check");
         return;
@@ -531,7 +537,11 @@ function assertQuoteChanged(
   return { unitCost, suggestedPrice };
 }
 
-function assertSavedQuoteUnchanged(label: string, actual: SavedQuote | undefined, expected: SavedQuote): void {
+function assertSavedQuoteUnchanged(
+  label: string,
+  actual: SavedQuote | undefined,
+  expected: SavedQuote,
+): void {
   try {
     deepStrictEqual(actual, expected);
   } catch (error: unknown) {
@@ -625,9 +635,12 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
   try {
     deepStrictEqual(savedBatchState.channels, ["direct", "etsy"]);
   } catch (error: unknown) {
-    throw new Error("Saved Batch did not persist exactly one Direct and one Etsy snapshot channel", {
-      cause: error,
-    });
+    throw new Error(
+      "Saved Batch did not persist exactly one Direct and one Etsy snapshot channel",
+      {
+        cause: error,
+      },
+    );
   }
 
   mutateSmokePricingInputs(ctx.dbPath);
@@ -652,7 +665,9 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
     ),
   );
   if (liveDirect.unitCost !== liveEtsy.unitCost) {
-    throw new Error("Fresh Direct and Etsy recalculations no longer shared one manufacturing unit cost");
+    throw new Error(
+      "Fresh Direct and Etsy recalculations no longer shared one manufacturing unit cost",
+    );
   }
   pass(
     `live recalculation changed after rate mutation; Direct $${liveDirect.suggestedPrice.toFixed(2)}, Etsy $${liveEtsy.suggestedPrice.toFixed(2)}, saved history unchanged`,
@@ -665,7 +680,9 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
   );
   const historyEntries = history.history ?? [];
   if (historyEntries.length !== 1) {
-    throw new Error(`Expected exactly one saved pricing-history Batch, received ${historyEntries.length}`);
+    throw new Error(
+      `Expected exactly one saved pricing-history Batch, received ${historyEntries.length}`,
+    );
   }
   const [savedHistory] = historyEntries;
   if (savedHistory?.batch_id !== batchId) {
@@ -676,11 +693,7 @@ async function runSavedProductFoundationSmoke(ctx: SmokeContext): Promise<void> 
     savedHistory.snapshots?.direct?.quote,
     direct,
   );
-  assertSavedQuoteUnchanged(
-    "Etsy pricing history",
-    savedHistory.snapshots?.etsy?.quote,
-    etsy,
-  );
+  assertSavedQuoteUnchanged("Etsy pricing history", savedHistory.snapshots?.etsy?.quote, etsy);
   pass("Product pricing history remains immutable after deterministic rate changes");
 
   const privateCompanion = await fetchJson<{ products?: Array<{ id?: number }> }>(
