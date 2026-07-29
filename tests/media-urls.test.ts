@@ -3,23 +3,27 @@ import { moonrakerFileMediaUrl, providerRemoteMediaUrl } from "../lib/media-urls
 
 describe("moonrakerFileMediaUrl", () => {
   it("keeps absolute HTTP URLs unchanged", () => {
-    expect(moonrakerFileMediaUrl("printer.local", "folder/job.gcode", "https://cdn.example/a.png"))
-      .toBe("https://cdn.example/a.png");
+    expect(
+      moonrakerFileMediaUrl("printer.local", "folder/job.gcode", "https://cdn.example/a.png"),
+    ).toBe("https://cdn.example/a.png");
   });
 
   it("resolves relative thumbnail paths beside the gcode file", () => {
-    expect(moonrakerFileMediaUrl("printer.local", "folder/job.gcode", "thumbs/job.png"))
-      .toBe("http://printer.local/server/files/gcodes/folder/thumbs/job.png");
+    expect(moonrakerFileMediaUrl("printer.local", "folder/job.gcode", "thumbs/job.png")).toBe(
+      "http://printer.local/server/files/gcodes/folder/thumbs/job.png",
+    );
   });
 
   it("resolves absolute Moonraker paths from the gcodes root", () => {
-    expect(moonrakerFileMediaUrl("printer.local", "folder/job.gcode", "/thumbs/job.png"))
-      .toBe("http://printer.local/server/files/gcodes/thumbs/job.png");
+    expect(moonrakerFileMediaUrl("printer.local", "folder/job.gcode", "/thumbs/job.png")).toBe(
+      "http://printer.local/server/files/gcodes/thumbs/job.png",
+    );
   });
 
   it("encodes path segments without encoding slashes", () => {
-    expect(moonrakerFileMediaUrl("printer.local", "folder with spaces/job.gcode", "ü thumb.png"))
-      .toBe("http://printer.local/server/files/gcodes/folder%20with%20spaces/%C3%BC%20thumb.png");
+    expect(
+      moonrakerFileMediaUrl("printer.local", "folder with spaces/job.gcode", "ü thumb.png"),
+    ).toBe("http://printer.local/server/files/gcodes/folder%20with%20spaces/%C3%BC%20thumb.png");
   });
 });
 

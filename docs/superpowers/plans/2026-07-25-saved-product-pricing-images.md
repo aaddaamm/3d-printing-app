@@ -80,7 +80,9 @@ expect(productColumns.map(({ name }) => name)).toEqual(
 );
 
 const snapshotSql = db
-  .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'product_price_snapshots'")
+  .prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'product_price_snapshots'",
+  )
   .get() as { sql: string };
 expect(snapshotSql.sql).toContain("UNIQUE (batch_id, channel)");
 
@@ -370,8 +372,11 @@ expect(saved.snapshots.direct.quote.breakdown.totalCost).toBe(
 expect(saved.snapshots.direct.quote.breakdown.suggestedPrice).not.toBe(
   saved.snapshots.etsy.quote.breakdown.suggestedPrice,
 );
-expect(db.prepare("SELECT COUNT(*) AS count FROM product_batch_jobs WHERE batch_id = ?").get(saved.batch_id))
-  .toEqual({ count: 2 });
+expect(
+  db
+    .prepare("SELECT COUNT(*) AS count FROM product_batch_jobs WHERE batch_id = ?")
+    .get(saved.batch_id),
+).toEqual({ count: 2 });
 ```
 
 Also assert:
@@ -996,9 +1001,9 @@ await expect(fetchSupportedSourceImage("http://makerworld.com/en/models/1", deps
   "HTTPS",
 );
 await expect(fetchSupportedSourceImage("https://localhost/model", deps)).rejects.toThrow();
-await expect(fetchSupportedSourceImage("https://makerworld.com/model", privateIpDeps)).rejects.toThrow(
-  "public network",
-);
+await expect(
+  fetchSupportedSourceImage("https://makerworld.com/model", privateIpDeps),
+).rejects.toThrow("public network");
 ```
 
 Also test private IPv4/IPv6 resolutions, credentials, unsupported hosts, redirect to a private host, more than three redirects, HTML over 1 MiB, image over 10 MiB, invalid content type, timeout, and a valid MakerWorld → `makerworld.bblmw.com` image flow.

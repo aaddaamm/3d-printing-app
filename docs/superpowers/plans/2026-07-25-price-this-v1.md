@@ -90,9 +90,7 @@ export interface ProductionPricingBreakdown {
   estimatedMarginPct: number;
 }
 
-export function calcProductionPricing(
-  input: ProductionPricingInput,
-): ProductionPricingBreakdown;
+export function calcProductionPricing(input: ProductionPricingInput): ProductionPricingBreakdown;
 ```
 
 - `calcBatchPricing(input: BatchPricingInput)` remains source-compatible and delegates to `calcProductionPricing` after deriving material and machine costs.
@@ -403,7 +401,11 @@ export async function calculatePriceQuote(
 
 ```ts
 export function parsePriceJobIds(search: string): number[];
-export function filterPriceCandidateJobs(jobs: Job[], query: string, selectedIds: Set<number>): Job[];
+export function filterPriceCandidateJobs(
+  jobs: Job[],
+  query: string,
+  selectedIds: Set<number>,
+): Job[];
 export function formatPriceQuoteForClipboard(quote: PriceQuoteResult): string;
 ```
 
