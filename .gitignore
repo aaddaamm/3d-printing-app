@@ -3,6 +3,8 @@ dist/
 frontend/dist/
 coverage/
 .pi-lens/
+.pi-subagents/
+.superpowers/
 .context/
 .DS_Store
 *.sqlite
@@ -12,6 +14,7 @@ covers/
 catalog-previews/
 product-images/
 etsy-listing/
+slicer-profiles/
 *.numbers
 .env
 .env.*
