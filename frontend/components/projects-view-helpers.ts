@@ -29,17 +29,19 @@ export type Job = {
 
 export type PlateCoverageInput = {
   plateIndex: number | null;
+  status: string | null;
 };
 
 export type ProjectPlateCoverage = {
-  printedCount: number;
-  uniquePlateCount: number;
+  attemptCount: number;
+  completedCount: number;
+  uniqueObservedPlateCount: number;
+  uniqueCompletedPlateCount: number;
   observedStart: number | null;
   observedEnd: number | null;
-  duplicatePlateIndexes: number[];
-  missingPlateIndexes: number[];
+  retriedPlateIndexes: number[];
+  missingCompletedPlateIndexes: number[];
   unknownPlateIndexCount: number;
-  isContiguous: boolean;
 };
 
 export function filterProjects(projects: Project[], q: string): Project[] {
@@ -71,38 +73,47 @@ export function updateProjectInList(projects: Project[], updated: Project): Proj
 }
 
 export function getProjectPlateCoverage(plates: PlateCoverageInput[]): ProjectPlateCoverage {
-  const counts = new Map<number, number>();
+  const attemptCounts = new Map<number, number>();
+  const completedIndexes = new Set<number>();
+  let completedCount = 0;
   let unknownPlateIndexCount = 0;
 
   for (const plate of plates) {
+    const isCompleted = plate.status?.toLowerCase() === "finish";
+    if (isCompleted) completedCount += 1;
+
     if (plate.plateIndex === null) {
       unknownPlateIndexCount += 1;
       continue;
     }
-    counts.set(plate.plateIndex, (counts.get(plate.plateIndex) ?? 0) + 1);
+    attemptCounts.set(plate.plateIndex, (attemptCounts.get(plate.plateIndex) ?? 0) + 1);
+    if (isCompleted) completedIndexes.add(plate.plateIndex);
   }
 
-  const observedIndexes = [...counts.keys()].sort((a, b) => a - b);
+  const observedIndexes = [...attemptCounts.keys()].sort((a, b) => a - b);
   const observedStart = observedIndexes[0] ?? null;
   const observedEnd = observedIndexes.at(-1) ?? null;
-  const duplicatePlateIndexes = observedIndexes.filter((index) => (counts.get(index) ?? 0) > 1);
-  const missingPlateIndexes: number[] = [];
+  const retriedPlateIndexes = observedIndexes.filter(
+    (index) => (attemptCounts.get(index) ?? 0) > 1,
+  );
+  const missingCompletedPlateIndexes: number[] = [];
 
   if (observedStart !== null && observedEnd !== null) {
     for (let index = observedStart; index <= observedEnd; index += 1) {
-      if (!counts.has(index)) missingPlateIndexes.push(index);
+      if (!completedIndexes.has(index)) missingCompletedPlateIndexes.push(index);
     }
   }
 
   return {
-    printedCount: plates.length,
-    uniquePlateCount: observedIndexes.length,
+    attemptCount: plates.length,
+    completedCount,
+    uniqueObservedPlateCount: observedIndexes.length,
+    uniqueCompletedPlateCount: completedIndexes.size,
     observedStart,
     observedEnd,
-    duplicatePlateIndexes,
-    missingPlateIndexes,
+    retriedPlateIndexes,
+    missingCompletedPlateIndexes,
     unknownPlateIndexCount,
-    isContiguous: missingPlateIndexes.length === 0,
   };
 }
 

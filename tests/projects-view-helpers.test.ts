@@ -7,22 +7,24 @@ import {
 
 it("summarizes observed project plate coverage", () => {
   const coverage = getProjectPlateCoverage([
-    { plateIndex: 1 },
-    { plateIndex: 1 },
-    { plateIndex: 2 },
-    { plateIndex: 4 },
-    { plateIndex: null },
+    { plateIndex: 1, status: "finish" },
+    { plateIndex: 1, status: "cancel" },
+    { plateIndex: 2, status: "finish" },
+    { plateIndex: 3, status: "cancel" },
+    { plateIndex: 4, status: "finish" },
+    { plateIndex: null, status: "finish" },
   ]);
 
   expect(coverage).toEqual({
-    printedCount: 5,
-    uniquePlateCount: 3,
+    attemptCount: 6,
+    completedCount: 4,
+    uniqueObservedPlateCount: 4,
+    uniqueCompletedPlateCount: 3,
     observedStart: 1,
     observedEnd: 4,
-    duplicatePlateIndexes: [1],
-    missingPlateIndexes: [3],
+    retriedPlateIndexes: [1],
+    missingCompletedPlateIndexes: [3],
     unknownPlateIndexCount: 1,
-    isContiguous: false,
   });
 });
 

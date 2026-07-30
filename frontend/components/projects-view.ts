@@ -59,22 +59,22 @@ function ProjectPlateCoverageSummary({ plates }: { plates: ProjectPlateRow[] }) 
   return html`<section class="admin-section project-plate-coverage">
     <h3 class="admin-section-title">Plate coverage</h3>
     <div class="totals-bar">
-      <span>Printed plates: <strong>${coverage.printedCount}</strong></span>
-      <span>Unique plate numbers: <strong>${coverage.uniquePlateCount}</strong></span>
+      <span>Print attempts: <strong>${coverage.attemptCount}</strong></span>
+      <span>Successful attempts: <strong>${coverage.completedCount}</strong></span>
+      <span>Successful plate numbers: <strong>${coverage.uniqueCompletedPlateCount}</strong></span>
+      <span>Observed plate numbers: <strong>${coverage.uniqueObservedPlateCount}</strong></span>
       <span>Observed range: <strong>${observedRange}</strong></span>
       <span
-        >Missing in range:
-        <strong>${formatPlateIndexList(coverage.missingPlateIndexes)}</strong></span
+        >Missing successful print:
+        <strong>${formatPlateIndexList(coverage.missingCompletedPlateIndexes)}</strong></span
       >
-      <span
-        >Reprinted: <strong>${formatPlateIndexList(coverage.duplicatePlateIndexes)}</strong></span
-      >
+      <span>Retried: <strong>${formatPlateIndexList(coverage.retriedPlateIndexes)}</strong></span>
       ${coverage.unknownPlateIndexCount > 0 &&
       html`<span>Unknown plate #: <strong>${coverage.unknownPlateIndexCount}</strong></span>`}
     </div>
     <p class="helper-text">
-      This shows what PrintWorks has seen in print history. It can detect gaps within observed plate
-      numbers, but it cannot prove a model is complete unless the expected plate count is known.
+      A plate number remains missing until PrintWorks sees a successful print. Canceled and failed
+      attempts still establish the observed range, but do not count as completed parts.
     </p>
   </section>`;
 }
@@ -102,9 +102,11 @@ function ProjectPlatesTable({ plates, loading }: { plates: ProjectPlateRow[]; lo
             (plate) =>
               html`<tr key=${plate.id}>
                 <td class="td-title">
-                  <span class="row-title"
-                    >${plate.title || `Plate ${plate.plateIndex ?? "—"}`}</span
-                  >
+                  <span class="row-title">
+                    ${plate.plateIndex === null
+                      ? plate.title || "Unknown plate"
+                      : `Plate ${plate.plateIndex}`}
+                  </span>
                 </td>
                 <td>${plate.jobTitle || `Job #${plate.jobId}`}</td>
                 <td>${plate.status || "—"}</td>
