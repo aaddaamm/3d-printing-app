@@ -55,13 +55,13 @@ describe("listUiJobs cover URLs", () => {
     mockLocalCoverExists.mockReturnValue(false);
   });
 
-  it("returns the local cover route for Bambu tasks with a stored cover even before the file is cached", () => {
+  it("omits the Bambu cover URL when the local cache file is absent", () => {
     mockDbPrepare.mockReturnValue({ all: vi.fn(() => [uiJobRow()]) });
 
     const jobs = listUiJobs();
 
     expect(jobs).toHaveLength(1);
-    expect(jobs[0]?.cover_url).toBe("/ui/covers/123");
+    expect(jobs[0]?.cover_url).toBeNull();
   });
 
   it("keeps Moonraker media URLs remote because they are served from the printer", () => {

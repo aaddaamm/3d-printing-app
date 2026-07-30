@@ -109,10 +109,7 @@ export function listUiJobs(): UiJobRow[] {
       ...row
     }) => {
       const canServeLocalCover =
-        first_task_id &&
-        /^\d+$/.test(first_task_id) &&
-        (localCoverExists(first_task_id) ||
-          (first_task_provider === "bambu" && Boolean(first_task_cover ?? first_task_thumbnail)));
+        first_task_id && /^\d+$/.test(first_task_id) && localCoverExists(first_task_id);
       const localCoverUrl = canServeLocalCover ? `/ui/covers/${first_task_id}` : null;
       const fallbackCoverUrl = providerRemoteMediaUrl({
         provider: first_task_provider,

@@ -27,12 +27,8 @@ function resolveProjectCoverUrl(fields: ProjectCoverFields): string | null {
   const latestCoverTaskId = fields.latest_cover_task_id
     ? String(fields.latest_cover_task_id)
     : null;
-  const mediaUrl = fields.latest_cover_thumbnail ?? fields.latest_cover;
   const canServeLocalCover =
-    latestCoverTaskId &&
-    /^\d+$/.test(latestCoverTaskId) &&
-    (localCoverExists(latestCoverTaskId) ||
-      (fields.latest_cover_provider === "bambu" && Boolean(mediaUrl)));
+    latestCoverTaskId && /^\d+$/.test(latestCoverTaskId) && localCoverExists(latestCoverTaskId);
   if (canServeLocalCover) return `/ui/covers/${latestCoverTaskId}`;
 
   return providerRemoteMediaUrl({
