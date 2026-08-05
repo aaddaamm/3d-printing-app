@@ -186,7 +186,11 @@ function useJobActions({
       if (!data?.job) return null;
       const { job } = data;
       applyPatchedJob(jobId, job as Record<string, unknown>);
-      return job;
+      return {
+        job,
+        deletedProjectId:
+          typeof data.deleted_project_id === "number" ? data.deleted_project_id : null,
+      };
     },
     [applyPatchedJob],
   );
@@ -200,9 +204,10 @@ function useJobActions({
 
   const handleJobProjectChange = useCallback(
     async (jobId: number, projectId: number | null) => {
-      const job = await patchJob(jobId, { project_id: projectId });
-      if (!job) return;
+      const result = await patchJob(jobId, { project_id: projectId });
+      if (!result) return null;
       refreshProjectsAndPrices();
+      return result.deletedProjectId;
     },
     [patchJob, refreshProjectsAndPrices],
   );

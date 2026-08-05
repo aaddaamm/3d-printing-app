@@ -11,6 +11,7 @@ import { ProductDetailView } from "./product-detail-view.js";
 import { ProductPrintNextView } from "./product-print-next-view.js";
 import { ProductsView } from "./products-view.js";
 import { PriceThisView } from "./price-this-view.js";
+import { toast } from "./toast.js";
 
 const html = (
   htm as unknown as {
@@ -130,7 +131,7 @@ function ProjectRouteView({
   projectsLoading: boolean;
   navigate: (path: string) => void;
   setSelectedJob: (job: Job | null) => void;
-  handleJobProjectChange: (jobId: number, projectId: number | null) => void;
+  handleJobProjectChange: (jobId: number, projectId: number | null) => Promise<number | null>;
   setProjects: (updater: Project[] | ((ps: Project[]) => Project[])) => void;
 }) {
   const project = projects.find((p) => Number(p.id) === projectId);
@@ -144,14 +145,21 @@ function ProjectRouteView({
   }
 
   const unassignedJobs = jobs.filter((j) => j.project_id == null);
+  const changeProjectJob = async (jobId: number, nextProjectId: number | null) => {
+    const deletedProjectId = await handleJobProjectChange(jobId, nextProjectId);
+    if (deletedProjectId === projectId) {
+      toast("The empty project was removed.", "success");
+      navigate("/projects");
+    }
+  };
   return html`<${ProjectDetail}
     project=${project}
     jobs=${projectJobs}
     unassignedJobs=${unassignedJobs}
     onBack=${() => navigate("/projects")}
     onJobClick=${setSelectedJob}
-    onAddJob=${(jobId: number) => handleJobProjectChange(jobId, projectId)}
-    onRemoveJob=${(jobId: number) => handleJobProjectChange(jobId, null)}
+    onAddJob=${(jobId: number) => changeProjectJob(jobId, projectId)}
+    onRemoveJob=${(jobId: number) => changeProjectJob(jobId, null)}
     onProjectUpdated=${(updated: Project) =>
       setProjects((items) =>
         items.some((item) => item.id === updated.id)
@@ -159,7 +167,7 @@ function ProjectRouteView({
           : [updated, ...items],
       )}
     onMoveJobToProject=${(jobId: number, newProjectId: number) =>
-      handleJobProjectChange(jobId, newProjectId)}
+      changeProjectJob(jobId, newProjectId)}
     onNavigateToProject=${(newProjectId: number) => navigate(`/projects/${newProjectId}`)}
     onNavigateToProduct=${(productId: number) => navigate(`/products/${productId}`)}
   />`;

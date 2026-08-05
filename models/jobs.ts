@@ -69,15 +69,24 @@ export function patchJob(id: number, patch: JobPatch): Job | undefined {
   const existing = stmts.getJobById.get(id);
   if (!existing) return undefined;
 
+  const nextProjectId = patchField(patch.project_id, existing.project_id);
+
   stmts.patchJob.run({
     id,
     customer: patchField(patch.customer, existing.customer),
     notes: patchField(patch.notes, existing.notes),
     price_override: patchField(patch.price_override, existing.price_override),
     status_override: patchField(patch.status_override, existing.status_override),
-    project_id: patchField(patch.project_id, existing.project_id),
+    project_id: nextProjectId,
     extra_labor_minutes: patchField(patch.extra_labor_minutes, existing.extra_labor_minutes),
   });
+
+  // A manually consolidated project has no value once its final job is moved
+  // elsewhere or unassigned. Leave intentionally empty projects alone: this
+  // only runs when this update changed the job's project.
+  if (existing.project_id != null && existing.project_id !== nextProjectId) {
+    stmts.deleteEmptyProject.run(existing.project_id, existing.project_id);
+  }
 
   invalidateJobPriceCache(id);
   invalidateProjectPriceCache();
@@ -90,10 +99,9 @@ export function getJobWithDetails(
   const job = stmts.getJobById.get(id);
   if (!job) return null;
   const plates = db
-    .prepare<
-      [string],
-      PrintTask
-    >("SELECT * FROM print_tasks WHERE session_id = ? ORDER BY plateIndex")
+    .prepare<[string], PrintTask>(
+      "SELECT * FROM print_tasks WHERE session_id = ? ORDER BY plateIndex",
+    )
     .all(job.session_id);
   const filaments = stmts.getFilamentsBySession.all(job.session_id);
   return { job, plates, filaments };

@@ -1,17 +1,21 @@
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { Job, LaborConfig, MachineRate, MaterialRate } from "../lib/types.js";
 
-const { mockGetJobById, mockPatchJobRun, mockDbPrepare } = vi.hoisted(() => ({
-  mockGetJobById: vi.fn(),
-  mockPatchJobRun: vi.fn(),
-  mockDbPrepare: vi.fn(),
-}));
+const { mockGetJobById, mockPatchJobRun, mockDeleteEmptyProjectRun, mockDbPrepare } = vi.hoisted(
+  () => ({
+    mockGetJobById: vi.fn(),
+    mockPatchJobRun: vi.fn(),
+    mockDeleteEmptyProjectRun: vi.fn(),
+    mockDbPrepare: vi.fn(),
+  }),
+);
 
 vi.mock("../lib/db.js", () => ({
   db: { prepare: mockDbPrepare },
   stmts: {
     getJobById: { get: mockGetJobById },
     patchJob: { run: mockPatchJobRun },
+    deleteEmptyProject: { run: mockDeleteEmptyProjectRun },
   },
 }));
 
@@ -128,6 +132,22 @@ describe("patchJob", () => {
     expect(mockPatchJobRun).toHaveBeenCalledWith(
       expect.objectContaining({ customer: null, notes: null }),
     );
+  });
+
+  it("removes the previous project when its final job is unassigned", () => {
+    mockGetJobById.mockReturnValue(job({ project_id: 7 }));
+
+    patchJob(1, { project_id: null });
+
+    expect(mockDeleteEmptyProjectRun).toHaveBeenCalledWith(7, 7);
+  });
+
+  it("does not remove a project when the job stays assigned to it", () => {
+    mockGetJobById.mockReturnValue(job({ project_id: 7 }));
+
+    patchJob(1, {});
+
+    expect(mockDeleteEmptyProjectRun).not.toHaveBeenCalled();
   });
 });
 

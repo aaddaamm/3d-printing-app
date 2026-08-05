@@ -95,6 +95,12 @@ export function createProjectStatements(db: Database.Database) {
 
     deleteProject: db.prepare<[number]>("DELETE FROM projects WHERE id = ?"),
 
+    deleteEmptyProject: db.prepare<[number, number]>(`
+      DELETE FROM projects
+      WHERE id = ?
+        AND NOT EXISTS (SELECT 1 FROM jobs WHERE project_id = ?)
+    `),
+
     unassignProjectJobs: db.prepare<[number]>(
       "UPDATE jobs SET project_id = NULL WHERE project_id = ?",
     ),

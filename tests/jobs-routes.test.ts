@@ -53,6 +53,20 @@ describe("PATCH /jobs/:id validation", () => {
     expect(mockPatchJob).toHaveBeenCalledWith(1, expect.objectContaining({ project_id: null }));
   });
 
+  it("reports when unassigning a job removed its now-empty project", async () => {
+    mockGetJobById.mockReturnValue({ id: 1, customer: null, project_id: 10 });
+    mockPatchJob.mockReturnValue({ id: 1, customer: null, project_id: null });
+    mockGetProjectById.mockReturnValue(undefined);
+
+    const res = await patchJobRoute(1, { project_id: null });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({
+      job: { id: 1, customer: null, project_id: null },
+      deleted_project_id: 10,
+    });
+  });
+
   it("rejects a non-integer project_id", async () => {
     const res = await patchJobRoute(1, { project_id: 1.5 });
 

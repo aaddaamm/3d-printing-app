@@ -116,7 +116,8 @@ jobs.get("/:id", (c) => {
 jobs.patch("/:id", async (c) => {
   const idOrError = requireId(c);
   if (idOrError instanceof Response) return idOrError;
-  if (!getJobById(idOrError)) return jsonError(c, "Not found", 404);
+  const existingJob = getJobById(idOrError);
+  if (!existingJob) return jsonError(c, "Not found", 404);
 
   const body = await parseJsonBody<JobPatchBody>(c);
   if (!body) return jsonError(c, "Invalid JSON body", 400);
@@ -145,7 +146,11 @@ jobs.patch("/:id", async (c) => {
     project_id: body.project_id,
     extra_labor_minutes: body.extra_labor_minutes,
   });
-  return c.json({ job });
+  const previousProjectId = existingJob.project_id;
+  const projectChanged = previousProjectId != null && previousProjectId !== job?.project_id;
+  const deletedProjectId =
+    projectChanged && !getProjectById(previousProjectId) ? previousProjectId : null;
+  return c.json({ job, deleted_project_id: deletedProjectId });
 });
 
 jobs.get("/:id/price", (c) => {
