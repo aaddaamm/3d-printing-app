@@ -169,10 +169,9 @@ async function runCoverSyncAndSummary(): Promise<void> {
   logInfo("");
 
   const statusSummary = db
-    .prepare<
-      [],
-      { status: string | null; n: number }
-    >("SELECT status, COUNT(*) AS n FROM print_tasks GROUP BY status ORDER BY n DESC")
+    .prepare<[], { status: string | null; n: number }>(
+      "SELECT status, COUNT(*) AS n FROM print_tasks GROUP BY status ORDER BY n DESC",
+    )
     .all();
 
   logInfo(bold("By status:"));

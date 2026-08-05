@@ -88,26 +88,30 @@ function PricingSection({ jobId }: { jobId: number }) {
         <span>Machine</span><span>${fmtCurrency(price.machine_cost)}</span>
       </div>
       <div class="pricing-row"><span>Labor</span><span>${fmtCurrency(price.labor_cost)}</span></div>
-      ${price.extra_labor_cost > 0 &&
-      html`
-        <div class="pricing-row pricing-extra-labor">
-          <span>Extra labor</span><span>${fmtCurrency(price.extra_labor_cost)}</span>
-        </div>
-      `}
+      ${
+        price.extra_labor_cost > 0 &&
+        html`
+          <div class="pricing-row pricing-extra-labor">
+            <span>Extra labor</span><span>${fmtCurrency(price.extra_labor_cost)}</span>
+          </div>
+        `
+      }
       <div class="pricing-divider"></div>
       <div class="pricing-row pricing-base">
         <span>Base</span><span>${fmtCurrency(price.base_price)}</span>
       </div>
-      ${markup !== 0 &&
-      html`
-        <div class="pricing-row pricing-markup">
-          <span>Markup</span>
-          <span
-            >${markup > 0 ? "+" : ""}${fmtCurrency(markup)}
-            (${markupPct > 0 ? "+" : ""}${markupPct}%)</span
-          >
-        </div>
-      `}
+      ${
+        markup !== 0 &&
+        html`
+          <div class="pricing-row pricing-markup">
+            <span>Markup</span>
+            <span
+              >${markup > 0 ? "+" : ""}${fmtCurrency(markup)}
+              (${markupPct > 0 ? "+" : ""}${markupPct}%)</span
+            >
+          </div>
+        `
+      }
       <div class="pricing-row pricing-final">
         <span
           >Final${price.is_override ? html`<span class="override-tag">override</span>` : ""}</span
@@ -211,9 +215,11 @@ export function Modal({
             <div class="detail-item">
               <label>Print Run</label>
               <div class="detail-val">
-                ${(job.print_run ?? 1) > 1
-                  ? `Run #${job.print_run} of this design`
-                  : "1st print of this design"}
+                ${
+                  (job.print_run ?? 1) > 1
+                    ? `Run #${job.print_run} of this design`
+                    : "1st print of this design"
+                }
               </div>
             </div>
           </div>
@@ -288,32 +294,36 @@ export function Modal({
               ${STATUS_OPTIONS.map((s) => html`<option key=${s} value=${s}>${s}</option>`)}
             </select>
           </div>
-          ${projects &&
-          html`
-            <div class="modal-project-row">
-              <label class="modal-project-label">Project</label>
-              <select
-                class="modal-project-select"
-                value=${job.project_id ?? ""}
-                onChange=${handleProjectChange}
-              >
-                <option value="">— None —</option>
-                ${projects.map((p) => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
-              </select>
-              ${job.project_id != null &&
-              html`
-                <button
-                  class="btn-link"
-                  onClick=${() => {
-                    onClose();
-                    onNavigateToProject(Number(job.project_id));
-                  }}
+          ${
+            projects &&
+            html`
+              <div class="modal-project-row">
+                <label class="modal-project-label">Project</label>
+                <select
+                  class="modal-project-select"
+                  value=${job.project_id ?? ""}
+                  onChange=${handleProjectChange}
                 >
-                  View →
-                </button>
-              `}
-            </div>
-          `}
+                  <option value="">— None —</option>
+                  ${projects.map((p) => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
+                </select>
+                ${
+                  job.project_id != null &&
+                  html`
+                    <button
+                      class="btn-link"
+                      onClick=${() => {
+                        onClose();
+                        onNavigateToProject(Number(job.project_id));
+                      }}
+                    >
+                      View →
+                    </button>
+                  `
+                }
+              </div>
+            `
+          }
         </div>
       </div>
     </div>

@@ -107,9 +107,11 @@ export function ProductCard({
           <span>${product.source_label || "No source"}</span>
           <span
             class=${`product-image-hint product-image-hint--${product.image_selection_mode}`}
-            title=${product.main_photo_source_type
-              ? `${productImageModeHint(product.image_selection_mode)}: ${product.main_photo_source_type}`
-              : productImageModeHint(product.image_selection_mode)}
+            title=${
+              product.main_photo_source_type
+                ? `${productImageModeHint(product.image_selection_mode)}: ${product.main_photo_source_type}`
+                : productImageModeHint(product.image_selection_mode)
+            }
           >
             ${productImageModeHint(product.image_selection_mode)}
           </span>
@@ -122,33 +124,37 @@ export function ProductCard({
           />
           <span class="product-license-badge">${product.license_label || "License unknown"}</span>
           <span
-            class=${"product-publication-badge " +
-            (product.sales_companion_visible
-              ? "product-publication-badge--visible"
-              : "product-publication-badge--private")}
+            class=${
+              "product-publication-badge " +
+              (product.sales_companion_visible
+                ? "product-publication-badge--visible"
+                : "product-publication-badge--private")
+            }
           >
             ${product.sales_companion_visible ? "Sales visible" : "Sales private"}
           </span>
         </div>
         <div class="product-card-footer">
           <strong>${formatPrice(product.target_sale_price)}</strong>
-          ${onStatusChange
-            ? html`<label class="product-status-select" onClick=${stop}>
-                <span>Status</span>
-                <select
-                  value=${product.status_id}
-                  onChange=${(event: Event) => {
-                    event.stopPropagation();
-                    onStatusChange(product, (event.target as HTMLSelectElement).value);
-                  }}
-                >
-                  ${PRODUCT_STATUSES.map(
-                    (status) =>
-                      html`<option key=${status.id} value=${status.id}>${status.label}</option>`,
-                  )}
-                </select>
-              </label>`
-            : html`<span class="product-status-pill">${product.status_label}</span>`}
+          ${
+            onStatusChange
+              ? html`<label class="product-status-select" onClick=${stop}>
+                  <span>Status</span>
+                  <select
+                    value=${product.status_id}
+                    onChange=${(event: Event) => {
+                      event.stopPropagation();
+                      onStatusChange(product, (event.target as HTMLSelectElement).value);
+                    }}
+                  >
+                    ${PRODUCT_STATUSES.map(
+                      (status) =>
+                        html`<option key=${status.id} value=${status.id}>${status.label}</option>`,
+                    )}
+                  </select>
+                </label>`
+              : html`<span class="product-status-pill">${product.status_label}</span>`
+          }
         </div>
       </div>
     </article>

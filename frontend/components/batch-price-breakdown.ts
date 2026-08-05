@@ -42,9 +42,11 @@ export function BatchPriceBreakdown({ batch }: { batch: BatchSummary }) {
     <${PriceMetric} label="Margin" value=${formatBatchMargin(batch.estimated_margin_pct)} />
     <${PriceMetric}
       label="Material"
-      value=${batch.total_filament_g === null || batch.total_filament_g === undefined
-        ? "—"
-        : `${batch.total_filament_g.toFixed(1)} g`}
+      value=${
+        batch.total_filament_g === null || batch.total_filament_g === undefined
+          ? "—"
+          : `${batch.total_filament_g.toFixed(1)} g`
+      }
     />
     <${PriceMetric} label="Print time" value=${formatBatchTime(batch.total_print_time_s)} />
   </div>`;

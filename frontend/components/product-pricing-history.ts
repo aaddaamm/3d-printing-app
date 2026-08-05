@@ -219,29 +219,35 @@ function ChannelCard({ card }: { card: ProductPricingCard }) {
       <span>Failure buffer ${percent(assumptions.failure_buffer_pct)}</span>
       <span>Overhead buffer ${percent(assumptions.overhead_buffer_pct)}</span>
       <strong>${card.provenanceLabel}</strong>
-      ${card.provenance === "legacy_v1"
-        ? html`<span>${card.storedRateCount} legacy material/printer rate assumptions</span>
-            <span
-              >Material weights, line costs, and task-level machine lines were not recorded.</span
-            >`
-        : html`<span
-              >${card.assumptions.material_contributions.length} stored material contributions</span
-            >
-            <span
-              >${card.assumptions.machine_contributions.length} stored task machine
-              contributions</span
-            >`}
+      ${
+        card.provenance === "legacy_v1"
+          ? html`<span>${card.storedRateCount} legacy material/printer rate assumptions</span>
+              <span
+                >Material weights, line costs, and task-level machine lines were not recorded.</span
+              >`
+          : html`<span
+                >${card.assumptions.material_contributions.length} stored material
+                contributions</span
+              >
+              <span
+                >${card.assumptions.machine_contributions.length} stored task machine
+                contributions</span
+              >`
+      }
     </div>
-    ${card.warningCount > 0
-      ? html`<div class="product-pricing-warnings">
-          <strong
-            >${card.warningCount} saved ${card.warningCount === 1 ? "warning" : "warnings"}</strong
-          >
-          <ul>
-            ${card.warnings.map((warning) => html`<li>${warning}</li>`)}
-          </ul>
-        </div>`
-      : html`<p class="product-pricing-no-warnings">No saved warnings.</p>`}
+    ${
+      card.warningCount > 0
+        ? html`<div class="product-pricing-warnings">
+            <strong
+              >${card.warningCount} saved
+              ${card.warningCount === 1 ? "warning" : "warnings"}</strong
+            >
+            <ul>
+              ${card.warnings.map((warning) => html`<li>${warning}</li>`)}
+            </ul>
+          </div>`
+        : html`<p class="product-pricing-no-warnings">No saved warnings.</p>`
+    }
   </article>`;
 }
 
@@ -255,9 +261,11 @@ function HistoryRow({ batch }: { batch: SavedProductPricingBatch }) {
     <div>
       <strong>${fmtDate(batch.created_at)}</strong>
       <span>Batch #${batch.batch_id}</span>
-      ${batch.provenance === "legacy_v1"
-        ? html`<span>Legacy snapshot — limited material provenance</span>`
-        : null}
+      ${
+        batch.provenance === "legacy_v1"
+          ? html`<span>Legacy snapshot — limited material provenance</span>`
+          : null
+      }
     </div>
     <div>
       <span>${batch.sellable_units} successful</span>

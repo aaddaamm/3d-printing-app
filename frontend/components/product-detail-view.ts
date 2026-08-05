@@ -287,9 +287,9 @@ function DetailFacts({ product }: { product: ProductSummary }) {
     <div>
       <span>Price</span
       ><strong
-        >${product.target_sale_price === null
-          ? "—"
-          : `$${product.target_sale_price.toFixed(2)}`}</strong
+        >${
+          product.target_sale_price === null ? "—" : `$${product.target_sale_price.toFixed(2)}`
+        }</strong
       >
     </div>
     <div><span>Restock</span><strong>${product.restock_priority}</strong></div>
@@ -306,9 +306,9 @@ function DetailFacts({ product }: { product: ProductSummary }) {
     <div>
       <span>Printer</span
       ><strong
-        >${product.preferred_printer_id === null
-          ? "Not set"
-          : `#${product.preferred_printer_id}`}</strong
+        >${
+          product.preferred_printer_id === null ? "Not set" : `#${product.preferred_printer_id}`
+        }</strong
       >
     </div>
   </div>`;
@@ -516,11 +516,13 @@ export function ProductDetailView({
         <${ProductImagePanel} product=${product} onProductChange=${updateImageProduct} />
         <${DetailFacts} product=${product} />
         <div class=${"product-license-warning product-license-warning--" + product.can_sell_level}>
-          ${product.can_sell_level === "red"
-            ? "Do not list until commercial rights are verified."
-            : product.can_sell_level === "yellow"
-              ? "Listing may need attribution or additional notes."
-              : "Commercial listing appears allowed."}
+          ${
+            product.can_sell_level === "red"
+              ? "Do not list until commercial rights are verified."
+              : product.can_sell_level === "yellow"
+                ? "Listing may need attribution or additional notes."
+                : "Commercial listing appears allowed."
+          }
         </div>
       </aside>
 
@@ -737,16 +739,20 @@ export function ProductDetailView({
             <span>Visible in Sales Companion</span>
           </label>
           <p class="admin-section-desc">
-            ${form.salesCompanionVisible
-              ? "Visible Products publish only their newest complete saved Direct and Etsy pricing."
-              : "Private by default. Enable this only when the Product is ready for local Sales Companion use."}
+            ${
+              form.salesCompanionVisible
+                ? "Visible Products publish only their newest complete saved Direct and Etsy pricing."
+                : "Private by default. Enable this only when the Product is ready for local Sales Companion use."
+            }
           </p>
-          ${!product.main_photo_path
-            ? html`<p class="sales-companion-image-warning">
-                No identification image is selected. Visibility is allowed, but Sales Companion will
-                show this Product without an image.
-              </p>`
-            : null}
+          ${
+            !product.main_photo_path
+              ? html`<p class="sales-companion-image-warning">
+                  No identification image is selected. Visibility is allowed, but Sales Companion
+                  will show this Product without an image.
+                </p>`
+              : null
+          }
         </section>
 
         <section class="admin-section">

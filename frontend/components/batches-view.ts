@@ -97,9 +97,11 @@ function BatchCreateCard({
     <button
       class="btn-primary"
       type="submit"
-      disabled=${saving ||
-      !positiveIntegerOrNull(form.productId) ||
-      !positiveIntegerOrNull(form.plannedQuantity)}
+      disabled=${
+        saving ||
+        !positiveIntegerOrNull(form.productId) ||
+        !positiveIntegerOrNull(form.plannedQuantity)
+      }
     >
       ${saving ? "Adding…" : "Add Batch"}
     </button>
@@ -187,19 +189,21 @@ export function BatchesView({ navigate }: { navigate: (path: string) => void }) 
       />
     </section>
 
-    ${loading
-      ? html`<div class="empty">Loading batches…</div>`
-      : filtered.length
-        ? html`<div class="batch-grid">
-            ${filtered.map(
-              (batch) =>
-                html`<${BatchCard}
-                  key=${batch.id}
-                  batch=${batch}
-                  onOpen=${() => navigate(`/batches/${batch.id}`)}
-                />`,
-            )}
-          </div>`
-        : html`<div class="empty">No batches match your filters.</div>`}
+    ${
+      loading
+        ? html`<div class="empty">Loading batches…</div>`
+        : filtered.length
+          ? html`<div class="batch-grid">
+              ${filtered.map(
+                (batch) =>
+                  html`<${BatchCard}
+                    key=${batch.id}
+                    batch=${batch}
+                    onOpen=${() => navigate(`/batches/${batch.id}`)}
+                  />`,
+              )}
+            </div>`
+          : html`<div class="empty">No batches match your filters.</div>`
+    }
   </main>`;
 }

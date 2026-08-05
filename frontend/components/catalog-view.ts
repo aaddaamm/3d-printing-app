@@ -54,11 +54,17 @@ function CatalogFileCard({ file }: { file: CatalogFileSummary }) {
     class=${`catalog-file-card ${file.scan_status === "missing" ? "is-missing" : ""}`}
   >
     <div class="catalog-file-preview">
-      ${file.preview_url
-        ? html`<img src=${file.preview_url} alt=${`Preview of ${file.filename}`} loading="lazy" />`
-        : html`<div class="catalog-file-placeholder">
-            ${(file.extension ?? "file").toUpperCase()}
-          </div>`}
+      ${
+        file.preview_url
+          ? html`<img
+              src=${file.preview_url}
+              alt=${`Preview of ${file.filename}`}
+              loading="lazy"
+            />`
+          : html`<div class="catalog-file-placeholder">
+              ${(file.extension ?? "file").toUpperCase()}
+            </div>`
+      }
     </div>
     <div class="catalog-file-body">
       <h4 class="catalog-file-name" title=${file.filename}>${file.filename}</h4>
@@ -68,9 +74,11 @@ function CatalogFileCard({ file }: { file: CatalogFileSummary }) {
         <span>${formatDate(file.modified_at)}</span>
         <span>${file.scan_status === "missing" ? "missing" : file.review_status}</span>
       </div>
-      ${file.linked_product_name
-        ? html`<div class="catalog-file-link">Linked to ${file.linked_product_name}</div>`
-        : null}
+      ${
+        file.linked_product_name
+          ? html`<div class="catalog-file-link">Linked to ${file.linked_product_name}</div>`
+          : null
+      }
     </div>
   </article>`;
 }
@@ -116,11 +124,17 @@ function CatalogInboxCard({
 
   return html`<article class="catalog-inbox-card">
     <div class="catalog-file-preview catalog-inbox-preview">
-      ${file.preview_url
-        ? html`<img src=${file.preview_url} alt=${`Preview of ${file.filename}`} loading="lazy" />`
-        : html`<div class="catalog-file-placeholder">
-            ${(file.extension ?? "file").toUpperCase()}
-          </div>`}
+      ${
+        file.preview_url
+          ? html`<img
+              src=${file.preview_url}
+              alt=${`Preview of ${file.filename}`}
+              loading="lazy"
+            />`
+          : html`<div class="catalog-file-placeholder">
+              ${(file.extension ?? "file").toUpperCase()}
+            </div>`
+      }
     </div>
     <div class="catalog-inbox-body">
       <div>
@@ -141,16 +155,18 @@ function CatalogInboxCard({
           )}
         </select>
       </label>
-      ${useExisting
-        ? null
-        : html`<label class="form-label">
-            Product name
-            <input
-              class="form-input"
-              value=${productName}
-              onInput=${(event: Event) => setProductName((event.target as HTMLInputElement).value)}
-            />
-          </label>`}
+      ${
+        useExisting
+          ? null
+          : html`<label class="form-label">
+              Product name
+              <input
+                class="form-input"
+                value=${productName}
+                onInput=${(event: Event) => setProductName((event.target as HTMLInputElement).value)}
+              />
+            </label>`
+      }
       <div class="catalog-inbox-actions">
         <button class="btn-primary" onClick=${adopt} disabled=${busy || !canAdopt}>
           ${busy ? "Working…" : "Adopt reference"}
@@ -197,15 +213,17 @@ function CatalogCandidateCard({
 
   return html`<article class="catalog-inbox-card catalog-candidate-card">
     <div class="catalog-file-preview catalog-inbox-preview">
-      ${primary?.preview_url
-        ? html`<img
-            src=${primary.preview_url}
-            alt=${`Preview of ${primary.filename}`}
-            loading="lazy"
-          />`
-        : html`<div class="catalog-file-placeholder">
-            ${(primary?.extension ?? "files").toUpperCase()}
-          </div>`}
+      ${
+        primary?.preview_url
+          ? html`<img
+              src=${primary.preview_url}
+              alt=${`Preview of ${primary.filename}`}
+              loading="lazy"
+            />`
+          : html`<div class="catalog-file-placeholder">
+              ${(primary?.extension ?? "files").toUpperCase()}
+            </div>`
+      }
     </div>
     <div class="catalog-inbox-body catalog-candidate-body">
       <div>
@@ -242,29 +260,33 @@ function CatalogCandidateCard({
           )}
         </select>
       </label>
-      ${useExisting
-        ? null
-        : html`<label class="form-label">
-            Product name
-            <input
-              class="form-input"
-              value=${productName}
-              onInput=${(event: Event) => setProductName((event.target as HTMLInputElement).value)}
-            />
-          </label>`}
+      ${
+        useExisting
+          ? null
+          : html`<label class="form-label">
+              Product name
+              <input
+                class="form-input"
+                value=${productName}
+                onInput=${(event: Event) => setProductName((event.target as HTMLInputElement).value)}
+              />
+            </label>`
+      }
       <div class="catalog-inbox-actions catalog-candidate-actions">
         <button class="btn-primary" onClick=${adopt} disabled=${busy || !canAdopt}>
           ${busy ? "Working…" : `Adopt ${candidate.files.length === 1 ? "file" : "package"}`}
         </button>
-        ${candidate.files.length > 1
-          ? html`<button
-              class="btn-secondary"
-              onClick=${() => onReviewSeparately(candidate)}
-              disabled=${busy}
-            >
-              Review separately
-            </button>`
-          : null}
+        ${
+          candidate.files.length > 1
+            ? html`<button
+                class="btn-secondary"
+                onClick=${() => onReviewSeparately(candidate)}
+                disabled=${busy}
+              >
+                Review separately
+              </button>`
+            : null
+        }
       </div>
     </div>
   </article>`;
@@ -314,28 +336,32 @@ function ScanSummary({ summary }: { summary: CatalogScanSummary | null }) {
         <${SummaryPill} label="skipped" value=${summary.skipped} />
         <${SummaryPill} label="failed" value=${summary.failed} />
       </div>
-      ${summary.incompleteRoots > 0
-        ? html`<p class="catalog-scan-warning">
-            Missing-file detection was skipped for ${summary.incompleteRoots} unreadable
-            ${summary.incompleteRoots === 1 ? "root" : "roots"}.
-          </p>`
-        : null}
-      ${summary.errors.length > 0
-        ? html`<details class="catalog-scan-errors">
-            <summary>
-              Review ${summary.errors.length} scan
-              ${summary.errors.length === 1 ? "error" : "errors"}
-            </summary>
-            <ul>
-              ${summary.errors.map(
-                (error) =>
-                  html`<li>
-                    <strong>${error.phase}</strong> — ${error.path}<br />${error.message}
-                  </li>`,
-              )}
-            </ul>
-          </details>`
-        : null}
+      ${
+        summary.incompleteRoots > 0
+          ? html`<p class="catalog-scan-warning">
+              Missing-file detection was skipped for ${summary.incompleteRoots} unreadable
+              ${summary.incompleteRoots === 1 ? "root" : "roots"}.
+            </p>`
+          : null
+      }
+      ${
+        summary.errors.length > 0
+          ? html`<details class="catalog-scan-errors">
+              <summary>
+                Review ${summary.errors.length} scan
+                ${summary.errors.length === 1 ? "error" : "errors"}
+              </summary>
+              <ul>
+                ${summary.errors.map(
+                  (error) =>
+                    html`<li>
+                      <strong>${error.phase}</strong> — ${error.path}<br />${error.message}
+                    </li>`,
+                )}
+              </ul>
+            </details>`
+          : null
+      }
     </div>
   `;
 }
@@ -687,14 +713,16 @@ export function CatalogView() {
               ${root.last_scanned_at ? ` · scanned ${root.last_scanned_at}` : ""}
             </div>
           </div>
-          ${root.is_active
-            ? html`<button
-                class="btn-secondary btn-compact"
-                onClick=${() => deactivateRoot(root.id)}
-              >
-                Deactivate
-              </button>`
-            : null}
+          ${
+            root.is_active
+              ? html`<button
+                  class="btn-secondary btn-compact"
+                  onClick=${() => deactivateRoot(root.id)}
+                >
+                  Deactivate
+                </button>`
+              : null
+          }
         </div>`,
     )}
   </div>`;
@@ -834,9 +862,11 @@ export function CatalogView() {
             </p>
           </div>
           <div class="catalog-file-count">
-            ${duplicatesLoaded
-              ? `${duplicateTotal.toLocaleString()} groups · ${duplicateExtraCopies.toLocaleString()} extra copies`
-              : "Not loaded"}
+            ${
+              duplicatesLoaded
+                ? `${duplicateTotal.toLocaleString()} groups · ${duplicateExtraCopies.toLocaleString()} extra copies`
+                : "Not loaded"
+            }
           </div>
         </div>
         ${duplicatePanel}

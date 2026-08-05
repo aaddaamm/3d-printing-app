@@ -135,26 +135,28 @@ export function AddJobsModal({
             value=${q}
             onInput=${(e: Event) => setQ((e.target as HTMLInputElement).value)}
           />
-          ${filtered.length === 0
-            ? html`<div class="empty" style="padding:16px 0">
-                ${q ? "No matches." : "All jobs are already assigned to projects."}
-              </div>`
-            : html`<div class="add-jobs-list">
-                ${filtered.map(
-                  (job: Job) => html`
-                    <div class="add-jobs-row" key=${job.id} onClick=${() => onAdd(job.id)}>
-                      <${RowThumb} url=${job.cover_url} />
-                      <div class="add-jobs-info">
-                        <div class="add-jobs-title">${job.designTitle || "Untitled Job"}</div>
-                        <div class="add-jobs-meta">
-                          ${fmtDateShort(job.startTime)} · ${job.deviceModel || "—"}
+          ${
+            filtered.length === 0
+              ? html`<div class="empty" style="padding:16px 0">
+                  ${q ? "No matches." : "All jobs are already assigned to projects."}
+                </div>`
+              : html`<div class="add-jobs-list">
+                  ${filtered.map(
+                    (job: Job) => html`
+                      <div class="add-jobs-row" key=${job.id} onClick=${() => onAdd(job.id)}>
+                        <${RowThumb} url=${job.cover_url} />
+                        <div class="add-jobs-info">
+                          <div class="add-jobs-title">${job.designTitle || "Untitled Job"}</div>
+                          <div class="add-jobs-meta">
+                            ${fmtDateShort(job.startTime)} · ${job.deviceModel || "—"}
+                          </div>
                         </div>
+                        <button class="btn-primary add-jobs-btn">Add</button>
                       </div>
-                      <button class="btn-primary add-jobs-btn">Add</button>
-                    </div>
-                  `,
-                )}
-              </div>`}
+                    `,
+                  )}
+                </div>`
+          }
         </div>
       </div>
     </div>

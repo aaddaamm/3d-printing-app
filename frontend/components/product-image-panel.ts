@@ -446,20 +446,22 @@ export function ProductImagePanel({
 
   return html`<section class="product-image-panel" aria-labelledby="product-image-title">
     <div class="product-image-current">
-      ${product.main_photo_path
-        ? html`<img
-            class="product-detail-photo"
-            src=${product.main_photo_path}
-            alt=${`${product.name} identification image`}
-          />`
-        : html`<div
-            class="product-detail-photo product-detail-photo--empty"
-            role="img"
-            aria-label=${`${product.name} has no identification image`}
-          >
-            <span aria-hidden="true">▧</span>
-            <span>No identification image</span>
-          </div>`}
+      ${
+        product.main_photo_path
+          ? html`<img
+              class="product-detail-photo"
+              src=${product.main_photo_path}
+              alt=${`${product.name} identification image`}
+            />`
+          : html`<div
+              class="product-detail-photo product-detail-photo--empty"
+              role="img"
+              aria-label=${`${product.name} has no identification image`}
+            >
+              <span aria-hidden="true">▧</span>
+              <span>No identification image</span>
+            </div>`
+      }
     </div>
     <div class="product-image-panel-body">
       <div class="product-image-heading">
@@ -485,37 +487,47 @@ export function ProductImagePanel({
                 class=${`product-image-candidate${candidate.available ? "" : " product-image-candidate--unavailable"}`}
                 disabled=${!candidate.available || Boolean(busyAction)}
                 onClick=${() => chooseCandidate(candidate)}
-                aria-label=${candidate.available
-                  ? candidateActionLabel(candidate)
-                  : `${candidate.label} unavailable`}
+                aria-label=${
+                  candidate.available
+                    ? candidateActionLabel(candidate)
+                    : `${candidate.label} unavailable`
+                }
                 aria-describedby=${warningId}
               >
-                ${candidate.url
-                  ? html`<img
-                      src=${candidate.url}
-                      alt=${`${candidate.label} candidate for ${product.name}`}
-                      loading="lazy"
-                    />`
-                  : html`<span class="product-image-candidate-placeholder" aria-hidden="true"
-                      >▧</span
-                    >`}
+                ${
+                  candidate.url
+                    ? html`<img
+                        src=${candidate.url}
+                        alt=${`${candidate.label} candidate for ${product.name}`}
+                        loading="lazy"
+                      />`
+                    : html`<span class="product-image-candidate-placeholder" aria-hidden="true"
+                        >▧</span
+                      >`
+                }
                 <strong>${candidate.label || imageSourceLabel(candidate.source_type)}</strong>
                 <span>${candidateActionLabel(candidate)}</span>
               </button>
-              ${candidate.warning
-                ? html`<small id=${warningId} class="product-image-candidate-warning">
-                    ${candidate.warning}
-                  </small>`
-                : null}
+              ${
+                candidate.warning
+                  ? html`<small id=${warningId} class="product-image-candidate-warning">
+                      ${candidate.warning}
+                    </small>`
+                  : null
+              }
             </div>`;
           })}
         </div>
-        ${loadingCandidates && candidates.length === 0
-          ? html`<p class="product-image-loading">Finding local image choices…</p>`
-          : null}
-        ${!loadingCandidates && candidates.length === 0
-          ? html`<p class="product-image-loading">No image choices are available yet.</p>`
-          : null}
+        ${
+          loadingCandidates && candidates.length === 0
+            ? html`<p class="product-image-loading">Finding local image choices…</p>`
+            : null
+        }
+        ${
+          !loadingCandidates && candidates.length === 0
+            ? html`<p class="product-image-loading">No image choices are available yet.</p>`
+            : null
+        }
       </details>
 
       <div class="product-image-actions">
@@ -530,16 +542,18 @@ export function ProductImagePanel({
             onChange=${upload}
           />
         </label>
-        ${product.image_selection_mode === "manual"
-          ? html`<button
-              class="btn-secondary product-image-auto"
-              type="button"
-              disabled=${Boolean(busyAction)}
-              onClick=${returnToAuto}
-            >
-              ${busyAction === "auto" ? "Returning…" : "Return to Auto"}
-            </button>`
-          : null}
+        ${
+          product.image_selection_mode === "manual"
+            ? html`<button
+                class="btn-secondary product-image-auto"
+                type="button"
+                disabled=${Boolean(busyAction)}
+                onClick=${returnToAuto}
+              >
+                ${busyAction === "auto" ? "Returning…" : "Return to Auto"}
+              </button>`
+            : null
+        }
       </div>
 
       <div class="product-image-status" role="status" aria-live="polite">

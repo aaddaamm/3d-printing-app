@@ -162,11 +162,13 @@ export function Header({ summary, dataRange }: { summary: Summary; dataRange: Da
     <header>
       <div class="header-left">
         <h1><span class="brand-cursor" aria-hidden="true"></span><span>PrintWorks</span></h1>
-        ${hasHistoryRange &&
-        html`<div class="header-range">
-          History: ${fmtDateShort(minStart)} → ${fmtDateShort(maxStart)}
-          (${(dataRange?.task_count || 0).toLocaleString()} tasks)
-        </div>`}
+        ${
+          hasHistoryRange &&
+          html`<div class="header-range">
+            History: ${fmtDateShort(minStart)} → ${fmtDateShort(maxStart)}
+            (${(dataRange?.task_count || 0).toLocaleString()} tasks)
+          </div>`
+        }
         <${HeaderNav} loc=${loc} navigate=${navigate} />
       </div>
       <${HeaderStats} summary=${summary} />
@@ -378,9 +380,11 @@ function JobRecordRow({
         <span
           >💰
           <strong
-            >${job.final_price !== null && job.final_price !== undefined
-              ? fmtCurrency(job.final_price)
-              : "—"}</strong
+            >${
+              job.final_price !== null && job.final_price !== undefined
+                ? fmtCurrency(job.final_price)
+                : "—"
+            }</strong
           ></span
         >
         <span>🧱 <strong>${job.plate_count ?? "—"}</strong></span>
@@ -467,9 +471,11 @@ function JobCard({
             >🧵 ${fmtWeight(job.total_weight_g)}
             <${MaterialConfidence} confidence=${job.material_usage_confidence} />
           </span>
-          ${job.final_price !== null &&
-          job.final_price !== undefined &&
-          html`<span>💰 ${fmtCurrency(job.final_price)}</span>`}
+          ${
+            job.final_price !== null &&
+            job.final_price !== undefined &&
+            html`<span>💰 ${fmtCurrency(job.final_price)}</span>`
+          }
         </div>
         <div class="card-footer">
           <${Badge} status=${job.status} />

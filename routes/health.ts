@@ -18,10 +18,9 @@ export function createHealthRoutes(_dbPath: string): Hono {
     const taskCount = (db.prepare("SELECT COUNT(*) AS n FROM print_tasks").get() as { n: number })
       .n;
     const range = db
-      .prepare<
-        [],
-        { min_start: string | null; max_start: string | null }
-      >("SELECT MIN(startTime) AS min_start, MAX(startTime) AS max_start FROM print_tasks")
+      .prepare<[], { min_start: string | null; max_start: string | null }>(
+        "SELECT MIN(startTime) AS min_start, MAX(startTime) AS max_start FROM print_tasks",
+      )
       .get();
 
     return c.json({

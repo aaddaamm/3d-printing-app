@@ -274,149 +274,153 @@ export function SavePriceToProductModal({
               </label>
             </fieldset>
 
-            ${modalState.mode === "existing"
-              ? html`<label class="form-label">
-                  Product
-                  <select
-                    class="form-input"
-                    ref=${existingSelectRef}
-                    value=${modalState.existingProductId}
-                    onChange=${(event: Event) =>
-                      setModalState((current) =>
-                        setSaveToProductExistingProductId(
-                          current,
-                          (event.target as HTMLSelectElement).value,
-                        ),
-                      )}
-                  >
-                    <option value="">Choose a Product</option>
-                    ${existingOptions.map(
-                      (product) =>
-                        html`<option key=${product.id} value=${String(product.id)}>
-                          ${productOptionLabel(product)}
-                        </option>`,
-                    )}
-                  </select>
-                  <span class="form-help"
-                    >${loadingProducts
-                      ? "Loading products…"
-                      : existingOptions.length > 0
-                        ? "Pick the Product that should receive this saved pricing batch."
-                        : "No Products found yet. Switch to Create Product to save this quote."}</span
-                  >
-                </label>`
-              : html`<div class="save-price-modal-grid">
-                  <label class="form-label">
-                    Name
-                    <input
-                      class="form-input"
-                      ref=${nameInputRef}
-                      type="text"
-                      value=${modalState.newProduct.name}
-                      onInput=${(event: Event) =>
-                        setModalState((current) =>
-                          setSaveToProductNewProductField(
-                            current,
-                            "name",
-                            (event.target as HTMLInputElement).value,
-                          ),
-                        )}
-                      required
-                    />
-                  </label>
-                  <label class="form-label">
-                    Designer
-                    <input
-                      class="form-input"
-                      type="text"
-                      value=${modalState.newProduct.designer}
-                      onInput=${(event: Event) =>
-                        setModalState((current) =>
-                          setSaveToProductNewProductField(
-                            current,
-                            "designer",
-                            (event.target as HTMLInputElement).value,
-                          ),
-                        )}
-                    />
-                  </label>
-                  <label class="form-label">
-                    Source
+            ${
+              modalState.mode === "existing"
+                ? html`<label class="form-label">
+                    Product
                     <select
                       class="form-input"
-                      value=${modalState.newProduct.sourceId}
+                      ref=${existingSelectRef}
+                      value=${modalState.existingProductId}
                       onChange=${(event: Event) =>
                         setModalState((current) =>
-                          setSaveToProductNewProductField(
+                          setSaveToProductExistingProductId(
                             current,
-                            "sourceId",
                             (event.target as HTMLSelectElement).value,
                           ),
                         )}
                     >
-                      <option value="">Source TBD</option>
-                      ${PRODUCT_SOURCES.map(
-                        (source) =>
-                          html`<option key=${source.id} value=${source.id}>
-                            ${source.label}
+                      <option value="">Choose a Product</option>
+                      ${existingOptions.map(
+                        (product) =>
+                          html`<option key=${product.id} value=${String(product.id)}>
+                            ${productOptionLabel(product)}
                           </option>`,
                       )}
                     </select>
-                  </label>
-                  <label class="form-label">
-                    License
-                    <select
-                      class="form-input"
-                      value=${modalState.newProduct.licenseId}
-                      onChange=${(event: Event) =>
-                        setModalState((current) =>
-                          setSaveToProductNewProductField(
-                            current,
-                            "licenseId",
-                            (event.target as HTMLSelectElement).value,
-                          ),
-                        )}
+                    <span class="form-help"
+                      >${
+                        loadingProducts
+                          ? "Loading products…"
+                          : existingOptions.length > 0
+                            ? "Pick the Product that should receive this saved pricing batch."
+                            : "No Products found yet. Switch to Create Product to save this quote."
+                      }</span
                     >
-                      ${PRODUCT_LICENSES.map(
-                        (license) =>
-                          html`<option key=${license.id} value=${license.id}>
-                            ${license.label}
-                          </option>`,
-                      )}
-                    </select>
-                  </label>
-                  <label class="form-label save-price-modal-field-wide">
-                    Model URL
-                    <input
-                      class="form-input"
-                      type="url"
-                      value=${modalState.newProduct.modelUrl}
-                      onInput=${(event: Event) =>
-                        setModalState((current) =>
-                          setSaveToProductNewProductField(
-                            current,
-                            "modelUrl",
-                            (event.target as HTMLInputElement).value,
-                          ),
+                  </label>`
+                : html`<div class="save-price-modal-grid">
+                    <label class="form-label">
+                      Name
+                      <input
+                        class="form-input"
+                        ref=${nameInputRef}
+                        type="text"
+                        value=${modalState.newProduct.name}
+                        onInput=${(event: Event) =>
+                          setModalState((current) =>
+                            setSaveToProductNewProductField(
+                              current,
+                              "name",
+                              (event.target as HTMLInputElement).value,
+                            ),
+                          )}
+                        required
+                      />
+                    </label>
+                    <label class="form-label">
+                      Designer
+                      <input
+                        class="form-input"
+                        type="text"
+                        value=${modalState.newProduct.designer}
+                        onInput=${(event: Event) =>
+                          setModalState((current) =>
+                            setSaveToProductNewProductField(
+                              current,
+                              "designer",
+                              (event.target as HTMLInputElement).value,
+                            ),
+                          )}
+                      />
+                    </label>
+                    <label class="form-label">
+                      Source
+                      <select
+                        class="form-input"
+                        value=${modalState.newProduct.sourceId}
+                        onChange=${(event: Event) =>
+                          setModalState((current) =>
+                            setSaveToProductNewProductField(
+                              current,
+                              "sourceId",
+                              (event.target as HTMLSelectElement).value,
+                            ),
+                          )}
+                      >
+                        <option value="">Source TBD</option>
+                        ${PRODUCT_SOURCES.map(
+                          (source) =>
+                            html`<option key=${source.id} value=${source.id}>
+                              ${source.label}
+                            </option>`,
                         )}
-                    />
-                  </label>
-                  <label class="form-label save-price-modal-field-wide">
-                    Notes
-                    <textarea
-                      class="form-input form-textarea"
-                      value=${modalState.newProduct.notes}
-                      onInput=${(event: Event) =>
-                        setModalState((current) =>
-                          setSaveToProductNewProductField(
-                            current,
-                            "notes",
-                            (event.target as HTMLTextAreaElement).value,
-                          ),
+                      </select>
+                    </label>
+                    <label class="form-label">
+                      License
+                      <select
+                        class="form-input"
+                        value=${modalState.newProduct.licenseId}
+                        onChange=${(event: Event) =>
+                          setModalState((current) =>
+                            setSaveToProductNewProductField(
+                              current,
+                              "licenseId",
+                              (event.target as HTMLSelectElement).value,
+                            ),
+                          )}
+                      >
+                        ${PRODUCT_LICENSES.map(
+                          (license) =>
+                            html`<option key=${license.id} value=${license.id}>
+                              ${license.label}
+                            </option>`,
                         )}
-                    />
-                  </label>
-                </div>`}
+                      </select>
+                    </label>
+                    <label class="form-label save-price-modal-field-wide">
+                      Model URL
+                      <input
+                        class="form-input"
+                        type="url"
+                        value=${modalState.newProduct.modelUrl}
+                        onInput=${(event: Event) =>
+                          setModalState((current) =>
+                            setSaveToProductNewProductField(
+                              current,
+                              "modelUrl",
+                              (event.target as HTMLInputElement).value,
+                            ),
+                          )}
+                      />
+                    </label>
+                    <label class="form-label save-price-modal-field-wide">
+                      Notes
+                      <textarea
+                        class="form-input form-textarea"
+                        value=${modalState.newProduct.notes}
+                        onInput=${(event: Event) =>
+                          setModalState((current) =>
+                            setSaveToProductNewProductField(
+                              current,
+                              "notes",
+                              (event.target as HTMLTextAreaElement).value,
+                            ),
+                          )}
+                      />
+                    </label>
+                  </div>`
+            }
 
             <div class="form-actions save-price-modal-actions">
               <button type="button" class="btn-secondary" onClick=${dismiss} disabled=${saving}>

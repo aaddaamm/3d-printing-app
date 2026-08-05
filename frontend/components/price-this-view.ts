@@ -215,14 +215,16 @@ function PriceResult({
       </dl>
     </details>
 
-    ${quote.warnings.length > 0
-      ? html`<div class="price-this-warnings" role="status">
-          <strong>Check these assumptions</strong>
-          <ul>
-            ${quote.warnings.map((warning) => html`<li>${warning}</li>`)}
-          </ul>
-        </div>`
-      : null}
+    ${
+      quote.warnings.length > 0
+        ? html`<div class="price-this-warnings" role="status">
+            <strong>Check these assumptions</strong>
+            <ul>
+              ${quote.warnings.map((warning) => html`<li>${warning}</li>`)}
+            </ul>
+          </div>`
+        : null
+    }
   </div>`;
 }
 
@@ -376,17 +378,19 @@ export function PriceThisView({
         </div>
 
         <div class="price-this-attempts">
-          ${draft.selectedJobIds.length === 0
-            ? html`<p class="price-this-empty">Add at least one production attempt.</p>`
-            : draft.selectedJobIds.map(
-                (jobId) =>
-                  html`<${SelectedAttempt}
-                    key=${jobId}
-                    jobId=${jobId}
-                    job=${jobsById.get(jobId)}
-                    onRemove=${() => toggleJob(jobId)}
-                  />`,
-              )}
+          ${
+            draft.selectedJobIds.length === 0
+              ? html`<p class="price-this-empty">Add at least one production attempt.</p>`
+              : draft.selectedJobIds.map(
+                  (jobId) =>
+                    html`<${SelectedAttempt}
+                      key=${jobId}
+                      jobId=${jobId}
+                      job=${jobsById.get(jobId)}
+                      onRemove=${() => toggleJob(jobId)}
+                    />`,
+                )
+          }
         </div>
 
         <div class="price-this-search">
@@ -399,20 +403,24 @@ export function PriceThisView({
             onInput=${(event: Event) =>
               setCandidateQuery((event.currentTarget as HTMLInputElement).value)}
           />
-          ${candidateQuery.trim()
-            ? html`<div class="price-this-candidates">
-                ${candidates.length > 0
-                  ? candidates.map(
-                      (job) =>
-                        html`<${CandidateAttempt}
-                          key=${job.id}
-                          job=${job}
-                          onAdd=${() => toggleJob(job.id)}
-                        />`,
-                    )
-                  : html`<p class="price-this-empty">No unselected jobs match that search.</p>`}
-              </div>`
-            : null}
+          ${
+            candidateQuery.trim()
+              ? html`<div class="price-this-candidates">
+                  ${
+                    candidates.length > 0
+                      ? candidates.map(
+                          (job) =>
+                            html`<${CandidateAttempt}
+                              key=${job.id}
+                              job=${job}
+                              onAdd=${() => toggleJob(job.id)}
+                            />`,
+                        )
+                      : html`<p class="price-this-empty">No unselected jobs match that search.</p>`
+                  }
+                </div>`
+              : null
+          }
         </div>
       </section>
 
@@ -501,30 +509,36 @@ export function PriceThisView({
             ${calculating ? "Calculating…" : "Calculate price"}
           </button>
         </div>
-        ${!canCalculatePriceQuote(draft)
-          ? html`<p class="price-this-validation">
-              Select at least one attempt and enter a positive whole-number quantity.
-            </p>`
-          : null}
-        ${quote
-          ? html`<${PriceResult}
-              quote=${quote}
-              onCopy=${copySummary}
-              onSave=${() => quote && setSaveModalOpen(true)}
-            />`
-          : html`<div class="price-this-result-empty">
-              Your manufacturing cost and recommended unit price will appear here.
-            </div>`}
+        ${
+          !canCalculatePriceQuote(draft)
+            ? html`<p class="price-this-validation">
+                Select at least one attempt and enter a positive whole-number quantity.
+              </p>`
+            : null
+        }
+        ${
+          quote
+            ? html`<${PriceResult}
+                quote=${quote}
+                onCopy=${copySummary}
+                onSave=${() => quote && setSaveModalOpen(true)}
+              />`
+            : html`<div class="price-this-result-empty">
+                Your manufacturing cost and recommended unit price will appear here.
+              </div>`
+        }
       </section>
     </form>
 
-    ${saveModalOpen && quote
-      ? html`<${SavePriceToProductModal}
-          draft=${draft}
-          selectedJobs=${selectedJobs}
-          navigate=${navigate}
-          onClose=${() => setSaveModalOpen(false)}
-        />`
-      : null}
+    ${
+      saveModalOpen && quote
+        ? html`<${SavePriceToProductModal}
+            draft=${draft}
+            selectedJobs=${selectedJobs}
+            navigate=${navigate}
+            onClose=${() => setSaveModalOpen(false)}
+          />`
+        : null
+    }
   </main>`;
 }

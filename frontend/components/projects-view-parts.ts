@@ -57,9 +57,11 @@ function ProjectCard({
   };
   return html`
     <div class="proj-card" onClick=${onClick}>
-      ${project.cover_url
-        ? html`<img class="proj-card-cover" src=${project.cover_url} alt="" />`
-        : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`}
+      ${
+        project.cover_url
+          ? html`<img class="proj-card-cover" src=${project.cover_url} alt="" />`
+          : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`
+      }
       <div class="proj-card-title-row">
         <div class="proj-card-name">${project.name}</div>
       </div>
@@ -77,24 +79,26 @@ function ProjectCard({
         <button type="button" class="btn-secondary proj-card-action" onClick=${copyProject}>
           Copy
         </button>
-        ${project.product_id
-          ? html`<button
-              type="button"
-              class="btn-secondary proj-card-action"
-              onClick=${(event: MouseEvent) => {
-                event.stopPropagation();
-                onOpenProduct(project.product_id!);
-              }}
-            >
-              Open product
-            </button>`
-          : html`<button
-              type="button"
-              class="btn-secondary proj-card-action"
-              onClick=${createProduct}
-            >
-              Create product
-            </button>`}
+        ${
+          project.product_id
+            ? html`<button
+                type="button"
+                class="btn-secondary proj-card-action"
+                onClick=${(event: MouseEvent) => {
+                  event.stopPropagation();
+                  onOpenProduct(project.product_id!);
+                }}
+              >
+                Open product
+              </button>`
+            : html`<button
+                type="button"
+                class="btn-secondary proj-card-action"
+                onClick=${createProduct}
+              >
+                Create product
+              </button>`
+        }
       </div>
       <div class="proj-card-meta">
         ${project.customer && html`<span class="customer-pill">${project.customer}</span>`}
@@ -103,14 +107,18 @@ function ProjectCard({
         <span>
           <strong>${project.job_count}</strong> run${project.job_count !== 1 ? "s" : ""}
         </span>
-        ${hasValue(project.total_plates) &&
-        html`<span>
-          <strong>${project.total_plates}</strong> plate${project.total_plates !== 1 ? "s" : ""}
-        </span>`}
+        ${
+          hasValue(project.total_plates) &&
+          html`<span>
+            <strong>${project.total_plates}</strong> plate${project.total_plates !== 1 ? "s" : ""}
+          </span>`
+        }
         ${hasValue(totalW) && html`<span>${fmtWeightTotal(totalW)}</span>`}
         ${hasValue(totalT) && html`<span>${fmtTime(totalT)}</span>`}
-        ${hasValue(totalPrice) &&
-        html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`}
+        ${
+          hasValue(totalPrice) &&
+          html`<span class="proj-card-price">${fmtCurrency(totalPrice)}</span>`
+        }
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
     </div>
@@ -124,8 +132,10 @@ export function ProjectPriceSummary({ price }: { price: ProjectPrice | null }) {
     <span>Material: <strong>${fmtCurrency(price.material_cost)}</strong></span>
     <span>Machine: <strong>${fmtCurrency(price.machine_cost)}</strong></span>
     <span>Labor: <strong>${fmtCurrency(price.labor_cost)}</strong></span>
-    ${price.extra_labor_cost > 0 &&
-    html`<span>Extra labor: <strong>${fmtCurrency(price.extra_labor_cost)}</strong></span>`}
+    ${
+      price.extra_labor_cost > 0 &&
+      html`<span>Extra labor: <strong>${fmtCurrency(price.extra_labor_cost)}</strong></span>`
+    }
     <span class="totals-total">Total: <strong>${fmtCurrency(price.final_price)}</strong></span>
   `;
 }
@@ -177,22 +187,26 @@ export function ProjectJobsTable({
                 <td class="td-num"><strong>${fmtWeight(job.total_weight_g)}</strong></td>
                 <td class="td-num">${fmtTime(job.total_time_s)}</td>
                 <td class="td-num">
-                  ${hasValue(job.final_price)
-                    ? html`<strong>${fmtCurrency(job.final_price)}</strong>`
-                    : "—"}
+                  ${
+                    hasValue(job.final_price)
+                      ? html`<strong>${fmtCurrency(job.final_price)}</strong>`
+                      : "—"
+                  }
                 </td>
                 <td>
-                  ${onMoveToNewProject &&
-                  html`<button
-                    class="btn-secondary"
-                    title="Move to a new project"
-                    onClick=${(e: MouseEvent) => {
-                      e.stopPropagation();
-                      onMoveToNewProject(job);
-                    }}
-                  >
-                    New project
-                  </button>`}
+                  ${
+                    onMoveToNewProject &&
+                    html`<button
+                      class="btn-secondary"
+                      title="Move to a new project"
+                      onClick=${(e: MouseEvent) => {
+                        e.stopPropagation();
+                        onMoveToNewProject(job);
+                      }}
+                    >
+                      New project
+                    </button>`
+                  }
                   <button
                     class="btn-remove-job"
                     title="Remove from project"

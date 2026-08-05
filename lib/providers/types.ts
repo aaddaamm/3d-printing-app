@@ -7,13 +7,7 @@ export type ProviderCapability =
   | "status:poll";
 
 export type CanonicalPrintStatus =
-  | "created"
-  | "running"
-  | "pause"
-  | "finish"
-  | "cancel"
-  | "failed"
-  | "unknown";
+  "created" | "running" | "pause" | "finish" | "cancel" | "failed" | "unknown";
 
 export type MaterialUsageConfidence = "actual" | "slicer_estimate" | "manual" | "unknown";
 

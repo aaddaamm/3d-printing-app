@@ -39,10 +39,9 @@ function upsertPrinter(database: Database.Database, printer: PrinterIdentity): n
     );
 
   const row = database
-    .prepare<
-      [string, string],
-      { id: number }
-    >("SELECT id FROM printers WHERE provider = ? AND provider_printer_id = ?")
+    .prepare<[string, string], { id: number }>(
+      "SELECT id FROM printers WHERE provider = ? AND provider_printer_id = ?",
+    )
     .get(printer.provider_id, printer.provider_printer_id);
 
   if (!row)

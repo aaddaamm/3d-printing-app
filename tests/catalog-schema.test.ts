@@ -53,8 +53,7 @@ function pricingProfileIds(): string[] {
 
 function pricingProfile(id: string): Record<string, unknown> | undefined {
   return database!.prepare("SELECT * FROM pricing_profiles WHERE id = ?").get(id) as
-    | Record<string, unknown>
-    | undefined;
+    Record<string, unknown> | undefined;
 }
 
 function pricingProfileRows(): Record<string, unknown>[] {

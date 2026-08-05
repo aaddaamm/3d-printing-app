@@ -69,8 +69,10 @@ function ProjectPlateCoverageSummary({ plates }: { plates: ProjectPlateRow[] }) 
         <strong>${formatPlateIndexList(coverage.missingCompletedPlateIndexes)}</strong></span
       >
       <span>Retried: <strong>${formatPlateIndexList(coverage.retriedPlateIndexes)}</strong></span>
-      ${coverage.unknownPlateIndexCount > 0 &&
-      html`<span>Unknown plate #: <strong>${coverage.unknownPlateIndexCount}</strong></span>`}
+      ${
+        coverage.unknownPlateIndexCount > 0 &&
+        html`<span>Unknown plate #: <strong>${coverage.unknownPlateIndexCount}</strong></span>`
+      }
     </div>
     <p class="helper-text">
       A plate number remains missing until PrintWorks sees a successful print. Canceled and failed
@@ -103,9 +105,11 @@ function ProjectPlatesTable({ plates, loading }: { plates: ProjectPlateRow[]; lo
               html`<tr key=${plate.id}>
                 <td class="td-title">
                   <span class="row-title">
-                    ${plate.plateIndex === null
-                      ? plate.title || "Unknown plate"
-                      : `Plate ${plate.plateIndex}`}
+                    ${
+                      plate.plateIndex === null
+                        ? plate.title || "Unknown plate"
+                        : `Plate ${plate.plateIndex}`
+                    }
                   </span>
                 </td>
                 <td>${plate.jobTitle || `Job #${plate.jobId}`}</td>
@@ -256,43 +260,47 @@ function ProjectDetail({
           ${editing ? "Cancel edit" : "Edit project"}
         </button>
         <button class="btn-secondary" onClick=${copyProject}>Copy details</button>
-        ${project.product_id
-          ? html`<button
-              class="btn-secondary"
-              onClick=${() => onNavigateToProduct(project.product_id!)}
-            >
-              Open product
-            </button>`
-          : html`<button class="btn-secondary" onClick=${createProduct}>Create product</button>`}
+        ${
+          project.product_id
+            ? html`<button
+                class="btn-secondary"
+                onClick=${() => onNavigateToProduct(project.product_id!)}
+              >
+                Open product
+              </button>`
+            : html`<button class="btn-secondary" onClick=${createProduct}>Create product</button>`
+        }
         <button class="btn-secondary" onClick=${() => setShowAddJobs(true)}>+ Add Jobs</button>
       </div>
-      ${editing &&
-      html`<div class="modal-form proj-detail-notes">
-        <label>
-          Project name
-          <input
-            value=${editName}
-            onInput=${(e: Event) => setEditName((e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <label>
-          Customer
-          <input
-            value=${editCustomer}
-            onInput=${(e: Event) => setEditCustomer((e.target as HTMLInputElement).value)}
-          />
-        </label>
-        <label>
-          Notes
-          <textarea
-            value=${editNotes}
-            onInput=${(e: Event) => setEditNotes((e.target as HTMLTextAreaElement).value)}
-          />
-        </label>
-        <button class="btn-primary" disabled=${!editName.trim()} onClick=${saveProject}>
-          Save project
-        </button>
-      </div>`}
+      ${
+        editing &&
+        html`<div class="modal-form proj-detail-notes">
+          <label>
+            Project name
+            <input
+              value=${editName}
+              onInput=${(e: Event) => setEditName((e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <label>
+            Customer
+            <input
+              value=${editCustomer}
+              onInput=${(e: Event) => setEditCustomer((e.target as HTMLInputElement).value)}
+            />
+          </label>
+          <label>
+            Notes
+            <textarea
+              value=${editNotes}
+              onInput=${(e: Event) => setEditNotes((e.target as HTMLTextAreaElement).value)}
+            />
+          </label>
+          <button class="btn-primary" disabled=${!editName.trim()} onClick=${saveProject}>
+            Save project
+          </button>
+        </div>`
+      }
       ${project.notes && html`<div class="proj-detail-notes">${project.notes}</div>`}
       <div class="totals-bar">
         <span class="totals-label">Project</span>
@@ -310,21 +318,25 @@ function ProjectDetail({
       />
       <${ProjectPlateCoverageSummary} plates=${projectPlates} />
       <${ProjectPlatesTable} plates=${projectPlates} loading=${platesLoading} />
-      ${showAddJobs &&
-      html`<${AddJobsModal}
-        unassignedJobs=${unassignedJobs}
-        onClose=${() => setShowAddJobs(false)}
-        onAdd=${handleAdd}
-      />`}
-      ${moveJob &&
-      html`<${MoveJobToNewProjectModal}
-        job=${moveJob}
-        initialName=${moveJob.designTitle || ""}
-        onClose=${() => setMoveJob(null)}
-        onProjectCreated=${onProjectUpdated}
-        onMoveJobToProject=${onMoveJobToProject}
-        onNavigateToProject=${onNavigateToProject}
-      />`}
+      ${
+        showAddJobs &&
+        html`<${AddJobsModal}
+          unassignedJobs=${unassignedJobs}
+          onClose=${() => setShowAddJobs(false)}
+          onAdd=${handleAdd}
+        />`
+      }
+      ${
+        moveJob &&
+        html`<${MoveJobToNewProjectModal}
+          job=${moveJob}
+          initialName=${moveJob.designTitle || ""}
+          onClose=${() => setMoveJob(null)}
+          onProjectCreated=${onProjectUpdated}
+          onMoveJobToProject=${onMoveJobToProject}
+          onNavigateToProject=${onNavigateToProject}
+        />`
+      }
     </div>
   `;
 }
@@ -398,14 +410,18 @@ export function ProjectsView({
       navigate=${navigate}
       onRename=${setRenamingProject}
     />
-    ${showNew &&
-    html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`}
-    ${renamingProject &&
-    html`<${RenameProjectModal}
-      project=${renamingProject}
-      onClose=${() => setRenamingProject(null)}
-      onRenamed=${(updated: Project) => setProjects((items) => updateProjectInList(items, updated))}
-    />`}
+    ${
+      showNew &&
+      html`<${NewProjectModal} onClose=${() => setShowNew(false)} onCreate=${handleCreate} />`
+    }
+    ${
+      renamingProject &&
+      html`<${RenameProjectModal}
+        project=${renamingProject}
+        onClose=${() => setRenamingProject(null)}
+        onRenamed=${(updated: Project) => setProjects((items) => updateProjectInList(items, updated))}
+      />`
+    }
   `;
 }
 

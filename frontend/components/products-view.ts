@@ -145,18 +145,21 @@ function ProductFiltersBar({
           html`<option key=${category.id} value=${category.id}>${category.label}</option>`,
       )}
     </select>
-    ${showStatusFilter
-      ? html`<select
-          value=${filters.statusId}
-          onChange=${(event: Event) =>
-            setField("statusId", (event.target as HTMLSelectElement).value)}
-        >
-          <option value="">All statuses</option>
-          ${PRODUCT_STATUSES.map(
-            (status) => html`<option key=${status.id} value=${status.id}>${status.label}</option>`,
-          )}
-        </select>`
-      : null}
+    ${
+      showStatusFilter
+        ? html`<select
+            value=${filters.statusId}
+            onChange=${(event: Event) =>
+              setField("statusId", (event.target as HTMLSelectElement).value)}
+          >
+            <option value="">All statuses</option>
+            ${PRODUCT_STATUSES.map(
+              (status) =>
+                html`<option key=${status.id} value=${status.id}>${status.label}</option>`,
+            )}
+          </select>`
+        : null
+    }
     <select
       value=${filters.sourceId}
       onChange=${(event: Event) => setField("sourceId", (event.target as HTMLSelectElement).value)}
@@ -283,17 +286,19 @@ function PipelineBoard({
             <span>${column.products.length}</span>
           </div>
           <div class="product-kanban-cards">
-            ${column.products.length
-              ? column.products.map(
-                  (product) =>
-                    html`<${ProductCard}
-                      key=${product.id}
-                      product=${product}
-                      onOpen=${() => navigate(`/products/${product.id}`)}
-                      onStatusChange=${onStatusChange}
-                    />`,
-                )
-              : html`<div class="product-column-empty">No products</div>`}
+            ${
+              column.products.length
+                ? column.products.map(
+                    (product) =>
+                      html`<${ProductCard}
+                        key=${product.id}
+                        product=${product}
+                        onOpen=${() => navigate(`/products/${product.id}`)}
+                        onStatusChange=${onStatusChange}
+                      />`,
+                  )
+                : html`<div class="product-column-empty">No products</div>`
+            }
           </div>
         </section>`,
     )}
@@ -368,25 +373,29 @@ export function ProductsView({
       showStatusFilter=${mode === "catalog"}
     />
 
-    ${mode === "catalog"
-      ? html`<section class="product-create-section">
-          <${CreateProductForm}
-            onCreated=${(product: ProductSummary) => setProducts((items) => [product, ...items])}
-          />
-        </section>`
-      : null}
-    ${loading
-      ? html`<div class="empty">Loading products…</div>`
-      : mode === "pipeline"
-        ? html`<${PipelineBoard}
-            columns=${columns}
-            navigate=${navigate}
-            onStatusChange=${handleStatusChange}
-          />`
-        : html`<${CatalogGrid}
-            products=${filtered}
-            navigate=${navigate}
-            onStatusChange=${handleStatusChange}
-          />`}
+    ${
+      mode === "catalog"
+        ? html`<section class="product-create-section">
+            <${CreateProductForm}
+              onCreated=${(product: ProductSummary) => setProducts((items) => [product, ...items])}
+            />
+          </section>`
+        : null
+    }
+    ${
+      loading
+        ? html`<div class="empty">Loading products…</div>`
+        : mode === "pipeline"
+          ? html`<${PipelineBoard}
+              columns=${columns}
+              navigate=${navigate}
+              onStatusChange=${handleStatusChange}
+            />`
+          : html`<${CatalogGrid}
+              products=${filtered}
+              navigate=${navigate}
+              onStatusChange=${handleStatusChange}
+            />`
+    }
   </main>`;
 }

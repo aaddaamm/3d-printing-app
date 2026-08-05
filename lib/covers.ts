@@ -71,10 +71,9 @@ export async function ensureLocalCoverCached(taskId: string): Promise<CoverCache
   }
 
   const task = db
-    .prepare<
-      [string],
-      { cover: string | null; thumbnail: string | null }
-    >("SELECT cover, thumbnail FROM print_tasks WHERE id = ?")
+    .prepare<[string], { cover: string | null; thumbnail: string | null }>(
+      "SELECT cover, thumbnail FROM print_tasks WHERE id = ?",
+    )
     .get(taskId);
   const mediaUrl = task?.cover ?? task?.thumbnail ?? null;
   if (!mediaUrl) return { status: "unavailable", path: null };
@@ -102,10 +101,9 @@ export async function downloadCovers(): Promise<{
   ensureCoversDir();
 
   const tasks = db
-    .prepare<
-      [],
-      { id: string; cover: string }
-    >("SELECT id, cover FROM print_tasks WHERE cover IS NOT NULL")
+    .prepare<[], { id: string; cover: string }>(
+      "SELECT id, cover FROM print_tasks WHERE cover IS NOT NULL",
+    )
     .all();
 
   const total = tasks.length;

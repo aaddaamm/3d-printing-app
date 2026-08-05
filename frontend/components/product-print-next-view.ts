@@ -91,36 +91,38 @@ export function ProductPrintNextView({ navigate }: { navigate: (path: string) =>
       </div>
     </section>
 
-    ${loading
-      ? html`<div class="empty">Loading print queue…</div>`
-      : products.length === 0
-        ? html`<div class="empty">No active products need restocking.</div>`
-        : html`
-            <${PrintNextSummary} products=${products} />
-            <div class="product-print-next-grid">
-              ${products.map(
-                (product) =>
-                  html`<article class="product-print-next-card" key=${product.id}>
-                    <div class="product-print-next-topline">
-                      <span
-                        class=${"product-priority product-priority--" + product.restock_priority}
-                      >
-                        ${product.restock_priority}
-                      </span>
-                      <${ProductSellability}
-                        level=${product.can_sell_level}
-                        label=${product.can_sell_label}
-                        readyToList=${product.ready_to_list}
+    ${
+      loading
+        ? html`<div class="empty">Loading print queue…</div>`
+        : products.length === 0
+          ? html`<div class="empty">No active products need restocking.</div>`
+          : html`
+              <${PrintNextSummary} products=${products} />
+              <div class="product-print-next-grid">
+                ${products.map(
+                  (product) =>
+                    html`<article class="product-print-next-card" key=${product.id}>
+                      <div class="product-print-next-topline">
+                        <span
+                          class=${"product-priority product-priority--" + product.restock_priority}
+                        >
+                          ${product.restock_priority}
+                        </span>
+                        <${ProductSellability}
+                          level=${product.can_sell_level}
+                          label=${product.can_sell_label}
+                          readyToList=${product.ready_to_list}
+                        />
+                      </div>
+                      <${ProductCard}
+                        product=${product}
+                        onOpen=${() => navigate(`/products/${product.id}`)}
+                        onStatusChange=${handleStatusChange}
                       />
-                    </div>
-                    <${ProductCard}
-                      product=${product}
-                      onOpen=${() => navigate(`/products/${product.id}`)}
-                      onStatusChange=${handleStatusChange}
-                    />
-                  </article>`,
-              )}
-            </div>
-          `}
+                    </article>`,
+                )}
+              </div>
+            `
+    }
   </main>`;
 }

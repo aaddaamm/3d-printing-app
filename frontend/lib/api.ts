@@ -27,8 +27,7 @@ export type ProductImageCandidate = {
 };
 
 export type ProductImageSelectionInput =
-  | { mode: "auto" }
-  | { mode: "manual"; candidate_key: string };
+  { mode: "auto" } | { mode: "manual"; candidate_key: string };
 
 export type ProductSummary = {
   id: number;

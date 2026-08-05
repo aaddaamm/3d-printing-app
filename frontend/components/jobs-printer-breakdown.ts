@@ -102,11 +102,14 @@ function PrinterCard({
       </div>
 
       <div class="printer-jobs-list">
-        ${recentJobs.length
-          ? recentJobs.map(
-              (job) => html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
-            )
-          : html`<div class="empty">No jobs for this printer yet.</div>`}
+        ${
+          recentJobs.length
+            ? recentJobs.map(
+                (job) =>
+                  html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
+              )
+            : html`<div class="empty">No jobs for this printer yet.</div>`
+        }
       </div>
     </section>
   `;
@@ -145,9 +148,11 @@ function InventoryPrinterCard({
                 >${isActive ? "Active" : "Retired"}</span
               >
             </p>
-            ${printer.retired_at
-              ? html`<p class="printer-meta">Retired ${fmtDateShort(printer.retired_at)}</p>`
-              : null}
+            ${
+              printer.retired_at
+                ? html`<p class="printer-meta">Retired ${fmtDateShort(printer.retired_at)}</p>`
+                : null
+            }
           </div>
         </div>
         <div class="printer-kpis">
@@ -164,11 +169,14 @@ function InventoryPrinterCard({
       </div>
 
       <div class="printer-jobs-list">
-        ${recentJobs.length
-          ? recentJobs.map(
-              (job) => html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
-            )
-          : html`<div class="empty">No jobs for this printer yet.</div>`}
+        ${
+          recentJobs.length
+            ? recentJobs.map(
+                (job) =>
+                  html`<${PrinterJobRow} key=${job.id} job=${job} onJobClick=${onJobClick} />`,
+              )
+            : html`<div class="empty">No jobs for this printer yet.</div>`
+        }
       </div>
     </section>
   `;

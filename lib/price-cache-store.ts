@@ -46,10 +46,9 @@ export function readPriceCache(options: ReadPriceCacheOptions): Record<number, n
     if (targetCount <= 0 || cachedCount !== targetCount) return null;
 
     const rows = db
-      .prepare<
-        [],
-        { id: number; final_price: number }
-      >(`SELECT ${idColumn} AS id, final_price FROM ${cacheTable}`)
+      .prepare<[], { id: number; final_price: number }>(
+        `SELECT ${idColumn} AS id, final_price FROM ${cacheTable}`,
+      )
       .all();
     return Object.fromEntries(rows.map((row) => [row.id, row.final_price]));
   } catch {

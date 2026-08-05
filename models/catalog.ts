@@ -209,20 +209,18 @@ function recordCatalogReview(
 function catalogFileHasProductLinks(fileId: number): boolean {
   return Boolean(
     db
-      .prepare<
-        [number],
-        { linked: number }
-      >("SELECT 1 AS linked FROM product_files WHERE file_id = ? LIMIT 1")
+      .prepare<[number], { linked: number }>(
+        "SELECT 1 AS linked FROM product_files WHERE file_id = ? LIMIT 1",
+      )
       .get(fileId),
   );
 }
 
 function createProductFileReference(productId: number, file: CatalogFile): number {
   const existing = db
-    .prepare<
-      [number, number],
-      { id: number }
-    >("SELECT id FROM product_files WHERE product_id = ? AND file_id = ? ORDER BY id LIMIT 1")
+    .prepare<[number, number], { id: number }>(
+      "SELECT id FROM product_files WHERE product_id = ? AND file_id = ? ORDER BY id LIMIT 1",
+    )
     .get(productId, file.id)?.id;
   if (existing) return existing;
   return Number(

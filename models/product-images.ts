@@ -809,10 +809,9 @@ function materializeCandidate(productId: number, candidate: CandidateDetails): n
   );
 
   const photoId = db
-    .prepare<
-      [number, string],
-      { id: number }
-    >("SELECT id FROM product_photos WHERE product_id = ? AND candidate_key = ?")
+    .prepare<[number, string], { id: number }>(
+      "SELECT id FROM product_photos WHERE product_id = ? AND candidate_key = ?",
+    )
     .get(productId, candidate.candidate_key)?.id;
   if (!photoId) throw new ProductImageValidationError("Failed to persist image candidate");
   return photoId;
