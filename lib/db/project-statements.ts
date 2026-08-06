@@ -11,12 +11,6 @@ export function createProjectStatements(db: Database.Database) {
         total_weight_g: number | null;
         total_time_s: number | null;
         product_id: number | null;
-        latest_cover_task_id: string | null;
-        latest_cover_provider: string | null;
-        latest_cover_provider_printer_id: string | null;
-        latest_cover_title: string | null;
-        latest_cover: string | null;
-        latest_cover_thumbnail: string | null;
       }
     >(`
       SELECT p.*,
@@ -26,53 +20,35 @@ export function createProjectStatements(db: Database.Database) {
         SUM(j.total_time_s)   AS total_time_s,
         (SELECT pp.product_id FROM project_products pp
          WHERE pp.project_id = p.id
-         ORDER BY pp.created_at, pp.product_id LIMIT 1) AS product_id,
-        (SELECT pt.id FROM print_tasks pt
-         WHERE pt.session_id = (
-           SELECT j2.session_id FROM jobs j2
-           WHERE j2.project_id = p.id
-           ORDER BY j2.startTime DESC LIMIT 1
-         )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_task_id,
-        (SELECT pt.provider FROM print_tasks pt
-         WHERE pt.session_id = (
-           SELECT j2.session_id FROM jobs j2
-           WHERE j2.project_id = p.id
-           ORDER BY j2.startTime DESC LIMIT 1
-         )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_provider,
-        (SELECT pt.provider_printer_id FROM print_tasks pt
-         WHERE pt.session_id = (
-           SELECT j2.session_id FROM jobs j2
-           WHERE j2.project_id = p.id
-           ORDER BY j2.startTime DESC LIMIT 1
-         )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_provider_printer_id,
-        (SELECT pt.title FROM print_tasks pt
-         WHERE pt.session_id = (
-           SELECT j2.session_id FROM jobs j2
-           WHERE j2.project_id = p.id
-           ORDER BY j2.startTime DESC LIMIT 1
-         )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_title,
-        (SELECT pt.cover FROM print_tasks pt
-         WHERE pt.session_id = (
-           SELECT j2.session_id FROM jobs j2
-           WHERE j2.project_id = p.id
-           ORDER BY j2.startTime DESC LIMIT 1
-         )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover,
-        (SELECT pt.thumbnail FROM print_tasks pt
-         WHERE pt.session_id = (
-           SELECT j2.session_id FROM jobs j2
-           WHERE j2.project_id = p.id
-           ORDER BY j2.startTime DESC LIMIT 1
-         )
-         ORDER BY pt.plateIndex LIMIT 1) AS latest_cover_thumbnail
+         ORDER BY pp.created_at, pp.product_id LIMIT 1) AS product_id
       FROM projects p
       LEFT JOIN jobs j ON j.project_id = p.id
       GROUP BY p.id
       ORDER BY p.created_at DESC
+    `),
+
+    listProjectCoverTasks: db.prepare<[], { project_id: number; task_id: string }>(`
+      SELECT j.project_id, pt.id AS task_id
+      FROM jobs j
+      INNER JOIN print_tasks pt ON pt.session_id = j.session_id
+      WHERE j.project_id IS NOT NULL
+      ORDER BY j.project_id,
+        CASE
+          WHEN pt.endTime IS NOT NULL
+            AND trim(pt.endTime) <> ''
+            AND strftime('%s', pt.endTime) IS NOT NULL
+            AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
+          THEN 0
+          ELSE 1
+        END,
+        CASE
+          WHEN pt.endTime IS NOT NULL
+            AND trim(pt.endTime) <> ''
+            AND strftime('%s', pt.endTime) IS NOT NULL
+            AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
+          THEN julianday(pt.endTime)
+        END DESC,
+        pt.id COLLATE BINARY ASC
     `),
 
     getProjectById: db.prepare<[number], Project & { product_id: number | null }>(`

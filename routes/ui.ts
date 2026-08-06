@@ -164,7 +164,7 @@ function serveFontFile(c: Context): Response {
 
 async function serveCoverFile(c: Context): Promise<Response> {
   const taskId = c.req.param("taskId");
-  if (!taskId || !/^\d+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
+  if (!taskId || !/^[A-Za-z0-9_-]+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
 
   const cover = await ensureLocalCoverCached(taskId);
   if (!cover.path) return notFound(c);

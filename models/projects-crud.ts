@@ -2,7 +2,6 @@ import { db, stmts } from "../lib/db.js";
 import { localCoverExists } from "../lib/covers.js";
 import { autoGroupProjects } from "../lib/auto-group.js";
 import { invalidateProjectPriceCache } from "../lib/price-cache.js";
-import { providerRemoteMediaUrl } from "../lib/media-urls.js";
 import type { Project, Job } from "../lib/types.js";
 
 export type ProjectWithStats = Project & {
@@ -14,55 +13,22 @@ export type ProjectWithStats = Project & {
   cover_url: string | null;
 };
 
-type ProjectCoverFields = {
-  latest_cover_task_id: number | string | null | undefined;
-  latest_cover_provider: string | null | undefined;
-  latest_cover_provider_printer_id: string | null | undefined;
-  latest_cover_title: string | null | undefined;
-  latest_cover: string | null | undefined;
-  latest_cover_thumbnail: string | null | undefined;
-};
-
-function resolveProjectCoverUrl(fields: ProjectCoverFields): string | null {
-  const latestCoverTaskId = fields.latest_cover_task_id
-    ? String(fields.latest_cover_task_id)
-    : null;
-  const canServeLocalCover =
-    latestCoverTaskId && /^\d+$/.test(latestCoverTaskId) && localCoverExists(latestCoverTaskId);
-  if (canServeLocalCover) return `/ui/covers/${latestCoverTaskId}`;
-
-  return providerRemoteMediaUrl({
-    provider: fields.latest_cover_provider ?? "",
-    providerPrinterId: fields.latest_cover_provider_printer_id,
-    filename: fields.latest_cover_title,
-    thumbnail: fields.latest_cover_thumbnail,
-    cover: fields.latest_cover,
-  });
+function isCacheValidTaskId(taskId: string): boolean {
+  return /^[A-Za-z0-9_-]+$/.test(taskId);
 }
 
 export function listProjects(): ProjectWithStats[] {
-  return stmts.listProjects.all().map((project) => {
-    const {
-      latest_cover_task_id,
-      latest_cover_provider,
-      latest_cover_provider_printer_id,
-      latest_cover_title,
-      latest_cover,
-      latest_cover_thumbnail,
-      ...row
-    } = project;
-    return {
-      ...row,
-      cover_url: resolveProjectCoverUrl({
-        latest_cover_task_id,
-        latest_cover_provider,
-        latest_cover_provider_printer_id,
-        latest_cover_title,
-        latest_cover,
-        latest_cover_thumbnail,
-      }),
-    };
-  });
+  const coverUrls = new Map<number, string>();
+  for (const { project_id, task_id } of stmts.listProjectCoverTasks.all()) {
+    if (!coverUrls.has(project_id) && isCacheValidTaskId(task_id) && localCoverExists(task_id)) {
+      coverUrls.set(project_id, `/ui/covers/${task_id}`);
+    }
+  }
+
+  return stmts.listProjects.all().map((project) => ({
+    ...project,
+    cover_url: coverUrls.get(project.id) ?? null,
+  }));
 }
 
 export const getProjectById = (id: number): Project | undefined => stmts.getProjectById.get(id);

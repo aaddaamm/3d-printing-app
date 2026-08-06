@@ -1,58 +1,180 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockListProjects, mockLocalCoverExists } = vi.hoisted(() => ({
-  mockListProjects: vi.fn(),
-  mockLocalCoverExists: vi.fn(),
-}));
+type DbModule = typeof import("../lib/db.js");
+type ProjectsModule = typeof import("../models/projects-crud.js");
+type CoversModule = typeof import("../lib/covers.js");
 
-vi.mock("../lib/db.js", () => ({
-  db: { prepare: vi.fn() },
-  stmts: { listProjects: { all: mockListProjects } },
-}));
+let tempDir = "";
+let dbPath = "";
+let coversDir = "";
+let dbModule: DbModule | null = null;
+let projectsModule: ProjectsModule | null = null;
+let coversModule: CoversModule | null = null;
 
-vi.mock("../lib/auto-group.js", () => ({
-  autoGroupProjects: vi.fn(),
-}));
-
-vi.mock("../lib/price-cache.js", () => ({
-  invalidateProjectPriceCache: vi.fn(),
-}));
-
-vi.mock("../lib/covers.js", () => ({
-  localCoverExists: mockLocalCoverExists,
-}));
-
-vi.mock("../lib/media-urls.js", () => ({
-  providerRemoteMediaUrl: vi.fn(() => null),
-}));
-
-import { listProjects } from "../models/projects-crud.js";
-
-function projectRow(overrides: Record<string, unknown> = {}) {
-  return {
-    id: 1,
-    name: "Project",
-    latest_cover_task_id: "123",
-    latest_cover_provider: "bambu",
-    latest_cover_provider_printer_id: null,
-    latest_cover_title: "Project",
-    latest_cover: "https://example.com/cover.png",
-    latest_cover_thumbnail: null,
-    ...overrides,
-  };
+function cleanupSqliteFiles(basePath: string): void {
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const target = `${basePath}${suffix}`;
+    if (fs.existsSync(target)) fs.rmSync(target, { force: true });
+  }
 }
 
-describe("listProjects cover URLs", () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-    mockLocalCoverExists.mockReturnValue(false);
+async function loadFreshModules(): Promise<void> {
+  vi.resetModules();
+  process.env.BAMBU_DB = dbPath;
+  process.env.BAMBU_COVERS_DIR = coversDir;
+  dbModule = await import("../lib/db.js");
+  coversModule = await import("../lib/covers.js");
+  projectsModule = await import("../models/projects-crud.js");
+}
+
+function createProject(name: string): number {
+  const result = dbModule!.db
+    .prepare("INSERT INTO projects (name, created_at) VALUES (?, ?)")
+    .run(name, "2026-01-01T00:00:00.000Z");
+  return Number(result.lastInsertRowid);
+}
+
+function createJob(sessionId: string, projectId: number | null): void {
+  dbModule!.db
+    .prepare("INSERT INTO jobs (session_id, project_id, plate_count) VALUES (?, ?, ?)")
+    .run(sessionId, projectId, 1);
+}
+
+function createTask({
+  id,
+  sessionId,
+  endTime,
+  status = "finish",
+  cover = null,
+}: {
+  id: string;
+  sessionId: string;
+  endTime: string | null;
+  status?: string;
+  cover?: string | null;
+}): void {
+  dbModule!.db
+    .prepare(
+      `INSERT INTO print_tasks (id, session_id, endTime, status, cover, raw_json)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    )
+    .run(id, sessionId, endTime, status, cover, "{}");
+}
+
+function cacheCover(taskId: string): void {
+  fs.writeFileSync(coversModule!.localCoverPath(taskId), "cover");
+}
+
+function projectCoverUrl(projectId: number): string | null | undefined {
+  return projectsModule!.listProjects().find((project) => project.id === projectId)?.cover_url;
+}
+
+describe.sequential("listProjects cover URLs", () => {
+  beforeEach(async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "projects-covers-"));
+    dbPath = path.join(tempDir, "test.sqlite");
+    coversDir = path.join(tempDir, "covers");
+    await loadFreshModules();
   });
 
-  it("omits a Bambu cover URL when its local cache file is absent", () => {
-    mockListProjects.mockReturnValue([projectRow()]);
+  afterEach(() => {
+    dbModule?.db.close();
+    cleanupSqliteFiles(dbPath);
+    if (tempDir && fs.existsSync(tempDir)) fs.rmSync(tempDir, { recursive: true, force: true });
+    delete process.env.BAMBU_DB;
+    delete process.env.BAMBU_COVERS_DIR;
+    dbModule = null;
+    projectsModule = null;
+    coversModule = null;
+  });
 
-    const projects = listProjects();
+  it("selects the newest cached cover across assigned job sessions and excludes unrelated tasks", () => {
+    const projectId = createProject("Project");
+    const otherProjectId = createProject("Other");
+    createJob("older-session", projectId);
+    createJob("newer-session", projectId);
+    createJob("unrelated-session", otherProjectId);
+    createTask({
+      id: "older",
+      sessionId: "older-session",
+      endTime: "2026-01-02T12:00:00.000Z",
+      status: "failed",
+    });
+    createTask({
+      id: "newest",
+      sessionId: "newer-session",
+      endTime: "2026-01-03T12:00:00.000Z",
+      status: "cancelled",
+    });
+    createTask({
+      id: "unrelated",
+      sessionId: "unrelated-session",
+      endTime: "2026-02-01T12:00:00.000Z",
+    });
+    createTask({
+      id: "orphan",
+      sessionId: "orphan-session",
+      endTime: "2026-03-01T12:00:00.000Z",
+    });
+    cacheCover("older");
+    cacheCover("newest");
+    cacheCover("unrelated");
+    cacheCover("orphan");
 
-    expect(projects[0]?.cover_url).toBeNull();
+    expect(projectCoverUrl(projectId)).toBe("/ui/covers/newest");
+  });
+
+  it("sorts valid timestamps before null, empty, and malformed values, then task IDs by BINARY order", () => {
+    const projectId = createProject("Project");
+    createJob("session", projectId);
+    createTask({ id: "z_task", sessionId: "session", endTime: "2026-01-03T12:00:00.000Z" });
+    createTask({ id: "A_task", sessionId: "session", endTime: "2026-01-03T12:00:00.000Z" });
+    createTask({ id: "invalid-calendar", sessionId: "session", endTime: "2026-02-30T12:00:00Z" });
+    createTask({ id: "null-time", sessionId: "session", endTime: null });
+    createTask({ id: "empty-time", sessionId: "session", endTime: "" });
+    createTask({ id: "malformed-time", sessionId: "session", endTime: "definitely-not-a-date" });
+    cacheCover("z_task");
+    cacheCover("A_task");
+    cacheCover("invalid-calendar");
+    cacheCover("null-time");
+    cacheCover("empty-time");
+    cacheCover("malformed-time");
+
+    expect(projectCoverUrl(projectId)).toBe("/ui/covers/A_task");
+  });
+
+  it("returns null rather than a provider-media URL when no matching task has a local cover", () => {
+    const projectId = createProject("Project");
+    createJob("session", projectId);
+    createTask({
+      id: "remote-only",
+      sessionId: "session",
+      endTime: "2026-01-03T12:00:00.000Z",
+      cover: "https://provider.example/cover.png",
+    });
+
+    expect(projectCoverUrl(projectId)).toBeNull();
+  });
+
+  it("updates the selected cover after job assignment, unassignment, and reassignment", () => {
+    const firstProjectId = createProject("First");
+    const secondProjectId = createProject("Second");
+    createJob("session", firstProjectId);
+    createTask({ id: "task_1", sessionId: "session", endTime: "2026-01-03T12:00:00.000Z" });
+    cacheCover("task_1");
+
+    expect(projectCoverUrl(firstProjectId)).toBe("/ui/covers/task_1");
+
+    dbModule!.db.prepare("UPDATE jobs SET project_id = NULL WHERE session_id = ?").run("session");
+    expect(projectCoverUrl(firstProjectId)).toBeNull();
+
+    dbModule!.db
+      .prepare("UPDATE jobs SET project_id = ? WHERE session_id = ?")
+      .run(secondProjectId, "session");
+    expect(projectCoverUrl(firstProjectId)).toBeNull();
+    expect(projectCoverUrl(secondProjectId)).toBe("/ui/covers/task_1");
   });
 });
