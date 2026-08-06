@@ -149,6 +149,11 @@ describe.sequential("listProjects cover URLs", () => {
       sessionId: "session",
       endTime: "2026-05-01T12:00:00.000Z\0",
     });
+    createTask({
+      id: "non-iso-date-only-nul",
+      sessionId: "session",
+      endTime: "2026-06-01\0",
+    });
     createTask({ id: "null-time", sessionId: "session", endTime: null });
     createTask({ id: "empty-time", sessionId: "session", endTime: "" });
     createTask({ id: "malformed-time", sessionId: "session", endTime: "definitely-not-a-date" });
@@ -159,6 +164,7 @@ describe.sequential("listProjects cover URLs", () => {
     cacheCover("non-iso-space-after-t");
     cacheCover("non-iso-vertical-tab");
     cacheCover("non-iso-nul");
+    cacheCover("non-iso-date-only-nul");
     cacheCover("null-time");
     cacheCover("empty-time");
     cacheCover("malformed-time");

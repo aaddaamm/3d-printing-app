@@ -38,9 +38,9 @@ export function createProjectStatements(db: Database.Database) {
                 OR (
                   pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]*'
                   AND pt.endTime NOT GLOB '*[^0-9TZ+:.-]*'
-                  AND instr(pt.endTime, char(0)) = 0
                 )
               )
+              AND instr(pt.endTime, char(0)) = 0
               AND strftime('%s', pt.endTime) IS NOT NULL
               AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
             THEN 1
