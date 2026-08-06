@@ -127,18 +127,20 @@ describe.sequential("listProjects cover URLs", () => {
     expect(projectCoverUrl(projectId)).toBe("/ui/covers/newest");
   });
 
-  it("sorts valid timestamps before null, empty, and malformed values, then task IDs by BINARY order", () => {
+  it("sorts valid timestamps before null, empty, malformed, and non-ISO values, then task IDs by BINARY order", () => {
     const projectId = createProject("Project");
     createJob("session", projectId);
     createTask({ id: "z_task", sessionId: "session", endTime: "2026-01-03T12:00:00.000Z" });
     createTask({ id: "A_task", sessionId: "session", endTime: "2026-01-03T12:00:00.000Z" });
     createTask({ id: "invalid-calendar", sessionId: "session", endTime: "2026-02-30T12:00:00Z" });
+    createTask({ id: "non-iso-space", sessionId: "session", endTime: "2026-02-01 12:00:00Z" });
     createTask({ id: "null-time", sessionId: "session", endTime: null });
     createTask({ id: "empty-time", sessionId: "session", endTime: "" });
     createTask({ id: "malformed-time", sessionId: "session", endTime: "definitely-not-a-date" });
     cacheCover("z_task");
     cacheCover("A_task");
     cacheCover("invalid-calendar");
+    cacheCover("non-iso-space");
     cacheCover("null-time");
     cacheCover("empty-time");
     cacheCover("malformed-time");

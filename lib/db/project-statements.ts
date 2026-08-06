@@ -36,6 +36,8 @@ export function createProjectStatements(db: Database.Database) {
         CASE
           WHEN pt.endTime IS NOT NULL
             AND trim(pt.endTime) <> ''
+            AND trim(pt.endTime) = pt.endTime
+            AND (length(pt.endTime) = 10 OR substr(pt.endTime, 11, 1) = 'T')
             AND strftime('%s', pt.endTime) IS NOT NULL
             AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
           THEN 0
@@ -44,6 +46,8 @@ export function createProjectStatements(db: Database.Database) {
         CASE
           WHEN pt.endTime IS NOT NULL
             AND trim(pt.endTime) <> ''
+            AND trim(pt.endTime) = pt.endTime
+            AND (length(pt.endTime) = 10 OR substr(pt.endTime, 11, 1) = 'T')
             AND strftime('%s', pt.endTime) IS NOT NULL
             AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
           THEN julianday(pt.endTime)
