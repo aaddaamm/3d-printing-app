@@ -28,51 +28,63 @@ export function createProjectStatements(db: Database.Database) {
     `),
 
     listProjectCoverTasks: db.prepare<[], { project_id: number; task_id: string }>(`
-      SELECT j.project_id, pt.id AS task_id
-      FROM jobs j
-      INNER JOIN print_tasks pt ON pt.session_id = j.session_id
-      WHERE j.project_id IS NOT NULL
-      ORDER BY j.project_id,
-        CASE
-          WHEN pt.endTime IS NOT NULL
-            AND trim(pt.endTime) <> ''
-            AND trim(pt.endTime) = pt.endTime
-            AND (
-              (length(pt.endTime) = 10
-                AND pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
-              OR (
-                pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]*'
-                AND instr(pt.endTime, ' ') = 0
-                AND instr(pt.endTime, char(9)) = 0
-                AND instr(pt.endTime, char(10)) = 0
-                AND instr(pt.endTime, char(13)) = 0
+      WITH project_cover_tasks AS (
+        SELECT j.project_id, pt.id AS task_id, pt.endTime,
+          CASE
+            WHEN pt.endTime IS NOT NULL
+              AND (
+                (length(pt.endTime) = 10
+                  AND pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+                OR (
+                  pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]*'
+                  AND pt.endTime NOT GLOB '*[^0-9TZ+:.-]*'
+                  AND instr(pt.endTime, char(0)) = 0
+                )
               )
-            )
-            AND strftime('%s', pt.endTime) IS NOT NULL
-            AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
-          THEN 0
-          ELSE 1
-        END,
-        CASE
-          WHEN pt.endTime IS NOT NULL
-            AND trim(pt.endTime) <> ''
-            AND trim(pt.endTime) = pt.endTime
-            AND (
-              (length(pt.endTime) = 10
-                AND pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
-              OR (
-                pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]*'
-                AND instr(pt.endTime, ' ') = 0
-                AND instr(pt.endTime, char(9)) = 0
-                AND instr(pt.endTime, char(10)) = 0
-                AND instr(pt.endTime, char(13)) = 0
-              )
-            )
-            AND strftime('%s', pt.endTime) IS NOT NULL
-            AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
-          THEN julianday(pt.endTime)
-        END DESC,
-        pt.id COLLATE BINARY ASC
+              AND strftime('%s', pt.endTime) IS NOT NULL
+              AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
+            THEN 1
+            ELSE 0
+          END AS has_valid_end_time
+        FROM jobs j
+        INNER JOIN print_tasks pt ON pt.session_id = j.session_id
+        WHERE j.project_id IS NOT NULL
+      ),
+      project_cover_times AS (
+        SELECT project_id, task_id, endTime, has_valid_end_time,
+          CASE
+            WHEN has_valid_end_time = 1 THEN CAST(strftime('%s', endTime) AS INTEGER)
+          END AS end_time_s,
+          CASE
+            WHEN has_valid_end_time = 1 AND instr(endTime, '.') > 0
+            THEN substr(endTime, instr(endTime, '.') + 1)
+            ELSE ''
+          END AS fractional_tail
+        FROM project_cover_tasks
+      ),
+      project_cover_ordering AS (
+        SELECT project_id, task_id, has_valid_end_time, end_time_s,
+          rtrim(
+            CASE
+              WHEN instr(fractional_tail, 'Z') > 0
+              THEN substr(fractional_tail, 1, instr(fractional_tail, 'Z') - 1)
+              WHEN instr(fractional_tail, '+') > 0
+              THEN substr(fractional_tail, 1, instr(fractional_tail, '+') - 1)
+              WHEN instr(fractional_tail, '-') > 0
+              THEN substr(fractional_tail, 1, instr(fractional_tail, '-') - 1)
+              ELSE fractional_tail
+            END,
+            '0'
+          ) AS fractional_seconds
+        FROM project_cover_times
+      )
+      SELECT project_id, task_id
+      FROM project_cover_ordering
+      ORDER BY project_id,
+        has_valid_end_time DESC,
+        end_time_s DESC,
+        fractional_seconds COLLATE BINARY DESC,
+        task_id COLLATE BINARY ASC
     `),
 
     getProjectById: db.prepare<[number], Project & { product_id: number | null }>(`

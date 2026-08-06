@@ -139,6 +139,16 @@ describe.sequential("listProjects cover URLs", () => {
       sessionId: "session",
       endTime: "2026-03-01T 12:00:00Z",
     });
+    createTask({
+      id: "non-iso-vertical-tab",
+      sessionId: "session",
+      endTime: "2026-04-01T12:00:00.000Z\v",
+    });
+    createTask({
+      id: "non-iso-nul",
+      sessionId: "session",
+      endTime: "2026-05-01T12:00:00.000Z\0",
+    });
     createTask({ id: "null-time", sessionId: "session", endTime: null });
     createTask({ id: "empty-time", sessionId: "session", endTime: "" });
     createTask({ id: "malformed-time", sessionId: "session", endTime: "definitely-not-a-date" });
@@ -147,11 +157,32 @@ describe.sequential("listProjects cover URLs", () => {
     cacheCover("invalid-calendar");
     cacheCover("non-iso-double-t");
     cacheCover("non-iso-space-after-t");
+    cacheCover("non-iso-vertical-tab");
+    cacheCover("non-iso-nul");
     cacheCover("null-time");
     cacheCover("empty-time");
     cacheCover("malformed-time");
 
     expect(projectCoverUrl(projectId)).toBe("/ui/covers/A_task");
+  });
+
+  it("orders valid fractional seconds beyond SQLite millisecond precision", () => {
+    const projectId = createProject("Project");
+    createJob("fraction-session", projectId);
+    createTask({
+      id: "a_older",
+      sessionId: "fraction-session",
+      endTime: "2026-01-03T12:00:00.0001Z",
+    });
+    createTask({
+      id: "z_newer",
+      sessionId: "fraction-session",
+      endTime: "2026-01-03T12:00:00.0004Z",
+    });
+    cacheCover("a_older");
+    cacheCover("z_newer");
+
+    expect(projectCoverUrl(projectId)).toBe("/ui/covers/z_newer");
   });
 
   it("returns null rather than a provider-media URL when no matching task has a local cover", () => {
