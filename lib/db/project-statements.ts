@@ -37,7 +37,17 @@ export function createProjectStatements(db: Database.Database) {
           WHEN pt.endTime IS NOT NULL
             AND trim(pt.endTime) <> ''
             AND trim(pt.endTime) = pt.endTime
-            AND (length(pt.endTime) = 10 OR substr(pt.endTime, 11, 1) = 'T')
+            AND (
+              (length(pt.endTime) = 10
+                AND pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+              OR (
+                pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]*'
+                AND instr(pt.endTime, ' ') = 0
+                AND instr(pt.endTime, char(9)) = 0
+                AND instr(pt.endTime, char(10)) = 0
+                AND instr(pt.endTime, char(13)) = 0
+              )
+            )
             AND strftime('%s', pt.endTime) IS NOT NULL
             AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
           THEN 0
@@ -47,7 +57,17 @@ export function createProjectStatements(db: Database.Database) {
           WHEN pt.endTime IS NOT NULL
             AND trim(pt.endTime) <> ''
             AND trim(pt.endTime) = pt.endTime
-            AND (length(pt.endTime) = 10 OR substr(pt.endTime, 11, 1) = 'T')
+            AND (
+              (length(pt.endTime) = 10
+                AND pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]')
+              OR (
+                pt.endTime GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9][0-9]:[0-9][0-9]*'
+                AND instr(pt.endTime, ' ') = 0
+                AND instr(pt.endTime, char(9)) = 0
+                AND instr(pt.endTime, char(10)) = 0
+                AND instr(pt.endTime, char(13)) = 0
+              )
+            )
             AND strftime('%s', pt.endTime) IS NOT NULL
             AND substr(pt.endTime, 1, 10) = date(julianday(substr(pt.endTime, 1, 10)))
           THEN julianday(pt.endTime)
