@@ -9,7 +9,7 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Hono, type Context } from "hono";
-import { ensureLocalCoverCached } from "../lib/covers.js";
+import { ensureLocalCoverCached, taskIdFromCoverKey } from "../lib/covers.js";
 import { db } from "../lib/db.js";
 import { resolveLocalProductPhotoPath } from "../lib/product-photo-path.js";
 import { listUiJobs } from "../models/ui.js";
@@ -163,8 +163,9 @@ function serveFontFile(c: Context): Response {
 }
 
 async function serveCoverFile(c: Context): Promise<Response> {
-  const taskId = c.req.param("taskId");
-  if (!taskId || !/^[A-Za-z0-9_-]+$/.test(taskId)) return c.json({ error: "Invalid" }, 400);
+  const coverKey = c.req.param("taskId");
+  const taskId = coverKey ? taskIdFromCoverKey(coverKey) : null;
+  if (!taskId) return c.json({ error: "Invalid" }, 400);
 
   const cover = await ensureLocalCoverCached(taskId);
   if (!cover.path) return notFound(c);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { catalogPreviewPath, type CatalogPreviewContentType } from "../lib/catalog-preview.js";
-import { localCoverPath } from "../lib/covers.js";
+import { coverKeyForTaskId, localCoverPath } from "../lib/covers.js";
 import { db } from "../lib/db.js";
 import {
   appOwnedProductImageContentHash,
@@ -411,7 +411,7 @@ function printCoverCandidates(rows: CoverRow[]): CandidateDetails[] {
         candidate_key: `print_cover:${row.task_id}`,
         source_type: "print_cover" as const,
         photo_id: null,
-        url: available ? `/ui/covers/${encodeURIComponent(row.task_id)}` : null,
+        url: available ? `/ui/covers/${coverKeyForTaskId(row.task_id)}` : null,
         label: row.title?.trim() || `Print ${row.task_id}`,
         priority: SOURCE_PRIORITIES.print_cover,
         available,

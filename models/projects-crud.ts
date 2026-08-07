@@ -1,5 +1,5 @@
 import { db, stmts } from "../lib/db.js";
-import { localCoverExists } from "../lib/covers.js";
+import { coverKeyForTaskId, localCoverExists } from "../lib/covers.js";
 import { autoGroupProjects } from "../lib/auto-group.js";
 import { invalidateProjectPriceCache } from "../lib/price-cache.js";
 import type { Project, Job } from "../lib/types.js";
@@ -13,15 +13,11 @@ export type ProjectWithStats = Project & {
   cover_url: string | null;
 };
 
-function isCacheValidTaskId(taskId: string): boolean {
-  return /^[A-Za-z0-9_-]+$/.test(taskId);
-}
-
 export function listProjects(): ProjectWithStats[] {
   const coverUrls = new Map<number, string>();
   for (const { project_id, task_id } of stmts.listProjectCoverTasks.all()) {
-    if (!coverUrls.has(project_id) && isCacheValidTaskId(task_id) && localCoverExists(task_id)) {
-      coverUrls.set(project_id, `/ui/covers/${task_id}`);
+    if (!coverUrls.has(project_id) && localCoverExists(task_id)) {
+      coverUrls.set(project_id, `/ui/covers/${coverKeyForTaskId(task_id)}`);
     }
   }
 

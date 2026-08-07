@@ -191,6 +191,19 @@ describe.sequential("listProjects cover URLs", () => {
     expect(projectCoverUrl(projectId)).toBe("/ui/covers/z_newer");
   });
 
+  it("selects a cached Moonraker cover through its safe cover key", () => {
+    const projectId = createProject("Moonraker Project");
+    createJob("moonraker-session", projectId);
+    createTask({
+      id: "moonraker:000001",
+      sessionId: "moonraker-session",
+      endTime: "2026-01-04T12:00:00.000Z",
+    });
+    cacheCover("moonraker:000001");
+
+    expect(projectCoverUrl(projectId)).toBe("/ui/covers/~bW9vbnJha2VyOjAwMDAwMQ");
+  });
+
   it("returns null rather than a provider-media URL when no matching task has a local cover", () => {
     const projectId = createProject("Project");
     createJob("session", projectId);

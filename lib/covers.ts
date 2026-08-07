@@ -11,13 +11,43 @@ function ensureCoversDir(): string {
   return COVERS_DIR;
 }
 
-function isSafeTaskId(taskId: string): boolean {
-  return /^[A-Za-z0-9_-]+$/.test(taskId);
+const CACHE_SAFE_TASK_ID_RE = /^[A-Za-z0-9_-]+$/;
+const ENCODED_COVER_KEY_PREFIX = "~";
+const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
+
+function isCacheSafeTaskId(taskId: string): boolean {
+  return CACHE_SAFE_TASK_ID_RE.test(taskId);
 }
 
-function sanitizeTaskId(taskId: string): string {
-  if (!isSafeTaskId(taskId)) {
-    throw new Error(`Invalid task id for cover path: ${taskId}`);
+/**
+ * Returns the filename and URL key for a task cover. Existing cache-safe IDs,
+ * including Bambu's numeric task IDs, retain their original key. Provider-scoped
+ * IDs containing separators use a prefixed base64url encoding instead.
+ */
+export function coverKeyForTaskId(taskId: string): string {
+  if (!taskId) throw new Error("Task id is required for a cover path");
+  if (isCacheSafeTaskId(taskId)) return taskId;
+  return ENCODED_COVER_KEY_PREFIX + Buffer.from(taskId, "utf8").toString("base64url");
+}
+
+/**
+ * Resolves a URL/file key to its task ID. Encoded keys must be canonical and
+ * are reserved for task IDs that cannot already be used as cache-safe keys.
+ */
+export function taskIdFromCoverKey(coverKey: string): string | null {
+  if (isCacheSafeTaskId(coverKey)) return coverKey;
+  if (!coverKey.startsWith(ENCODED_COVER_KEY_PREFIX)) return null;
+
+  const encodedTaskId = coverKey.slice(ENCODED_COVER_KEY_PREFIX.length);
+  if (!BASE64URL_RE.test(encodedTaskId)) return null;
+
+  const taskId = Buffer.from(encodedTaskId, "base64url").toString("utf8");
+  if (
+    !taskId ||
+    isCacheSafeTaskId(taskId) ||
+    ENCODED_COVER_KEY_PREFIX + Buffer.from(taskId, "utf8").toString("base64url") !== coverKey
+  ) {
+    return null;
   }
   return taskId;
 }
@@ -32,12 +62,11 @@ function assertInsideCoversDir(candidate: string): string {
 }
 
 export function localCoverPath(taskId: string): string {
-  const safeTaskId = sanitizeTaskId(taskId);
-  return assertInsideCoversDir(path.join(ensureCoversDir(), safeTaskId + ".png"));
+  return assertInsideCoversDir(path.join(ensureCoversDir(), coverKeyForTaskId(taskId) + ".png"));
 }
 
 export function localCoverExists(taskId: string): boolean {
-  if (!isSafeTaskId(taskId)) return false;
+  if (!taskId) return false;
   return fs.existsSync(localCoverPath(taskId));
 }
 
@@ -62,20 +91,22 @@ async function downloadCoverToFile(url: string, dest: string): Promise<void> {
 }
 
 export async function ensureLocalCoverCached(taskId: string): Promise<CoverCacheResult> {
-  if (!isSafeTaskId(taskId)) return { status: "unavailable", path: null };
+  if (!taskId) return { status: "unavailable", path: null };
 
   const dest = localCoverPath(taskId);
-  if (fs.existsSync(dest)) {
-    assertRegularCoverFile(dest);
-    return { status: "ready", path: dest };
-  }
-
   const task = db
     .prepare<[string], { cover: string | null; thumbnail: string | null }>(
       "SELECT cover, thumbnail FROM print_tasks WHERE id = ?",
     )
     .get(taskId);
-  const mediaUrl = task?.cover ?? task?.thumbnail ?? null;
+  if (!task) return { status: "unavailable", path: null };
+
+  if (fs.existsSync(dest)) {
+    assertRegularCoverFile(dest);
+    return { status: "ready", path: dest };
+  }
+
+  const mediaUrl = task.cover ?? task.thumbnail;
   if (!mediaUrl) return { status: "unavailable", path: null };
 
   try {
@@ -105,7 +136,6 @@ export async function downloadCovers(): Promise<{
       `SELECT id, COALESCE(cover, thumbnail) AS media_url
        FROM print_tasks
        WHERE id <> ''
-         AND id NOT GLOB '*[^A-Za-z0-9_-]*'
          AND (cover IS NOT NULL OR thumbnail IS NOT NULL)`,
     )
     .all();
@@ -128,7 +158,7 @@ export async function downloadCovers(): Promise<{
   printProgress();
 
   for (const task of tasks) {
-    const taskId = sanitizeTaskId(task.id);
+    const taskId = task.id;
     const dest = localCoverPath(taskId);
     if (fs.existsSync(dest)) {
       assertRegularCoverFile(dest);

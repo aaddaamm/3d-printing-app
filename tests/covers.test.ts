@@ -29,12 +29,40 @@ vi.mock("node:fs", async (importOriginal) => {
 import fs from "node:fs";
 import { db } from "../lib/db.js";
 import {
+  coverKeyForTaskId,
+  taskIdFromCoverKey,
   localCoverPath,
   localCoverExists,
   downloadCovers,
   ensureLocalCoverCached,
   COVERS_DIR,
 } from "../lib/covers.js";
+
+// ── cover keys ───────────────────────────────────────────────────────────────
+
+describe("cover keys", () => {
+  it("preserves Bambu numeric IDs as their existing file and URL key", () => {
+    expect(coverKeyForTaskId("123456789")).toBe("123456789");
+    expect(taskIdFromCoverKey("123456789")).toBe("123456789");
+  });
+
+  it("round-trips provider-scoped IDs through a canonical URL-safe key", () => {
+    const coverKey = coverKeyForTaskId("moonraker:000001");
+
+    expect(coverKey).toBe("~bW9vbnJha2VyOjAwMDAwMQ");
+    expect(taskIdFromCoverKey(coverKey)).toBe("moonraker:000001");
+    expect(taskIdFromCoverKey("moonraker:000001")).toBeNull();
+  });
+
+  it("rejects malformed and alternate encodings", () => {
+    expect(taskIdFromCoverKey("~bW9vbnJha2VyOjAwMDAwMQ=")).toBeNull();
+    expect(taskIdFromCoverKey("~MTIz")).toBeNull();
+  });
+
+  it("encodes path-like IDs rather than using them as a filesystem path", () => {
+    expect(path.dirname(localCoverPath("../covers"))).toBe(COVERS_DIR);
+  });
+});
 
 // ── localCoverPath ────────────────────────────────────────────────────────────
 
@@ -61,9 +89,11 @@ describe("localCoverExists", () => {
     expect(fs.existsSync).toHaveBeenCalledWith(localCoverPath("task1"));
   });
 
-  it("returns false for provider-scoped task ids without throwing", () => {
-    expect(localCoverExists("moonraker:00002B")).toBe(false);
-    expect(fs.existsSync).not.toHaveBeenCalled();
+  it("looks up provider-scoped task IDs through their safe cover key", () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    expect(localCoverExists("moonraker:00002B")).toBe(true);
+    expect(fs.existsSync).toHaveBeenCalledWith(localCoverPath("moonraker:00002B"));
   });
 
   it("returns false when existsSync returns false", () => {
@@ -80,7 +110,8 @@ describe("ensureLocalCoverCached", () => {
     vi.stubGlobal("fetch", vi.fn());
   });
 
-  it("returns ready without fetching when the local file already exists", async () => {
+  it("returns ready without fetching when the local file belongs to a task", async () => {
+    mockPrepareGet.mockReturnValue({ cover: "https://example.com/t1.png", thumbnail: null });
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.lstatSync).mockReturnValue({
       isFile: () => true,
@@ -91,6 +122,15 @@ describe("ensureLocalCoverCached", () => {
 
     expect(result).toEqual({ status: "ready", path: localCoverPath("t1") });
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not serve a local filename that has no matching task", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    const result = await ensureLocalCoverCached("unknown-task");
+
+    expect(result).toEqual({ status: "unavailable", path: null });
+    expect(fs.lstatSync).not.toHaveBeenCalled();
   });
 
   it("downloads and caches a missing local cover from the database cover URL", async () => {
@@ -163,8 +203,11 @@ describe("downloadCovers", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("downloads a thumbnail when cover is null", async () => {
-    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1-thumb.png" }]);
+  it("downloads a Moonraker thumbnail through a safe local cover key", async () => {
+    const moonrakerTaskId = "moonraker:000001";
+    mockPrepareAll.mockReturnValue([
+      { id: moonrakerTaskId, media_url: "https://example.com/t1-thumb.png" },
+    ]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -182,10 +225,10 @@ describe("downloadCovers", () => {
       expect.stringContaining("cover IS NOT NULL OR thumbnail IS NOT NULL"),
     );
     expect(vi.mocked(db.prepare)).toHaveBeenCalledWith(
-      expect.stringContaining("id NOT GLOB '*[^A-Za-z0-9_-]*'"),
+      expect.not.stringContaining("id NOT GLOB '*[^A-Za-z0-9_-]*'"),
     );
     expect(fs.writeFileSync).toHaveBeenCalledWith(
-      localCoverPath("t1"),
+      localCoverPath(moonrakerTaskId),
       Buffer.from(new ArrayBuffer(8)),
     );
   });
