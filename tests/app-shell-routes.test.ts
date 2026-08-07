@@ -95,6 +95,30 @@ describe("Sync now control", () => {
     expect(button.disabled).toBe(false);
   });
 
+  it("confirms a completed sync and warns when its data refresh fails", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ providers: [], covers: {} }));
+    const onSyncComplete = vi.fn().mockRejectedValue(new Error("Failed to refresh projects."));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      render(h(SyncNowButton, { onSyncComplete }), container);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".sync-now-btn")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/sync", { method: "POST" });
+    expect(onSyncComplete).toHaveBeenCalledOnce();
+    expect(toastMock).toHaveBeenNthCalledWith(1, "Sync complete.", "success");
+    expect(toastMock).toHaveBeenNthCalledWith(
+      2,
+      "Sync completed, but page data may be stale. Reload to view the latest data.",
+      "error",
+    );
+  });
+
   it("shows the server failure without refreshing data", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

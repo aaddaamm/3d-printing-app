@@ -78,8 +78,12 @@ export function SyncNowButton({
     try {
       const response = await fetch("/api/sync", { method: "POST" });
       if (!response.ok) throw new Error(await syncFailureMessage(response));
-      await onSyncComplete();
       toast("Sync complete.", "success");
+      try {
+        await onSyncComplete();
+      } catch {
+        toast("Sync completed, but page data may be stale. Reload to view the latest data.", "error");
+      }
     } catch (error) {
       toast(error instanceof Error && error.message ? error.message : "Sync failed.", "error");
     } finally {
