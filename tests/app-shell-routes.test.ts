@@ -96,7 +96,9 @@ describe("Sync now control", () => {
   });
 
   it("confirms a completed sync and warns when its data refresh fails", async () => {
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(jsonResponse({ providers: [], covers: {} }));
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ providers: [], covers: {} }));
     const onSyncComplete = vi.fn().mockRejectedValue(new Error("Failed to refresh projects."));
     vi.stubGlobal("fetch", fetchMock);
 

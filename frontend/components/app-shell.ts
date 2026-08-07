@@ -82,7 +82,10 @@ export function SyncNowButton({
       try {
         await onSyncComplete();
       } catch {
-        toast("Sync completed, but page data may be stale. Reload to view the latest data.", "error");
+        toast(
+          "Sync completed, but page data may be stale. Reload to view the latest data.",
+          "error",
+        );
       }
     } catch (error) {
       toast(error instanceof Error && error.message ? error.message : "Sync failed.", "error");
