@@ -122,7 +122,23 @@ function spawnSync(appEntryUrl: string, schedule: SyncSchedule): Promise<void> {
   });
 }
 
-function startProviderSchedule(schedule: SyncSchedule, appEntryUrl: string): void {
+type SyncRunner = (appEntryUrl: string, schedule: SyncSchedule) => Promise<void>;
+
+function createSerializedSyncRunner(): SyncRunner {
+  let previousRun = Promise.resolve();
+
+  return (appEntryUrl, schedule) => {
+    const run = previousRun.then(() => spawnSync(appEntryUrl, schedule));
+    previousRun = run.catch(() => undefined);
+    return run;
+  };
+}
+
+function startProviderSchedule(
+  schedule: SyncSchedule,
+  appEntryUrl: string,
+  runSync: SyncRunner = spawnSync,
+): void {
   let syncInProgress = false;
 
   const runScheduledSync = async (): Promise<void> => {
@@ -134,7 +150,7 @@ function startProviderSchedule(schedule: SyncSchedule, appEntryUrl: string): voi
 
     syncInProgress = true;
     try {
-      await spawnSync(appEntryUrl, schedule);
+      await runSync(appEntryUrl, schedule);
     } catch (e: unknown) {
       const error = e instanceof Error ? e : new Error(String(e));
       logError(`${red(`${name} sync error:`)} ${error.message}`);
@@ -162,7 +178,12 @@ function startProviderSchedule(schedule: SyncSchedule, appEntryUrl: string): voi
 
 export function startSyncScheduler({ schedules, appEntryUrl }: StartSyncSchedulerArgs): void {
   if (schedules.length === 0) return;
+  const runConfiguredSync = createSerializedSyncRunner();
   for (const schedule of schedules) {
-    startProviderSchedule(schedule, appEntryUrl);
+    startProviderSchedule(
+      schedule,
+      appEntryUrl,
+      schedule.provider === "configured" ? runConfiguredSync : spawnSync,
+    );
   }
 }

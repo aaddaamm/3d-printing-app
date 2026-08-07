@@ -187,6 +187,41 @@ describe("startSyncScheduler", () => {
     child.emit("close", 0);
   });
 
+  it("serializes configured provider startup syncs so no provider is lost", async () => {
+    vi.useFakeTimers();
+    const firstChild = new EventEmitter();
+    const secondChild = new EventEmitter();
+    vi.mocked(spawn)
+      .mockReturnValueOnce(firstChild as ReturnType<typeof spawn>)
+      .mockReturnValueOnce(secondChild as ReturnType<typeof spawn>);
+
+    startSyncScheduler({
+      schedules: [
+        { provider: "configured", providerId: "voron", intervalHours: 1 },
+        { provider: "configured", providerId: "prusa", intervalHours: 1 },
+      ],
+      appEntryUrl: "file:///repo/api.ts",
+    });
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(spawn).toHaveBeenCalledOnce();
+    expect(spawn).toHaveBeenLastCalledWith(
+      "tsx",
+      ["/repo/sync-configured-providers.ts", "--provider", "voron"],
+      expect.objectContaining({ stdio: "inherit" }),
+    );
+
+    firstChild.emit("close", 0);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(spawn).toHaveBeenCalledTimes(2);
+    expect(spawn).toHaveBeenLastCalledWith(
+      "tsx",
+      ["/repo/sync-configured-providers.ts", "--provider", "prusa"],
+      expect.objectContaining({ stdio: "inherit" }),
+    );
+    secondChild.emit("close", 0);
+  });
+
   it("skips overlapping interval runs and resumes after completion", async () => {
     vi.useFakeTimers();
     const firstChild = mockChildProcess();
