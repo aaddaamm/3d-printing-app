@@ -84,13 +84,21 @@ export async function runConfiguredProviderSync(
       results.push({ id: provider.id, ...counts });
     }
 
+    let maintenanceError: unknown;
+    let maintenanceFailed = false;
     if (hasSyncChanges(results)) {
-      runPostSyncMaintenance();
+      try {
+        runPostSyncMaintenance();
+      } catch (error) {
+        maintenanceError = error;
+        maintenanceFailed = true;
+      }
     } else {
       logInfo(`  ${dim("Post-sync:")} skipped — no provider records changed.`);
     }
 
     const covers = await downloadCovers();
+    if (maintenanceFailed) throw maintenanceError;
     return { providers: results, covers };
   } finally {
     releaseLock(lockFd, lockPath);
