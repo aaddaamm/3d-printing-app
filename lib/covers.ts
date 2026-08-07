@@ -88,8 +88,8 @@ export async function ensureLocalCoverCached(taskId: string): Promise<CoverCache
 }
 
 /**
- * Downloads cover images for all tasks that have a cover URL but no local file.
- * Idempotent — skips already-downloaded files.
+ * Downloads cover images for all tasks that have a cover or thumbnail URL but no local file.
+ * Covers are preferred to thumbnails. Idempotent — skips already-downloaded files.
  * Prints inline progress to stdout.
  */
 export async function downloadCovers(): Promise<{
@@ -101,8 +101,12 @@ export async function downloadCovers(): Promise<{
   ensureCoversDir();
 
   const tasks = db
-    .prepare<[], { id: string; cover: string }>(
-      "SELECT id, cover FROM print_tasks WHERE cover IS NOT NULL",
+    .prepare<[], { id: string; media_url: string }>(
+      `SELECT id, COALESCE(cover, thumbnail) AS media_url
+       FROM print_tasks
+       WHERE id <> ''
+         AND id NOT GLOB '*[^A-Za-z0-9_-]*'
+         AND (cover IS NOT NULL OR thumbnail IS NOT NULL)`,
     )
     .all();
 
@@ -131,7 +135,7 @@ export async function downloadCovers(): Promise<{
       skipped++;
     } else {
       try {
-        await downloadCoverToFile(task.cover, dest);
+        await downloadCoverToFile(task.media_url, dest);
         downloaded++;
       } catch (e) {
         if (e instanceof HttpError && e.status === 403) expired++;

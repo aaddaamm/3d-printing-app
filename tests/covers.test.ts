@@ -27,6 +27,7 @@ vi.mock("node:fs", async (importOriginal) => {
 });
 
 import fs from "node:fs";
+import { db } from "../lib/db.js";
 import {
   localCoverPath,
   localCoverExists,
@@ -148,7 +149,7 @@ describe("downloadCovers", () => {
   });
 
   it("skips a task whose local file already exists", async () => {
-    mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.lstatSync).mockReturnValue({
       isFile: () => true,
@@ -162,8 +163,48 @@ describe("downloadCovers", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("downloads a thumbnail when cover is null", async () => {
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1-thumb.png" }]);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as Response);
+
+    const result = await downloadCovers();
+
+    expect(result).toEqual({ downloaded: 1, skipped: 0, expired: 0, failed: 0 });
+    expect(fetch).toHaveBeenCalledWith("https://example.com/t1-thumb.png", expect.any(Object));
+    expect(vi.mocked(db.prepare)).toHaveBeenCalledWith(
+      expect.stringContaining("COALESCE(cover, thumbnail) AS media_url"),
+    );
+    expect(vi.mocked(db.prepare)).toHaveBeenCalledWith(
+      expect.stringContaining("cover IS NOT NULL OR thumbnail IS NOT NULL"),
+    );
+    expect(vi.mocked(db.prepare)).toHaveBeenCalledWith(
+      expect.stringContaining("id NOT GLOB '*[^A-Za-z0-9_-]*'"),
+    );
+    expect(fs.writeFileSync).toHaveBeenCalledWith(
+      localCoverPath("t1"),
+      Buffer.from(new ArrayBuffer(8)),
+    );
+  });
+
+  it("uses the cover URL selected ahead of a thumbnail", async () => {
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1-cover.png" }]);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(8),
+    } as Response);
+
+    await downloadCovers();
+
+    expect(fetch).toHaveBeenCalledWith("https://example.com/t1-cover.png", expect.any(Object));
+  });
+
   it("HTTP 200 — downloaded increments and file is written to exact path", async () => {
-    mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
@@ -180,7 +221,7 @@ describe("downloadCovers", () => {
   });
 
   it("HTTP 403 — expired increments, failed does not", async () => {
-    mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fetch).mockResolvedValue({ ok: false, status: 403 } as Response);
 
@@ -191,7 +232,7 @@ describe("downloadCovers", () => {
   });
 
   it("HTTP 500 — failed increments, expired does not", async () => {
-    mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fetch).mockResolvedValue({ ok: false, status: 500 } as Response);
 
@@ -202,7 +243,7 @@ describe("downloadCovers", () => {
   });
 
   it("network failure — failed increments", async () => {
-    mockPrepareAll.mockReturnValue([{ id: "t1", cover: "https://example.com/t1.png" }]);
+    mockPrepareAll.mockReturnValue([{ id: "t1", media_url: "https://example.com/t1.png" }]);
     vi.mocked(fs.existsSync).mockReturnValue(false);
     vi.mocked(fetch).mockRejectedValue(new Error("Network error"));
 

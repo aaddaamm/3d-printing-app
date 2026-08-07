@@ -1,12 +1,8 @@
 import "dotenv/config";
-import { db, stmts } from "./lib/db.js";
-import { bold, cyan, dim, red } from "./lib/colors.js";
-import { defaultConfigPath, loadPrintworksConfig } from "./lib/providers/config.js";
-import { syncConfiguredProvider } from "./lib/providers/configured-sync.js";
-import { logError, logInfo } from "./lib/logger.js";
-import { defaultDbPath, hasSyncChanges, runPostSyncMaintenance } from "./lib/sync-workflow.js";
-
-const DB_PATH = defaultDbPath();
+import { db } from "./lib/db.js";
+import { red } from "./lib/colors.js";
+import { runConfiguredProviderSync } from "./lib/configured-provider-sync.js";
+import { logError } from "./lib/logger.js";
 
 type CliOptions = {
   providerId?: string;
@@ -44,32 +40,7 @@ function parseCliArgs(argv: string[]): CliOptions {
 }
 
 async function main(): Promise<void> {
-  const options = parseCliArgs(process.argv.slice(2));
-  const configPath = options.configPath ?? defaultConfigPath();
-  const config = loadPrintworksConfig(configPath);
-  if (!config) throw new Error(`No provider config found at ${configPath}`);
-
-  const providers = options.providerId
-    ? config.providers.filter((provider) => provider.id === options.providerId)
-    : config.providers;
-
-  if (providers.length === 0) throw new Error(`No provider found with id: ${options.providerId}`);
-
-  logInfo(bold(cyan("=== configured-provider-sync ===")));
-  logInfo(`  ${dim("Config:")} ${configPath}`);
-  logInfo(`  ${dim("DB    :")} ${dim(DB_PATH)}`);
-  logInfo("");
-
-  const counts = [];
-  for (const provider of providers) {
-    counts.push(await syncConfiguredProvider(db, stmts.upsertTask, provider));
-  }
-
-  if (hasSyncChanges(counts)) {
-    runPostSyncMaintenance();
-  } else {
-    logInfo(`  ${dim("Post-sync:")} skipped — no provider records changed.`);
-  }
+  await runConfiguredProviderSync(parseCliArgs(process.argv.slice(2)));
 }
 
 main()
