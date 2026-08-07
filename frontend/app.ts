@@ -8,6 +8,7 @@ import { Modal } from "./components/modal.js";
 import {
   LoadingView,
   ErrorView,
+  SyncNowButton,
   getRouteState,
   renderMainContent,
   routeNeedsDashboardBootstrap,
@@ -355,6 +356,28 @@ function App() {
     refreshJobPrices,
   } = useBootstrapData(state, routeNeedsDashboardBootstrap(route));
 
+  const refreshSyncedData = useCallback(async () => {
+    const [jobsData, projectsData, summaryData, rangeData] = await Promise.all([
+      fetchJson<{ jobs: Job[] }>("/ui/data", "Failed to refresh jobs."),
+      fetchJson<{ projects: Project[] }>("/projects", "Failed to refresh projects."),
+      fetchJson<Summary>("/summary", "Failed to refresh summary."),
+      fetchJson<DataRange>("/health/data-range", "Failed to refresh print history."),
+    ]);
+    state.setJobs(() => jobsData.jobs);
+    state.setProjects(projectsData.projects);
+    state.setSummary(summaryData);
+    state.setDataRange(rangeData);
+    refreshJobPrices(true);
+    refreshProjectsAndPrices();
+  }, [
+    refreshJobPrices,
+    refreshProjectsAndPrices,
+    state.setDataRange,
+    state.setJobs,
+    state.setProjects,
+    state.setSummary,
+  ]);
+
   const { devices, isFiltered, filtered, sorted, handleSort } = useJobsViewState({
     jobs: state.jobs,
     q: state.q,
@@ -391,7 +414,11 @@ function App() {
   if (error) return html`<${ErrorView} error=${error} />`;
 
   return html`
-    <${Header} summary=${state.summary} dataRange=${state.dataRange} />
+    <${Header}
+      summary=${state.summary}
+      dataRange=${state.dataRange}
+      syncControl=${html`<${SyncNowButton} onSyncComplete=${refreshSyncedData} />`}
+    />
     ${renderMainContent({
       route,
       summary: state.summary,

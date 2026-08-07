@@ -11,6 +11,7 @@ import { catalog } from "./routes/catalog.js";
 import { products } from "./routes/products.js";
 import { batches } from "./routes/batches.js";
 import { priceQuotes } from "./routes/price-quotes.js";
+import { sync } from "./routes/sync.js";
 import { createUiApp } from "./routes/ui.js";
 import { createHealthRoutes } from "./routes/health.js";
 import { bold, dim, cyan } from "./lib/colors.js";
@@ -46,6 +47,7 @@ function mountRoutes(): void {
   app.route("/api/products", products);
   app.route("/api/batches", batches);
   app.route("/api/price-quotes", priceQuotes);
+  app.route("/api/sync", sync);
 }
 
 function startServer(): void {

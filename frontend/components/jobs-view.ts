@@ -1,6 +1,6 @@
 // ── Jobs view — Header, Toolbar, TotalsBar, Table, Grid ──────────────────────
 
-import { h } from "preact";
+import { h, type ComponentChild } from "preact";
 import { useMemo } from "preact/hooks";
 import htm from "htm";
 
@@ -152,7 +152,15 @@ function HeaderStats({ summary }: { summary: Summary }) {
   `;
 }
 
-export function Header({ summary, dataRange }: { summary: Summary; dataRange: DataRange }) {
+export function Header({
+  summary,
+  dataRange,
+  syncControl,
+}: {
+  summary: Summary;
+  dataRange: DataRange;
+  syncControl?: ComponentChild;
+}) {
   const [loc, navigate] = useLocation();
   const hasHistoryRange = Boolean(dataRange?.min_start && dataRange?.max_start);
   const minStart = dataRange?.min_start ?? "";
@@ -172,6 +180,7 @@ export function Header({ summary, dataRange }: { summary: Summary; dataRange: Da
         <${HeaderNav} loc=${loc} navigate=${navigate} />
       </div>
       <${HeaderStats} summary=${summary} />
+      ${syncControl && html`<div class="header-actions">${syncControl}</div>`}
     </header>
   `;
 }

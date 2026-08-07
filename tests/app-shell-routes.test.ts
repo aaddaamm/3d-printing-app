@@ -1,5 +1,38 @@
-import { describe, expect, it } from "vitest";
-import { getRouteState, routeNeedsDashboardBootstrap } from "../frontend/components/app-shell.js";
+// @vitest-environment happy-dom
+
+import { h, render } from "preact";
+import { act } from "preact/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const toastMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../frontend/components/toast.js", () => ({ toast: toastMock }));
+
+import {
+  getRouteState,
+  routeNeedsDashboardBootstrap,
+  SyncNowButton,
+} from "../frontend/components/app-shell.js";
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+type Deferred<T> = {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+};
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((onResolve) => {
+    resolve = onResolve;
+  });
+  return { promise, resolve };
+}
 
 describe("dashboard bootstrap route policy", () => {
   it.each(["/catalog", "/products", "/products/12", "/batches", "/batches/4", "/admin"])(
@@ -15,6 +48,72 @@ describe("dashboard bootstrap route policy", () => {
       expect(routeNeedsDashboardBootstrap(getRouteState(path))).toBe(true);
     },
   );
+});
+
+describe("Sync now control", () => {
+  let container: HTMLDivElement;
+
+  beforeEach(() => {
+    toastMock.mockReset();
+    container = document.createElement("div");
+    document.body.append(container);
+  });
+
+  afterEach(() => {
+    act(() => render(null, container));
+    container.remove();
+    vi.unstubAllGlobals();
+  });
+
+  it("posts once while pending, then refreshes data and confirms success", async () => {
+    const response = deferred<Response>();
+    const fetchMock = vi.fn<typeof fetch>().mockReturnValue(response.promise);
+    const onSyncComplete = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      render(h(SyncNowButton, { onSyncComplete }), container);
+    });
+    const button = container.querySelector<HTMLButtonElement>(".sync-now-btn")!;
+
+    await act(async () => {
+      button.click();
+      await Promise.resolve();
+    });
+    expect(button.disabled).toBe(true);
+    button.click();
+    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith("/api/sync", { method: "POST" });
+
+    await act(async () => {
+      response.resolve(jsonResponse({ providers: [], covers: {} }));
+      await Promise.resolve();
+    });
+
+    expect(onSyncComplete).toHaveBeenCalledOnce();
+    expect(toastMock).toHaveBeenCalledWith("Sync complete.", "success");
+    expect(button.disabled).toBe(false);
+  });
+
+  it("shows the server failure without refreshing data", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ error: "A sync is already running." }, 409));
+    const onSyncComplete = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await act(async () => {
+      render(h(SyncNowButton, { onSyncComplete }), container);
+    });
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>(".sync-now-btn")!.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(onSyncComplete).not.toHaveBeenCalled();
+    expect(toastMock).toHaveBeenCalledWith("A sync is already running.", "error");
+  });
 });
 
 describe("Price-this route", () => {

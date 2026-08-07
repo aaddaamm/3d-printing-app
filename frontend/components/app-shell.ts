@@ -1,4 +1,5 @@
-import { h } from "preact";
+import { h, type ComponentChild } from "preact";
+import { useCallback, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { Toolbar, TotalsBar, TableView, GridView, PrinterBreakdownView } from "./jobs-view.js";
@@ -45,6 +46,58 @@ type Project = {
   id: number;
   [key: string]: unknown;
 };
+
+async function syncFailureMessage(response: Response): Promise<string> {
+  try {
+    const body: unknown = await response.json();
+    if (
+      typeof body === "object" &&
+      body !== null &&
+      "error" in body &&
+      typeof body.error === "string"
+    ) {
+      return body.error;
+    }
+  } catch {
+    // Use the generic message for an invalid error body.
+  }
+  return response.status === 409 ? "A sync is already running." : "Sync failed.";
+}
+
+export function SyncNowButton({
+  onSyncComplete,
+}: {
+  onSyncComplete: () => Promise<void> | void;
+}): ComponentChild {
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const handleSync = useCallback(async () => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
+    setPending(true);
+    try {
+      const response = await fetch("/api/sync", { method: "POST" });
+      if (!response.ok) throw new Error(await syncFailureMessage(response));
+      await onSyncComplete();
+      toast("Sync complete.", "success");
+    } catch (error) {
+      toast(error instanceof Error && error.message ? error.message : "Sync failed.", "error");
+    } finally {
+      pendingRef.current = false;
+      setPending(false);
+    }
+  }, [onSyncComplete]);
+
+  return html`<button
+    class="sync-now-btn"
+    type="button"
+    disabled=${pending}
+    aria-busy=${pending}
+    onClick=${handleSync}
+  >
+    ${pending ? "Syncing…" : "Sync now"}
+  </button>` as ComponentChild;
+}
 
 export function LoadingView({
   bootStatus,
