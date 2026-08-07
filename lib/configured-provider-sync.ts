@@ -97,7 +97,13 @@ export async function runConfiguredProviderSync(
       logInfo(`  ${dim("Post-sync:")} skipped — no provider records changed.`);
     }
 
-    const covers = await downloadCovers();
+    let covers: Awaited<ReturnType<typeof downloadCovers>>;
+    try {
+      covers = await downloadCovers();
+    } catch (cacheError) {
+      if (maintenanceFailed) throw maintenanceError;
+      throw cacheError;
+    }
     if (maintenanceFailed) throw maintenanceError;
     return { providers: results, covers };
   } finally {

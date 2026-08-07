@@ -123,6 +123,23 @@ describe("runConfiguredProviderSync", () => {
     );
   });
 
+  it("preserves a maintenance failure when cover caching also fails", async () => {
+    const maintenanceError = new Error("maintenance failed");
+    const cacheError = new Error("cover cache failed");
+    mockRunPostSyncMaintenance.mockImplementation(() => {
+      throw maintenanceError;
+    });
+    mockDownloadCovers.mockRejectedValue(cacheError);
+
+    await expect(runConfiguredProviderSync()).rejects.toBe(maintenanceError);
+
+    expect(mockDownloadCovers).toHaveBeenCalledOnce();
+    expect(mockCloseSync).toHaveBeenCalledWith(42);
+    expect(mockUnlinkSync).toHaveBeenCalledWith(
+      path.join("/var/lib/printworks", "configured-provider-sync.lock"),
+    );
+  });
+
   it("releases the lock when a provider sync fails", async () => {
     mockSyncConfiguredProvider.mockReset().mockRejectedValue(new Error("provider offline"));
 
