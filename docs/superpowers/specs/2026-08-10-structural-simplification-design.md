@@ -19,13 +19,13 @@ This is a staged refactor. A migration group starts only after its external beha
 
 Every active external surface has one migration owner. No group is complete while an owned surface lacks an inventory entry, an external-contract test, or an explicit out-of-scope classification.
 
-| Owner | Surfaces and behavior |
-| --- | --- |
-| Baseline and seams | Effective HTTP-route inventory, CLI inventory, critical-flow inventory, shared database bootstrap and migrations, transaction helpers, server bootstrap, coverage configuration, and the `baseline` reporting script. |
+| Owner                           | Surfaces and behavior                                                                                                                                                                                                                                                       |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Baseline and seams              | Effective HTTP-route inventory, CLI inventory, critical-flow inventory, shared database bootstrap and migrations, transaction helpers, server bootstrap, coverage configuration, and the `baseline` reporting script.                                                       |
 | Print history and provider sync | `/tasks`, `/jobs`, `/projects`, `/printers`, `/summary`, and `/api/sync`; session detection, normalization, auto-grouping, pricing caches, providers, covers, locks, scheduling, and the `sync`, `sync:bambu`, `sync:moonraker`, `normalize`, and `covers:repair` commands. |
-| Commercial production | `/api/products`, `/api/batches`, `/api/price-quotes`, and `/rates`; product creation, images, saved pricing, batches, quotes, and rate lookup. It depends on the documented Jobs and Projects read contracts. |
-| Catalog | `/catalog` and the `catalog` command; scan roots, scans, gallery, duplicates, previews, adoption, and product-file links. Adoption depends on the documented Commercial production product-creation contract. |
-| Application shell | `/ui`, `/health`, static and data endpoints registered by the UI sub-app, shared frontend state, bootstrap, navigation, and toasts. |
+| Commercial production           | `/api/products`, `/api/batches`, `/api/price-quotes`, and `/rates`; product creation, images, saved pricing, batches, quotes, and rate lookup. It depends on the documented Jobs and Projects read contracts.                                                               |
+| Catalog                         | `/catalog` and the `catalog` command; scan roots, scans, gallery, duplicates, previews, adoption, and product-file links. Adoption depends on the documented Commercial production product-creation contract.                                                               |
+| Application shell               | `/ui`, `/health`, static and data endpoints registered by the UI sub-app, shared frontend state, bootstrap, navigation, and toasts.                                                                                                                                         |
 
 `api.ts` remains a composition root. It may import route modules, application-wide middleware, and named server-runtime infrastructure for host resolution, serving, logging, and scheduler startup. It must not contain feature-domain behavior.
 
