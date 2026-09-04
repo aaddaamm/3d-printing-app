@@ -23,6 +23,7 @@ export function createProjectStatements(db: Database.Database) {
          ORDER BY pp.created_at, pp.product_id LIMIT 1) AS product_id
       FROM projects p
       LEFT JOIN jobs j ON j.project_id = p.id
+        AND EXISTS (SELECT 1 FROM print_tasks pt WHERE pt.session_id = j.session_id)
       GROUP BY p.id
       ORDER BY p.created_at DESC
     `),

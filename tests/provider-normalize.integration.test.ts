@@ -288,4 +288,71 @@ describe.sequential("provider-aware normalization", () => {
       material_usage_confidence: "slicer_estimate",
     });
   });
+
+  it("rekeys an unambiguous stale job without losing its manual metadata", () => {
+    const db = dbModule!.db;
+    const projectId = Number(
+      db
+        .prepare("INSERT INTO projects (name, customer, notes, created_at) VALUES (?, ?, ?, ?)")
+        .run("Manual project", "Customer", "Project notes", "2026-02-01T00:00:00.000Z").lastInsertRowid,
+    );
+    dbModule!.stmts.upsertTask.run({
+      id: "bambu:rekey-1",
+      provider: "bambu",
+      provider_task_id: "rekey-1",
+      provider_printer_id: "printer-1",
+      printer_id: null,
+      session_id: "bambu:old-session",
+      instanceId: null,
+      plateIndex: 1,
+      deviceId: "printer-1",
+      deviceName: null,
+      deviceModel: "P1S",
+      designId: null,
+      designTitle: null,
+      modelId: null,
+      profileId: null,
+      title: "Rekey print",
+      status: "finish",
+      failedType: null,
+      bedType: null,
+      weight: 10,
+      length: null,
+      costTime: 600,
+      startTime: "2026-02-01T10:00:00.000Z",
+      endTime: "2026-02-01T10:10:00.000Z",
+      cover: null,
+      thumbnail: null,
+      raw_json: JSON.stringify({ title: "Rekey print", status: 2, weight: 10, costTime: 600 }),
+    });
+    const jobId = Number(
+      db
+        .prepare(
+          `INSERT INTO jobs (
+            provider, provider_session_id, session_id, print_run, customer, notes, project_id
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          "bambu",
+          "old-session",
+          "bambu:old-session",
+          1,
+          "Customer",
+          "Keep these notes",
+          projectId,
+        ).lastInsertRowid,
+    );
+
+    normalizeModule!.runNormalize();
+
+    expect(
+      db.prepare("SELECT id, session_id, customer, notes, project_id FROM jobs WHERE id = ?").get(jobId),
+    ).toEqual({
+      id: jobId,
+      session_id: "bambu:rekey-1",
+      customer: "Customer",
+      notes: "Keep these notes",
+      project_id: projectId,
+    });
+  });
 });

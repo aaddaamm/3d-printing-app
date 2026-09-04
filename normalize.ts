@@ -43,7 +43,7 @@ type TaskPayload = Record<string, unknown>;
 
 const selectAllTasks = db.prepare<[], RawTask>(
   `SELECT
-    id, provider, provider_task_id, provider_printer_id, printer_id,
+    id, provider, provider_task_id, provider_printer_id, printer_id, session_id,
     status, startTime, endTime, instanceId, plateIndex, deviceId, deviceModel,
     title, failedType, bedType, weight, costTime, raw_json
   FROM print_tasks`,
@@ -69,6 +69,10 @@ const updateTaskScalars = db.prepare<{
     bedType     = @bedType
   WHERE id = @id
 `);
+
+const rekeyJobSession = db.prepare<{ id: number; sessionId: string }>(
+  "UPDATE jobs SET session_id = @sessionId WHERE id = @id",
+);
 
 function asNumber(v: unknown): number | null {
   return typeof v === "number" ? v : null;
@@ -269,6 +273,54 @@ function upsertJobs(sessionAccumulators: Map<string, SessionAccumulator>): numbe
   return jobsDone;
 }
 
+function reconcileRekeyableStaleJobs(
+  allTasks: RawTask[],
+  taskToSession: Map<string, string>,
+): { rekeyed: number; unresolved: number } {
+  const currentSessionIds = new Set(taskToSession.values());
+  const oldToNewSessions = new Map<string, Set<string>>();
+
+  for (const task of allTasks) {
+    if (!task.session_id) continue;
+    const newSessionId = taskToSession.get(task.id);
+    if (!newSessionId) continue;
+    const targets = oldToNewSessions.get(task.session_id) ?? new Set<string>();
+    targets.add(newSessionId);
+    oldToNewSessions.set(task.session_id, targets);
+  }
+
+  const jobs = db
+    .prepare<[], { id: number; session_id: string }>("SELECT id, session_id FROM jobs")
+    .all();
+  const jobBySession = new Map(jobs.map((job) => [job.session_id, job]));
+  let rekeyed = 0;
+  let unresolved = 0;
+
+  db.transaction(() => {
+    for (const job of jobs) {
+      if (currentSessionIds.has(job.session_id)) continue;
+      const targets = oldToNewSessions.get(job.session_id);
+      if (!targets || targets.size !== 1) {
+        unresolved++;
+        continue;
+      }
+
+      const [targetSessionId] = targets;
+      if (!targetSessionId || jobBySession.has(targetSessionId)) {
+        unresolved++;
+        continue;
+      }
+
+      rekeyJobSession.run({ id: job.id, sessionId: targetSessionId });
+      jobBySession.delete(job.session_id);
+      jobBySession.set(targetSessionId, { ...job, session_id: targetSessionId });
+      rekeyed++;
+    }
+  })();
+
+  return { rekeyed, unresolved };
+}
+
 // ── Core (importable) ─────────────────────────────────────────────────────────
 
 export function runNormalize(): void {
@@ -278,11 +330,17 @@ export function runNormalize(): void {
   const taskToSession = detectSessions(allTasks);
   const sessionOrder = computeSessionOrder(allTasks, taskToSession);
   const sessionAccumulators = backfillTasksAndBuildSessions(allTasks, taskToSession, sessionOrder);
+  const reconciliation = reconcileRekeyableStaleJobs(allTasks, taskToSession);
 
   logInfo(`  Backfilled ${allTasks.length} tasks into ${sessionAccumulators.size} sessions.`);
 
   const jobsDone = upsertJobs(sessionAccumulators);
   logInfo(`  Upserted ${jobsDone} jobs.`);
+  if (reconciliation.rekeyed > 0 || reconciliation.unresolved > 0) {
+    logInfo(
+      `  Rekeyed ${reconciliation.rekeyed} stale jobs; ${reconciliation.unresolved} need review.`,
+    );
+  }
 
   invalidateAllPriceCaches();
   logInfo("  Invalidated job/project price caches.");

@@ -38,6 +38,7 @@ export interface RawTask {
   provider_task_id?: string | null;
   provider_printer_id?: string | null;
   printer_id?: number | null;
+  session_id?: string | null;
   status: string | null;
   startTime: string | null;
   endTime: string | null;

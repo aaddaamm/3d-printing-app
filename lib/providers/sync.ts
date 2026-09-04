@@ -52,6 +52,7 @@ function upsertPrinter(database: Database.Database, printer: PrinterIdentity): n
 }
 
 function normalizedValue(value: unknown): unknown {
+  if (typeof value === "string") return value.trim();
   return value === undefined ? null : value;
 }
 
