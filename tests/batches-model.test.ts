@@ -151,6 +151,36 @@ describe.sequential("batches model", () => {
     expect(updated.total_print_time_s).toBe(3600);
   });
 
+  it("prices linked jobs using each job's machine rate", () => {
+    const product = createProduct();
+    dbModule!.db.prepare("UPDATE machine_rates SET machine_rate_per_hr = ? WHERE device_model = ?").run(1, "P1S");
+    dbModule!.db
+      .prepare(
+        `INSERT INTO machine_rates (
+          device_model, purchase_price, lifetime_hrs, electricity_rate, maintenance_buffer, machine_rate_per_hr
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .run("A1 Mini", 1, 1, 0, 0, 3);
+    const firstJobId = insertJob({ total_weight_g: 0, total_time_s: 3600, deviceModel: "P1S" });
+    const secondJobId = insertJob({ total_weight_g: 0, total_time_s: 3600, deviceModel: "A1 Mini" });
+    const linked = batchesModule!.createBatch({
+      product_id: product.id,
+      pricing_profile_id: "personal",
+      completed_quantity: 1,
+    });
+    batchesModule!.addBatchJob(linked.id, firstJobId);
+    const pricedLinked = batchesModule!.addBatchJob(linked.id, secondJobId)!;
+    const explicit = batchesModule!.createBatch({
+      product_id: product.id,
+      pricing_profile_id: "personal",
+      completed_quantity: 1,
+      total_filament_g: 0,
+      total_print_time_s: 7200,
+    });
+
+    expect(pricedLinked.unit_cost! - explicit.unit_cost!).toBeCloseTo(-2, 6);
+  });
+
   it("links every job from a project to a batch", () => {
     const product = createProduct();
     const projectId = Number(

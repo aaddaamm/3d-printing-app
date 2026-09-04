@@ -5,6 +5,7 @@ export interface BatchPricingInput {
   failedQuantity: number;
   totalFilamentG: number;
   totalPrintTimeS: number;
+  machineCost?: number | undefined;
   materialRatePerG: number;
   machineRatePerHr: number;
   laborHourlyRate: number;
@@ -40,7 +41,8 @@ export function calcBatchPricing(input: BatchPricingInput): BatchPricingBreakdow
   }
 
   const materialCost = input.totalFilamentG * input.materialRatePerG;
-  const machineCost = (input.totalPrintTimeS / 3600) * input.machineRatePerHr;
+  const machineCost =
+    input.machineCost ?? (input.totalPrintTimeS / 3600) * input.machineRatePerHr;
   const pricing = calcProductionPricing({
     sellableUnits: input.completedQuantity,
     materialCost,

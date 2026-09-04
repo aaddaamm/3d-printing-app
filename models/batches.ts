@@ -379,6 +379,26 @@ function machineRateFor(
   return fallbackMachine;
 }
 
+function linkedMachineCost(
+  batchId: number,
+  machineRates: ReadonlyMap<string, MachineRate>,
+  fallbackMachine: MachineRate,
+): number {
+  const jobs = db
+    .prepare<[number], { total_time_s: number | null; deviceModel: string | null }>(
+      `SELECT j.total_time_s, j.deviceModel
+       FROM product_batch_jobs pbj
+       JOIN jobs j ON j.id = pbj.job_id
+       WHERE pbj.batch_id = ?`,
+    )
+    .all(batchId);
+
+  return jobs.reduce((total, job) => {
+    const rate = machineRates.get(job.deviceModel ?? "") ?? fallbackMachine;
+    return total + ((job.total_time_s ?? 0) / 3600) * rate.machine_rate_per_hr;
+  }, 0);
+}
+
 function computedTotals(row: BatchRow): {
   total_filament_g: number | null;
   total_print_time_s: number | null;
@@ -404,11 +424,16 @@ function summaryFromRow(row: BatchRow): BatchSummary {
         ratesConfig.machineRates,
         ratesConfig.fallbackMachine,
       );
+      const calculatedLinkedMachineCost =
+        row.explicit_total_print_time_s === null
+          ? linkedMachineCost(row.id, ratesConfig.machineRates, ratesConfig.fallbackMachine)
+          : undefined;
       const breakdown = calcBatchPricing({
         completedQuantity: row.completed_quantity,
         failedQuantity: row.failed_quantity,
         totalFilamentG: totals.total_filament_g ?? 0,
         totalPrintTimeS: totals.total_print_time_s ?? 0,
+        machineCost: calculatedLinkedMachineCost,
         materialRatePerG: materialRate.rate_per_g,
         machineRatePerHr: machineRate.machine_rate_per_hr,
         laborHourlyRate: ratesConfig.laborConfig.hourly_rate,
