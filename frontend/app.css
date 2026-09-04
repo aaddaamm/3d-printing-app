@@ -159,7 +159,6 @@ header h1 span:last-child {
   font-weight: 500;
   letter-spacing: 0;
   text-transform: lowercase;
-  cursor: pointer;
   transition:
     color 150ms ease,
     text-shadow 180ms ease;
@@ -2693,6 +2692,21 @@ tbody td {
     transform 0.16s,
     border-color 0.16s,
     box-shadow 0.16s;
+}
+.product-card-primary {
+  display: block;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.product-card-primary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
 .product-card:hover {
