@@ -33,7 +33,7 @@ function makeTask(overrides: Partial<BambuApiTask> = {}): BambuApiTask {
 describe("normalizeTask", () => {
   it("converts numeric id to string", () => {
     const result = normalizeTask(makeTask({ id: 42 }));
-    expect(result.id).toBe("42");
+    expect(result.id).toBe("bambu:42");
   });
 
   it("maps known status codes to strings", () => {

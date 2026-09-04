@@ -1,5 +1,5 @@
 import { db } from "../lib/db.js";
-import { localCoverExists } from "../lib/covers.js";
+import { coverKeyForTaskId, localCoverExists } from "../lib/covers.js";
 import { providerRemoteMediaUrl } from "../lib/media-urls.js";
 
 export interface UiJobRow {
@@ -108,9 +108,8 @@ export function listUiJobs(): UiJobRow[] {
       filament_colors_json,
       ...row
     }) => {
-      const canServeLocalCover =
-        first_task_id && /^\d+$/.test(first_task_id) && localCoverExists(first_task_id);
-      const localCoverUrl = canServeLocalCover ? `/ui/covers/${first_task_id}` : null;
+      const canServeLocalCover = first_task_id && localCoverExists(first_task_id);
+      const localCoverUrl = canServeLocalCover ? `/ui/covers/${coverKeyForTaskId(first_task_id)}` : null;
       const fallbackCoverUrl = providerRemoteMediaUrl({
         provider: first_task_provider,
         providerPrinterId: first_task_provider_printer_id,

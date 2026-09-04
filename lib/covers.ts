@@ -3,6 +3,7 @@ import path from "node:path";
 import { db } from "./db.js";
 import { fetchWithRetry, HttpError } from "./fetch.js";
 import { logInfo } from "./logger.js";
+import { providerNativeId } from "./provider-ids.js";
 
 export const COVERS_DIR = path.resolve(process.env["BAMBU_COVERS_DIR"] ?? "./covers");
 
@@ -65,9 +66,24 @@ export function localCoverPath(taskId: string): string {
   return assertInsideCoversDir(path.join(ensureCoversDir(), coverKeyForTaskId(taskId) + ".png"));
 }
 
+function legacyBambuCoverPath(taskId: string): string | null {
+  if (!taskId.startsWith("bambu:")) return null;
+  const nativeId = providerNativeId("bambu", taskId);
+  return isCacheSafeTaskId(nativeId)
+    ? assertInsideCoversDir(path.join(ensureCoversDir(), nativeId + ".png"))
+    : null;
+}
+
+function existingLocalCoverPath(taskId: string): string | null {
+  const currentPath = localCoverPath(taskId);
+  if (fs.existsSync(currentPath)) return currentPath;
+  const legacyPath = legacyBambuCoverPath(taskId);
+  return legacyPath && fs.existsSync(legacyPath) ? legacyPath : null;
+}
+
 export function localCoverExists(taskId: string): boolean {
   if (!taskId) return false;
-  return fs.existsSync(localCoverPath(taskId));
+  return existingLocalCoverPath(taskId) !== null;
 }
 
 type CoverCacheStatus = "ready" | "downloaded" | "expired" | "failed" | "unavailable";
@@ -101,9 +117,10 @@ export async function ensureLocalCoverCached(taskId: string): Promise<CoverCache
     .get(taskId);
   if (!task) return { status: "unavailable", path: null };
 
-  if (fs.existsSync(dest)) {
-    assertRegularCoverFile(dest);
-    return { status: "ready", path: dest };
+  const existingPath = existingLocalCoverPath(taskId);
+  if (existingPath) {
+    assertRegularCoverFile(existingPath);
+    return { status: "ready", path: existingPath };
   }
 
   const mediaUrl = task.cover ?? task.thumbnail;
@@ -160,8 +177,9 @@ export async function downloadCovers(): Promise<{
   for (const task of tasks) {
     const taskId = task.id;
     const dest = localCoverPath(taskId);
-    if (fs.existsSync(dest)) {
-      assertRegularCoverFile(dest);
+    const existingPath = existingLocalCoverPath(taskId);
+    if (existingPath) {
+      assertRegularCoverFile(existingPath);
       skipped++;
     } else {
       try {

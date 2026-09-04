@@ -1,4 +1,5 @@
 import type { BambuApiTask, PrintTask } from "./types.js";
+import { providerScopedId } from "./provider-ids.js";
 
 // Bambu status codes — verified against elapsed-vs-estimated-time analysis:
 //   2 = finish  (~101% elapsed on avg — ran to completion)
@@ -27,11 +28,11 @@ function toStatus(status: unknown): string | null {
 }
 
 export function normalizeTask(t: BambuApiTask): PrintTask {
-  const id = String(t.id);
+  const providerTaskId = String(t.id);
   return {
-    id,
+    id: providerScopedId("bambu", providerTaskId),
     provider: "bambu",
-    provider_task_id: id,
+    provider_task_id: providerTaskId,
     provider_printer_id: t.deviceId ?? null,
     printer_id: null,
     session_id: null, // assigned later by normalize step

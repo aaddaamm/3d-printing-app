@@ -109,7 +109,7 @@ describe("BambuCloudProvider", () => {
     expect(page.tasks).toHaveLength(1);
     expect(page.records).toHaveLength(1);
     expect(page.printTasks[0]).toMatchObject({
-      id: "1000",
+      id: "bambu:1000",
       provider: "bambu",
       provider_task_id: "1000",
       provider_printer_id: "bambu-p1s-001",

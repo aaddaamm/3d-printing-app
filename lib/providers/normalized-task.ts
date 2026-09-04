@@ -1,10 +1,6 @@
 import type { NormalizedMaterialUsage, NormalizedPrintRecord } from "./types.js";
 import type { PrintTask } from "../types.js";
-
-function providerScopedId(providerId: string, recordId: string): string {
-  if (providerId === "bambu") return recordId;
-  return `${providerId}:${recordId}`;
-}
+import { providerScopedId } from "../provider-ids.js";
 
 function firstMediaUrl(record: NormalizedPrintRecord, kind: "cover" | "thumbnail"): string | null {
   return record.media.find((asset) => asset.kind === kind)?.url ?? null;

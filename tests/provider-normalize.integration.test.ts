@@ -50,7 +50,7 @@ describe.sequential("provider-aware normalization", () => {
     const printerId = Number(db.prepare("SELECT id FROM printers").pluck().get());
 
     dbModule!.stmts.upsertTask.run({
-      id: "1000",
+      id: "bambu:1000",
       provider: "bambu",
       provider_task_id: "1000",
       provider_printer_id: "bambu-p1s-001",
@@ -91,7 +91,7 @@ describe.sequential("provider-aware normalization", () => {
     });
 
     dbModule!.stmts.upsertTask.run({
-      id: "1000",
+      id: "bambu:1000",
       provider: "bambu",
       provider_task_id: "1000",
       provider_printer_id: "bambu-p1s-001",
@@ -133,10 +133,10 @@ describe.sequential("provider-aware normalization", () => {
 
     normalizeModule!.runNormalize();
 
-    const task = db.prepare("SELECT printer_id FROM print_tasks WHERE id = ?").get("1000") as {
+    const task = db.prepare("SELECT printer_id FROM print_tasks WHERE id = ?").get("bambu:1000") as {
       printer_id: number;
     };
-    const job = db.prepare("SELECT printer_id FROM jobs WHERE session_id = ?").get("1000") as {
+    const job = db.prepare("SELECT printer_id FROM jobs WHERE session_id = ?").get("bambu:1000") as {
       printer_id: number;
     };
 
@@ -147,7 +147,7 @@ describe.sequential("provider-aware normalization", () => {
   it("falls back to task title when Bambu designTitle is blank", () => {
     const db = dbModule!.db;
     dbModule!.stmts.upsertTask.run({
-      id: "2000",
+      id: "bambu:2000",
       provider: "bambu",
       provider_task_id: "2000",
       provider_printer_id: "a1-mini-001",
@@ -191,7 +191,7 @@ describe.sequential("provider-aware normalization", () => {
 
     normalizeModule!.runNormalize();
 
-    const job = db.prepare("SELECT designTitle FROM jobs WHERE session_id = ?").get("2000") as {
+    const job = db.prepare("SELECT designTitle FROM jobs WHERE session_id = ?").get("bambu:2000") as {
       designTitle: string;
     };
 
@@ -249,7 +249,7 @@ describe.sequential("provider-aware normalization", () => {
     const task = db
       .prepare("SELECT session_id FROM print_tasks WHERE id = ?")
       .get("moonraker:job-1") as { session_id: string };
-    const job = db.prepare("SELECT * FROM jobs WHERE session_id = ?").get("job-1") as {
+    const job = db.prepare("SELECT * FROM jobs WHERE session_id = ?").get("moonraker:job-1") as {
       provider: string;
       provider_session_id: string;
       provider_printer_id: string;
@@ -269,7 +269,7 @@ describe.sequential("provider-aware normalization", () => {
       material_usage_confidence: string;
     };
 
-    expect(task.session_id).toBe("job-1");
+    expect(task.session_id).toBe("moonraker:job-1");
     expect(job).toMatchObject({
       provider: "moonraker",
       provider_session_id: "job-1",

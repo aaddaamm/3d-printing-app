@@ -107,8 +107,8 @@ describe("detectSessions", () => {
 
     const map = detectSessions([t1, t2]);
 
-    expect(map.get("moonraker:1")).toBe("job-1");
-    expect(map.get("moonraker:2")).toBe("job-2");
+    expect(map.get("moonraker:1")).toBe("moonraker:1");
+    expect(map.get("moonraker:2")).toBe("moonraker:2");
   });
 
   it("generic provider records do not use Bambu plate grouping hints", () => {
@@ -135,8 +135,8 @@ describe("detectSessions", () => {
 
     const map = detectSessions([t1, t2]);
 
-    expect(map.get("generic:1")).toBe("history-1");
-    expect(map.get("generic:2")).toBe("history-2");
+    expect(map.get("generic:1")).toBe("generic:1");
+    expect(map.get("generic:2")).toBe("generic:2");
   });
 
   it("two tasks with same instanceId+deviceId and small gap share a session", () => {

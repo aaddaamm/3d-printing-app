@@ -29,7 +29,7 @@ describe("Bambu regression fixtures", () => {
     const normalized = normalizeTask(bambuSingleSuccessfulPrint);
 
     expect(normalized).toMatchObject({
-      id: "1000",
+      id: "bambu:1000",
       instanceId: 9001,
       plateIndex: 1,
       deviceId: "bambu-p1s-001",
@@ -48,15 +48,15 @@ describe("Bambu regression fixtures", () => {
   it("keeps Bambu multi-plate jobs in one detected session", () => {
     const sessions = detectSessions(bambuMultiPlateSession.map(toRawTask));
 
-    expect(sessions.get("2000")).toBe("2000");
-    expect(sessions.get("2001")).toBe("2000");
+    expect(sessions.get("bambu:2000")).toBe("bambu:2000");
+    expect(sessions.get("bambu:2001")).toBe("bambu:2000");
   });
 
   it("starts a new Bambu session when a nearby task repeats a plate index", () => {
     const sessions = detectSessions(bambuRepeatedPlateStartsNewSession.map(toRawTask));
 
-    expect(sessions.get("2100")).toBe("2100");
-    expect(sessions.get("2101")).toBe("2101");
+    expect(sessions.get("bambu:2100")).toBe("bambu:2100");
+    expect(sessions.get("bambu:2101")).toBe("bambu:2101");
   });
 
   it("preserves current worst-status-wins job status behavior", () => {

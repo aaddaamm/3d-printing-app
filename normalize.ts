@@ -5,6 +5,7 @@ import { computeSessionOrder } from "./lib/normalize-session-order.js";
 import { deriveJobStatus, detectSessions, type RawTask } from "./lib/session-detection.js";
 import { invalidateAllPriceCaches } from "./lib/price-cache.js";
 import { logInfo } from "./lib/logger.js";
+import { providerNativeId } from "./lib/provider-ids.js";
 
 // ── normalize.ts ──────────────────────────────────────────────────────────────
 //
@@ -89,7 +90,8 @@ function createAccumulator(
   const provider = task.provider ?? "bambu";
   return {
     provider,
-    provider_session_id: provider === "bambu" ? sessionId : (task.provider_task_id ?? sessionId),
+    provider_session_id:
+      task.provider_task_id ?? providerNativeId(provider, sessionId),
     provider_printer_id: task.provider_printer_id ?? task.deviceId,
     printer_id: task.printer_id ?? null,
     session_id: sessionId,

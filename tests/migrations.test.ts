@@ -182,7 +182,7 @@ describe("database migration registry", () => {
 
     expect(ids).toEqual([...ids].sort((a, b) => a - b));
     expect(new Set(ids).size).toBe(ids.length);
-    expect(ids.at(-1)).toBe(22);
+    expect(ids.at(-1)).toBe(23);
   });
 });
 

@@ -19,10 +19,10 @@ function record(providerId: string): NormalizedPrintRecord {
   };
 }
 
-it("preserves legacy Bambu task ids when storing provider records", () => {
+it("scopes Bambu task ids while preserving the native provider id", () => {
   const task = normalizedRecordToPrintTask(record("bambu"));
 
-  expect(task.id).toBe("1000");
+  expect(task.id).toBe("bambu:1000");
   expect(task.provider_task_id).toBe("1000");
 });
 

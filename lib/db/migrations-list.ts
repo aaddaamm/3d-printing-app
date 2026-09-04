@@ -1056,6 +1056,66 @@ export const DB_MIGRATIONS: Migration[] = [
       );
     },
   },
+  {
+    id: 23,
+    description: "scope task and session identifiers by provider",
+    up(database) {
+      if (
+        !tableExists(database, "print_tasks") ||
+        !tableExists(database, "jobs") ||
+        !columnExists(database, "print_tasks", "designId") ||
+        !columnExists(database, "jobs", "provider_session_id")
+      ) {
+        return;
+      }
+      database.exec(`
+        UPDATE print_tasks
+        SET provider = COALESCE(NULLIF(provider, ''), 'bambu'),
+            provider_task_id = COALESCE(NULLIF(provider_task_id, ''), id);
+        UPDATE jobs
+        SET provider = COALESCE(NULLIF(provider, ''), 'bambu'),
+            provider_session_id = COALESCE(NULLIF(provider_session_id, ''), session_id);
+
+        DROP INDEX IF EXISTS idx_print_tasks_provider_task;
+
+        CREATE TEMP TABLE task_id_migration AS
+        SELECT id AS old_id, provider || ':' || provider_task_id AS new_id
+        FROM print_tasks
+        WHERE id <> (provider || ':' || provider_task_id);
+
+        INSERT INTO print_tasks (
+          id, provider, provider_task_id, provider_printer_id, printer_id, session_id,
+          instanceId, plateIndex, deviceId, deviceName, deviceModel, designId, designTitle,
+          modelId, profileId, title, status, failedType, bedType, weight, length, costTime,
+          startTime, endTime, cover, thumbnail, raw_json
+        )
+        SELECT m.new_id, pt.provider, pt.provider_task_id, pt.provider_printer_id, pt.printer_id,
+          CASE WHEN pt.session_id IS NULL THEN NULL ELSE pt.provider || ':' || pt.session_id END,
+          pt.instanceId, pt.plateIndex, pt.deviceId, pt.deviceName, pt.deviceModel, pt.designId,
+          pt.designTitle, pt.modelId, pt.profileId, pt.title, pt.status, pt.failedType, pt.bedType,
+          pt.weight, pt.length, pt.costTime, pt.startTime, pt.endTime, pt.cover, pt.thumbnail, pt.raw_json
+        FROM print_tasks pt JOIN task_id_migration m ON m.old_id = pt.id;
+
+        UPDATE job_filaments
+        SET task_id = (SELECT new_id FROM task_id_migration WHERE old_id = task_id)
+        WHERE task_id IN (SELECT old_id FROM task_id_migration);
+
+        UPDATE product_photos
+        SET source_ref = (SELECT new_id FROM task_id_migration WHERE old_id = source_ref),
+            candidate_key = 'print_cover:' || (SELECT new_id FROM task_id_migration WHERE old_id = source_ref)
+        WHERE source_type = 'print_cover' AND source_ref IN (SELECT old_id FROM task_id_migration);
+
+        DELETE FROM print_tasks WHERE id IN (SELECT old_id FROM task_id_migration);
+
+        UPDATE jobs SET session_id = provider || ':' || session_id
+        WHERE session_id <> (provider || ':' || session_id);
+
+        DROP TABLE task_id_migration;
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_print_tasks_provider_task
+          ON print_tasks(provider, provider_task_id) WHERE provider_task_id IS NOT NULL;
+      `);
+    },
+  },
 ];
 
 export function runDatabaseMigrations(database: Database.Database): void {

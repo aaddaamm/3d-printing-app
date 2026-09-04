@@ -68,7 +68,7 @@ function getSessionStrategy(task: RawTask): SessionStrategy {
 }
 
 function getProviderRecordSessionId(task: RawTask): string {
-  return task.provider_task_id || task.id;
+  return task.id;
 }
 
 function isSoloBambuTask(task: RawTask): boolean {

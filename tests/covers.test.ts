@@ -41,9 +41,11 @@ import {
 // ── cover keys ───────────────────────────────────────────────────────────────
 
 describe("cover keys", () => {
-  it("preserves Bambu numeric IDs as their existing file and URL key", () => {
-    expect(coverKeyForTaskId("123456789")).toBe("123456789");
-    expect(taskIdFromCoverKey("123456789")).toBe("123456789");
+  it("round-trips provider-scoped Bambu IDs through a canonical URL-safe key", () => {
+    const coverKey = coverKeyForTaskId("bambu:123456789");
+
+    expect(coverKey).toBe("~YmFtYnU6MTIzNDU2Nzg5");
+    expect(taskIdFromCoverKey(coverKey)).toBe("bambu:123456789");
   });
 
   it("round-trips provider-scoped IDs through a canonical URL-safe key", () => {
@@ -94,6 +96,12 @@ describe("localCoverExists", () => {
 
     expect(localCoverExists("moonraker:00002B")).toBe(true);
     expect(fs.existsSync).toHaveBeenCalledWith(localCoverPath("moonraker:00002B"));
+  });
+
+  it("uses a legacy Bambu cache file when the scoped cache file is absent", () => {
+    vi.mocked(fs.existsSync).mockImplementation((filePath) => String(filePath).endsWith("123.png"));
+
+    expect(localCoverExists("bambu:123")).toBe(true);
   });
 
   it("returns false when existsSync returns false", () => {
