@@ -1,5 +1,5 @@
 import { h } from "preact";
-import { useCallback, useState } from "preact/hooks";
+import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import htm from "htm";
 
 import { postJsonOrToast } from "../lib/api.js";
@@ -27,24 +27,49 @@ export function MoveJobToNewProjectModal({
   onNavigateToProject: (projectId: number) => void;
 }) {
   const [name, setName] = useState(initialName);
+  const [moving, setMoving] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const openingTrigger = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+
+  useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !moving) {
+        event.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", closeOnEscape);
+    dialogRef.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", closeOnEscape);
+      if (openingTrigger.current?.isConnected) openingTrigger.current.focus();
+    };
+  }, [moving, onClose]);
 
   const moveToNewProject = useCallback(async () => {
     const trimmedName = name.trim();
     if (!trimmedName) return;
 
-    const data = await postJsonOrToast<{ project?: Project }>(
-      "/projects",
-      { name: trimmedName, customer: job.customer ?? null, notes: null },
-      "Failed to create project.",
-    );
-    if (!data?.project) return;
+    setMoving(true);
+    try {
+      const data = await postJsonOrToast<{ project?: Project }>(
+        "/projects",
+        { name: trimmedName, customer: job.customer ?? null, notes: null },
+        "Failed to create project.",
+      );
+      if (!data?.project) return;
 
-    const moved = await onMoveJobToProject(job.id, data.project.id);
-    if (!moved) return;
+      const moved = await onMoveJobToProject(job.id, data.project.id);
+      if (!moved) return;
 
-    onProjectCreated(data.project);
-    onNavigateToProject(data.project.id);
-    onClose();
+      onProjectCreated(data.project);
+      onNavigateToProject(data.project.id);
+      onClose();
+    } finally {
+      setMoving(false);
+    }
   }, [
     job.customer,
     job.id,
@@ -55,9 +80,9 @@ export function MoveJobToNewProjectModal({
     onProjectCreated,
   ]);
 
-  return html`<div class="modal-backdrop" onClick=${onClose}>
-    <div class="modal-card" onClick=${(e: MouseEvent) => e.stopPropagation()}>
-      <h3>Move print run to new project</h3>
+  return html`<div class="overlay" onClick=${(event: MouseEvent) => event.target === event.currentTarget && !moving && onClose()}>
+    <div class="modal" ref=${dialogRef} role="dialog" tabindex=${-1} aria-modal="true" aria-labelledby="move-job-title" onClick=${(e: MouseEvent) => e.stopPropagation()}>
+      <h2 id="move-job-title">Move print run to new project</h2>
       <p class="modal-subtle">${job.designTitle || "Untitled Job"}</p>
       <label>
         New project name
@@ -68,14 +93,14 @@ export function MoveJobToNewProjectModal({
         />
       </label>
       <div class="modal-actions">
-        <button type="button" class="btn-secondary" onClick=${onClose}>Cancel</button>
+        <button type="button" class="btn-secondary" onClick=${onClose} disabled=${moving}>Cancel</button>
         <button
           type="button"
           class="btn-primary"
-          disabled=${!name.trim()}
+          disabled=${!name.trim() || moving}
           onClick=${moveToNewProject}
         >
-          Create and move
+          ${moving ? "Moving…" : "Create and move"}
         </button>
       </div>
     </div>
