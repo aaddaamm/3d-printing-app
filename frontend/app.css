@@ -1343,7 +1343,6 @@ tbody td {
   border: 1px solid var(--ui-panel-border);
   border-radius: var(--radius);
   padding: 16px;
-  cursor: pointer;
   transition:
     background-color 300ms ease,
     border-color 300ms ease,
@@ -1377,10 +1376,21 @@ tbody td {
   min-width: 0;
 }
 .proj-card-name {
+  border: 0;
+  padding: 0;
+  color: inherit;
+  background: transparent;
+  font: inherit;
   font-size: 1rem;
   font-weight: 700;
   line-height: 1.25;
   overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.proj-card-name:focus-visible,
+.batch-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 .proj-card-actions {
   display: flex;
@@ -3382,6 +3392,9 @@ tbody td {
 }
 
 .batch-card {
+  width: 100%;
+  text-align: left;
+  font: inherit;
   display: flex;
   flex-direction: column;
   gap: 12px;

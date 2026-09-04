@@ -143,7 +143,7 @@ export function AddJobsModal({
               : html`<div class="add-jobs-list">
                   ${filtered.map(
                     (job: Job) => html`
-                      <div class="add-jobs-row" key=${job.id} onClick=${() => onAdd(job.id)}>
+                      <div class="add-jobs-row" key=${job.id}>
                         <${RowThumb} url=${job.cover_url} />
                         <div class="add-jobs-info">
                           <div class="add-jobs-title">${job.designTitle || "Untitled Job"}</div>
@@ -151,7 +151,13 @@ export function AddJobsModal({
                             ${fmtDateShort(job.startTime)} · ${job.deviceModel || "—"}
                           </div>
                         </div>
-                        <button class="btn-primary add-jobs-btn">Add</button>
+                        <button
+                          type="button"
+                          class="btn-primary add-jobs-btn"
+                          onClick=${() => onAdd(job.id)}
+                        >
+                          Add
+                        </button>
                       </div>
                     `,
                   )}

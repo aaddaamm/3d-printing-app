@@ -56,14 +56,14 @@ function ProjectCard({
     }
   };
   return html`
-    <div class="proj-card" onClick=${onClick}>
+    <article class="proj-card">
       ${
         project.cover_url
           ? html`<img class="proj-card-cover" src=${project.cover_url} alt="" />`
           : html`<div class="proj-card-cover proj-card-cover--empty">🖨️</div>`
       }
       <div class="proj-card-title-row">
-        <div class="proj-card-name">${project.name}</div>
+        <button type="button" class="proj-card-name" onClick=${onClick}>${project.name}</button>
       </div>
       <div class="proj-card-actions">
         <button
@@ -121,7 +121,7 @@ function ProjectCard({
         }
       </div>
       ${project.notes && html`<div class="proj-card-notes">${project.notes}</div>`}
-    </div>
+    </article>
   `;
 }
 

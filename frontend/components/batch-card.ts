@@ -18,7 +18,7 @@ export function BatchCard({
   onOpen: (batch: BatchSummary) => void;
 }) {
   const productionTotal = batch.completed_quantity + batch.failed_quantity;
-  return html`<article class="batch-card" onClick=${() => onOpen(batch)}>
+  return html`<button type="button" class="batch-card" onClick=${() => onOpen(batch)}>
     <div class="batch-card-header">
       <div>
         <p class="products-kicker">${batch.pricing_profile_label}</p>
@@ -45,5 +45,5 @@ export function BatchCard({
       </div>
     </div>
     ${batch.notes ? html`<p class="batch-card-notes">${batch.notes}</p>` : null}
-  </article>`;
+  </button>`;
 }
