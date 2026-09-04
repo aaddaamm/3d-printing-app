@@ -24,7 +24,7 @@ vi.mock("../lib/db.js", () => ({
   },
 }));
 
-import { upsertMachineRate, upsertMaterialRate } from "../models/rates.js";
+import { updateLaborConfig, upsertMachineRate, upsertMaterialRate } from "../models/rates.js";
 
 describe("upsertMaterialRate", () => {
   beforeEach(() => {
@@ -61,6 +61,16 @@ describe("upsertMaterialRate", () => {
     expect(call.cost_per_g).toBe(0.035);
     expect(call.waste_buffer_pct).toBe(0.15);
     expect(call.rate_per_g).toBeCloseTo(0.035 * 1.15, 6);
+  });
+
+  it("rejects invalid material inputs before writing to the DB", () => {
+    expect(() =>
+      upsertMaterialRate({ filament_type: "PLA", cost_per_g: Number.NaN, waste_buffer_pct: 0.1 }),
+    ).toThrow(/cost_per_g/i);
+    expect(() =>
+      upsertMaterialRate({ filament_type: "PLA", cost_per_g: 0.028, waste_buffer_pct: -0.1 }),
+    ).toThrow(/waste_buffer_pct/i);
+    expect(mockUpsertMaterialRun).not.toHaveBeenCalled();
   });
 });
 
@@ -127,7 +137,41 @@ describe("upsertMachineRate", () => {
         electricity_rate: 0.1,
         maintenance_buffer: 0.5,
       }),
-    ).toThrow("lifetime_hrs must be greater than 0");
+    ).toThrow(/lifetime_hrs/i);
     expect(mockUpsertMachineRun).not.toHaveBeenCalled();
   });
+
+  it("rejects non-finite and negative machine inputs before writing to the DB", () => {
+    expect(() =>
+      upsertMachineRate({
+        device_model: "X1C",
+        purchase_price: -1,
+        lifetime_hrs: 5000,
+        electricity_rate: 0.1,
+        maintenance_buffer: 0.5,
+      }),
+    ).toThrow(/purchase_price/i);
+    expect(() =>
+      upsertMachineRate({
+        device_model: "X1C",
+        purchase_price: 1000,
+        lifetime_hrs: Number.POSITIVE_INFINITY,
+        electricity_rate: 0.1,
+        maintenance_buffer: 0.5,
+      }),
+    ).toThrow(/lifetime_hrs/i);
+    expect(mockUpsertMachineRun).not.toHaveBeenCalled();
+  });
+});
+
+it("rejects invalid labor inputs before writing to the DB", () => {
+  expect(() =>
+    updateLaborConfig({
+      hourly_rate: 25,
+      minimum_minutes: 15,
+      profit_markup_pct: -0.2,
+      failure_buffer_pct: 0.05,
+      overhead_buffer_pct: 0.1,
+    }),
+  ).toThrow(/profit_markup_pct/i);
 });
