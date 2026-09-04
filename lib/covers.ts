@@ -15,6 +15,8 @@ function ensureCoversDir(): string {
 const CACHE_SAFE_TASK_ID_RE = /^[A-Za-z0-9_-]+$/;
 const ENCODED_COVER_KEY_PREFIX = "~";
 const BASE64URL_RE = /^[A-Za-z0-9_-]+$/;
+const COVER_FETCH_TIMEOUT_MS = 3_000;
+const COVER_DOWNLOAD_CONCURRENCY = 4;
 
 function isCacheSafeTaskId(taskId: string): boolean {
   return CACHE_SAFE_TASK_ID_RE.test(taskId);
@@ -101,7 +103,9 @@ function assertRegularCoverFile(filePath: string): void {
 }
 
 async function downloadCoverToFile(url: string, dest: string): Promise<void> {
-  const resp = await fetchWithRetry(url, {}, { retries: 2, timeoutMs: 5000 });
+  // Pre-signed provider media URLs are short-lived. Retrying a dead URL only turns
+  // a cache miss into a multi-minute sync delay, so each cover gets one short attempt.
+  const resp = await fetchWithRetry(url, {}, { retries: 0, timeoutMs: COVER_FETCH_TIMEOUT_MS });
   const buf = Buffer.from(await resp.arrayBuffer());
   fs.writeFileSync(dest, buf);
 }
@@ -174,24 +178,32 @@ export async function downloadCovers(): Promise<{
 
   printProgress();
 
-  for (const task of tasks) {
-    const taskId = task.id;
-    const dest = localCoverPath(taskId);
-    const existingPath = existingLocalCoverPath(taskId);
-    if (existingPath) {
-      assertRegularCoverFile(existingPath);
-      skipped++;
-    } else {
-      try {
-        await downloadCoverToFile(task.media_url, dest);
-        downloaded++;
-      } catch (e) {
-        if (e instanceof HttpError && e.status === 403) expired++;
-        else failed++;
+  let nextTaskIndex = 0;
+  const cacheNextCover = async (): Promise<void> => {
+    while (nextTaskIndex < tasks.length) {
+      const task = tasks[nextTaskIndex++];
+      if (!task) return;
+      const dest = localCoverPath(task.id);
+      const existingPath = existingLocalCoverPath(task.id);
+      if (existingPath) {
+        assertRegularCoverFile(existingPath);
+        skipped++;
+      } else {
+        try {
+          await downloadCoverToFile(task.media_url, dest);
+          downloaded++;
+        } catch (error) {
+          if (error instanceof HttpError && error.status === 403) expired++;
+          else failed++;
+        }
       }
+      printProgress();
     }
-    printProgress();
-  }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(COVER_DOWNLOAD_CONCURRENCY, tasks.length) }, cacheNextCover),
+  );
 
   process.stdout.write("\n");
   if (expired > 0) {

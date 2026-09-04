@@ -303,4 +303,28 @@ describe("downloadCovers", () => {
     expect(result).toEqual({ downloaded: 0, skipped: 0, expired: 0, failed: 1 });
     expect(fs.writeFileSync).not.toHaveBeenCalled();
   });
+
+  it("starts multiple missing covers without waiting for each prior request", async () => {
+    mockPrepareAll.mockReturnValue([
+      { id: "t1", media_url: "https://example.com/t1.png" },
+      { id: "t2", media_url: "https://example.com/t2.png" },
+    ]);
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    let resolveFirst: ((response: Response) => void) | undefined;
+    vi.mocked(fetch)
+      .mockImplementationOnce(
+        () =>
+          new Promise<Response>((resolve) => {
+            resolveFirst = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) } as Response);
+
+    const caching = downloadCovers();
+    await Promise.resolve();
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    resolveFirst?.({ ok: true, arrayBuffer: async () => new ArrayBuffer(8) } as Response);
+    await expect(caching).resolves.toEqual({ downloaded: 2, skipped: 0, expired: 0, failed: 0 });
+  });
 });
