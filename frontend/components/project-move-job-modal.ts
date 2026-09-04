@@ -23,7 +23,7 @@ export function MoveJobToNewProjectModal({
   initialName: string;
   onClose: () => void;
   onProjectCreated: (project: Project) => void;
-  onMoveJobToProject: (jobId: number, projectId: number) => void;
+  onMoveJobToProject: (jobId: number, projectId: number) => Promise<boolean>;
   onNavigateToProject: (projectId: number) => void;
 }) {
   const [name, setName] = useState(initialName);
@@ -39,8 +39,10 @@ export function MoveJobToNewProjectModal({
     );
     if (!data?.project) return;
 
+    const moved = await onMoveJobToProject(job.id, data.project.id);
+    if (!moved) return;
+
     onProjectCreated(data.project);
-    onMoveJobToProject(job.id, data.project.id);
     onNavigateToProject(data.project.id);
     onClose();
   }, [

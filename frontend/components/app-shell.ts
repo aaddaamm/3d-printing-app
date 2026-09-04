@@ -191,7 +191,10 @@ function ProjectRouteView({
   projectsLoading: boolean;
   navigate: (path: string) => void;
   setSelectedJob: (job: Job | null) => void;
-  handleJobProjectChange: (jobId: number, projectId: number | null) => Promise<number | null>;
+  handleJobProjectChange: (
+    jobId: number,
+    projectId: number | null,
+  ) => Promise<{ success: boolean; deletedProjectId: number | null }>;
   setProjects: (updater: Project[] | ((ps: Project[]) => Project[])) => void;
 }) {
   const project = projects.find((p) => Number(p.id) === projectId);
@@ -206,11 +209,14 @@ function ProjectRouteView({
 
   const unassignedJobs = jobs.filter((j) => j.project_id == null);
   const changeProjectJob = async (jobId: number, nextProjectId: number | null) => {
-    const deletedProjectId = await handleJobProjectChange(jobId, nextProjectId);
+    const result = await handleJobProjectChange(jobId, nextProjectId);
+    if (!result.success) return false;
+    const { deletedProjectId } = result;
     if (deletedProjectId === projectId) {
       toast("The empty project was removed.", "success");
       navigate("/projects");
     }
+    return true;
   };
   return html`<${ProjectDetail}
     project=${project}
@@ -422,7 +428,10 @@ export function renderMainContent({
   projectsLoading: boolean;
   navigate: (path: string) => void;
   setSelectedJob: (job: Job | null) => void;
-  handleJobProjectChange: (jobId: number, projectId: number | null) => void;
+  handleJobProjectChange: (
+    jobId: number,
+    projectId: number | null,
+  ) => Promise<{ success: boolean; deletedProjectId: number | null }>;
   handleRatesChanged: () => void;
   handleAutoGroup: () => void;
   projectPrices: Record<number, number>;

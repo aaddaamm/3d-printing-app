@@ -206,9 +206,9 @@ function useJobActions({
   const handleJobProjectChange = useCallback(
     async (jobId: number, projectId: number | null) => {
       const result = await patchJob(jobId, { project_id: projectId });
-      if (!result) return null;
+      if (!result) return { success: false, deletedProjectId: null };
       refreshProjectsAndPrices();
-      return result.deletedProjectId;
+      return { success: true, deletedProjectId: result.deletedProjectId };
     },
     [patchJob, refreshProjectsAndPrices],
   );

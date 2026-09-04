@@ -146,7 +146,7 @@ function ProjectDetail({
   onAddJob: (jobId: number) => void;
   onRemoveJob: (jobId: number) => void;
   onProjectUpdated: (project: Project) => void;
-  onMoveJobToProject: (jobId: number, projectId: number) => void;
+  onMoveJobToProject: (jobId: number, projectId: number) => Promise<boolean>;
   onNavigateToProject: (projectId: number) => void;
   onNavigateToProduct: (productId: number) => void;
 }) {
@@ -164,6 +164,16 @@ function ProjectDetail({
   const totT = sumJobTime(jobs);
   const totalPlates = sumJobPlates(jobs);
   const stableJobPricesRef = useRef(new Map<number, number>());
+
+  useEffect(() => {
+    setShowAddJobs(false);
+    setEditing(false);
+    setMoveJob(null);
+    setEditName(project.name ?? "");
+    setEditCustomer(project.customer ?? "");
+    setEditNotes(project.notes ?? "");
+    setProjectPlates([]);
+  }, [project.id, project.name, project.customer, project.notes]);
 
   const jobsWithStablePrices = useMemo(() => {
     for (const job of jobs) {
