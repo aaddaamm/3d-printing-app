@@ -85,6 +85,7 @@ const GATES: Array<{ command: string; args: string[]; label: string }> = [
   { command: "npm", args: ["run", "typecheck"], label: "npm run typecheck" },
   { command: "npm", args: ["run", "lint"], label: "npm run lint" },
   { command: "npm", args: ["test"], label: "npm test" },
+  { command: "npm", args: ["run", "coverage"], label: "npm run coverage" },
   { command: "npm", args: ["run", "build"], label: "npm run build" },
 ];
 
