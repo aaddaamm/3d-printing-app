@@ -2422,11 +2422,28 @@ tbody td {
   border-radius: 8px;
   font-size: 0.85rem;
   font-weight: 500;
-  cursor: pointer;
   min-width: 220px;
   max-width: 380px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   animation: toast-in 0.25s ease-out;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+.toast-dismiss {
+  color: inherit;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.toast-dismiss:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
 }
 .toast-info {
   background: #101010;

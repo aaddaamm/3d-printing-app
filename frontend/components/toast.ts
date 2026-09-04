@@ -43,8 +43,20 @@ export function ToastContainer() {
     <div class="toast-container">
       ${toasts.map(
         (t) => html`
-          <div class="toast toast-${t.type}" key=${t.id} onClick=${() => dismiss(t.id)}>
-            ${t.message}
+          <div
+            class="toast toast-${t.type}"
+            key=${t.id}
+            role=${t.type === "error" ? "alert" : "status"}
+          >
+            <span>${t.message}</span>
+            <button
+              type="button"
+              class="toast-dismiss"
+              onClick=${() => dismiss(t.id)}
+              aria-label="Dismiss notification"
+            >
+              ×
+            </button>
           </div>
         `,
       )}
