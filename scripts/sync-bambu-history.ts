@@ -1,18 +1,18 @@
 import "dotenv/config";
 import fs from "node:fs";
 import os from "node:os";
-import { db, insertBatch } from "./lib/db.js";
-import { BambuCloudProvider } from "./lib/providers/bambu/cloud.js";
-import { downloadCovers, COVERS_DIR } from "./lib/covers.js";
-import { API_PAGE_LIMIT } from "./lib/constants.js";
+import { db, insertBatch } from "../lib/db.js";
+import { BambuCloudProvider } from "../lib/providers/bambu/cloud.js";
+import { downloadCovers, COVERS_DIR } from "../lib/covers.js";
+import { API_PAGE_LIMIT } from "../lib/constants.js";
 import {
   defaultDbPath,
   insertSyncLog,
   runPostSyncMaintenance,
   updateSyncLog,
-} from "./lib/sync-workflow.js";
-import { bold, dim, red, green, yellow, cyan } from "./lib/colors.js";
-import { logError, logInfo, logWarn } from "./lib/logger.js";
+} from "../lib/sync-workflow.js";
+import { bold, dim, red, green, yellow, cyan } from "../lib/colors.js";
+import { logError, logInfo, logWarn } from "../lib/logger.js";
 
 // ── Config ────────────────────────────────────────────────────────────────────
 

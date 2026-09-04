@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { db } from "./lib/db.js";
+import { db } from "../lib/db.js";
 import {
   addScanRoot,
   createCatalogStatements,
@@ -7,7 +7,7 @@ import {
   listScanRoots,
   MAX_CATALOG_SCAN_ERRORS,
   scanCatalogRoot,
-} from "./lib/catalog-scanner.js";
+} from "../lib/catalog-scanner.js";
 
 function usage(): string {
   return `Usage:

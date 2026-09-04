@@ -123,11 +123,11 @@ describe("buildSyncCommand", () => {
     const moonraker = buildSyncCommand("file:///repo/api.ts", "moonraker");
     const configured = buildSyncCommand("file:///repo/api.ts", "configured", "u1");
 
-    expect(bambu).toMatchObject({ cmd: "tsx", args: ["/repo/dump-bambu-history.ts"] });
-    expect(moonraker).toMatchObject({ cmd: "tsx", args: ["/repo/sync-moonraker-history.ts"] });
+    expect(bambu).toMatchObject({ cmd: "tsx", args: ["/repo/scripts/sync-bambu-history.ts"] });
+    expect(moonraker).toMatchObject({ cmd: "tsx", args: ["/repo/scripts/sync-moonraker-history.ts"] });
     expect(configured).toMatchObject({
       cmd: "tsx",
-      args: ["/repo/sync-configured-providers.ts", "--provider", "u1"],
+      args: ["/repo/scripts/sync-configured-providers.ts", "--provider", "u1"],
     });
   });
 
@@ -135,13 +135,13 @@ describe("buildSyncCommand", () => {
     const command = buildSyncCommand("file:///repo/dist/api.js", "moonraker");
 
     expect(command.cmd).toBe(process.execPath);
-    expect(command.args).toEqual(["/repo/dist/sync-moonraker-history.js"]);
+    expect(command.args).toEqual(["/repo/dist/scripts/sync-moonraker-history.js"]);
   });
 
   it("omits configured-provider arguments when no provider id is supplied", () => {
     expect(buildSyncCommand("file:///repo/api.ts", "configured")).toEqual({
       cmd: "tsx",
-      args: ["/repo/sync-configured-providers.ts"],
+      args: ["/repo/scripts/sync-configured-providers.ts"],
     });
   });
 });
@@ -175,13 +175,13 @@ describe("startSyncScheduler", () => {
     expect(spawn).toHaveBeenNthCalledWith(
       1,
       "tsx",
-      ["/repo/dump-bambu-history.ts"],
+      ["/repo/scripts/sync-bambu-history.ts"],
       expect.objectContaining({ stdio: "inherit" }),
     );
     expect(spawn).toHaveBeenNthCalledWith(
       2,
       "tsx",
-      ["/repo/sync-configured-providers.ts", "--provider", "voron"],
+      ["/repo/scripts/sync-configured-providers.ts", "--provider", "voron"],
       expect.objectContaining({ stdio: "inherit" }),
     );
     child.emit("close", 0);
@@ -207,7 +207,7 @@ describe("startSyncScheduler", () => {
     expect(spawn).toHaveBeenCalledOnce();
     expect(spawn).toHaveBeenLastCalledWith(
       "tsx",
-      ["/repo/sync-configured-providers.ts", "--provider", "voron"],
+      ["/repo/scripts/sync-configured-providers.ts", "--provider", "voron"],
       expect.objectContaining({ stdio: "inherit" }),
     );
 
@@ -216,7 +216,7 @@ describe("startSyncScheduler", () => {
     expect(spawn).toHaveBeenCalledTimes(2);
     expect(spawn).toHaveBeenLastCalledWith(
       "tsx",
-      ["/repo/sync-configured-providers.ts", "--provider", "prusa"],
+      ["/repo/scripts/sync-configured-providers.ts", "--provider", "prusa"],
       expect.objectContaining({ stdio: "inherit" }),
     );
     secondChild.emit("close", 0);

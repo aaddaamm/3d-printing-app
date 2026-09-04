@@ -1,15 +1,15 @@
 import "dotenv/config";
-import { db, stmts } from "./lib/db.js";
-import { green, red, cyan, bold, dim } from "./lib/colors.js";
-import { logError, logInfo } from "./lib/logger.js";
-import { MoonrakerHistoryProvider } from "./lib/providers/moonraker/history.js";
-import { storeProviderHistory } from "./lib/providers/sync.js";
+import { db, stmts } from "../lib/db.js";
+import { green, red, cyan, bold, dim } from "../lib/colors.js";
+import { logError, logInfo } from "../lib/logger.js";
+import { MoonrakerHistoryProvider } from "../lib/providers/moonraker/history.js";
+import { storeProviderHistory } from "../lib/providers/sync.js";
 import {
   defaultDbPath,
   insertSyncLog,
   runPostSyncMaintenance,
   updateSyncLog,
-} from "./lib/sync-workflow.js";
+} from "../lib/sync-workflow.js";
 
 const DB_PATH = defaultDbPath();
 const BASE_URL = process.env["MOONRAKER_BASE_URL"];

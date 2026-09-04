@@ -16,13 +16,13 @@ function readPackageJson(): PackageJson {
 it("runs all configured provider sync jobs from npm run sync", () => {
   const { scripts } = readPackageJson();
 
-  expect(scripts.sync).toBe("npx tsx sync-configured-providers.ts");
-  expect(scripts["sync:bambu"]).toBe("npx tsx dump-bambu-history.ts");
-  expect(scripts["sync:moonraker"]).toBe("npx tsx sync-moonraker-history.ts");
+  expect(scripts.sync).toBe("npx tsx scripts/sync-configured-providers.ts");
+  expect(scripts["sync:bambu"]).toBe("npx tsx scripts/sync-bambu-history.ts");
+  expect(scripts["sync:moonraker"]).toBe("npx tsx scripts/sync-moonraker-history.ts");
 });
 
 it("exposes the catalog scanner CLI", () => {
   const { scripts } = readPackageJson();
 
-  expect(scripts.catalog).toBe("npx tsx scan-catalog.ts");
+  expect(scripts.catalog).toBe("npx tsx scripts/scan-catalog.ts");
 });

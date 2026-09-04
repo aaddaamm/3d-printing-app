@@ -1,8 +1,8 @@
 import "dotenv/config";
-import { db } from "./lib/db.js";
-import { red } from "./lib/colors.js";
-import { runConfiguredProviderSync } from "./lib/configured-provider-sync.js";
-import { logError } from "./lib/logger.js";
+import { db } from "../lib/db.js";
+import { red } from "../lib/colors.js";
+import { runConfiguredProviderSync } from "../lib/configured-provider-sync.js";
+import { logError } from "../lib/logger.js";
 
 type CliOptions = {
   providerId?: string;

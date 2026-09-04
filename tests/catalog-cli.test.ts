@@ -16,7 +16,7 @@ function cleanupSqliteFiles(basePath: string): void {
 }
 
 function runCatalogCli(args: string[]): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync("npx", ["tsx", "scan-catalog.ts", ...args], {
+  const result = spawnSync("npx", ["tsx", "scripts/scan-catalog.ts", ...args], {
     cwd: process.cwd(),
     env: { ...process.env, BAMBU_DB: dbPath },
     encoding: "utf8",

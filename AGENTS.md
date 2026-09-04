@@ -15,10 +15,10 @@ session where significant features or refactoring are discussed:
 ## Architecture overview
 
 ```
-sync-configured-providers.ts — CLI: sync all configured providers → normalize → covers
-dump-bambu-history.ts       — Bambu Cloud provider CLI → insert → normalize → download covers
-sync-moonraker-history.ts   — Moonraker provider CLI → insert → normalize
-scan-catalog.ts             — CLI: manage scan roots and index supported local files
+scripts/sync-configured-providers.ts — CLI: sync all configured providers → normalize → covers
+scripts/sync-bambu-history.ts        — Bambu Cloud provider CLI → insert → normalize → download covers
+scripts/sync-moonraker-history.ts    — Moonraker provider CLI → insert → normalize
+scripts/scan-catalog.ts              — CLI: manage scan roots and index supported local files
 normalize.ts                — Session detection & job upsert (also importable)
 api.ts                      — Hono HTTP server entry point
 routes/                     — Hono handlers for history, catalog, products, batches, rates, health, and UI

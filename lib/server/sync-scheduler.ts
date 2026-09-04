@@ -21,7 +21,7 @@ type StartSyncSchedulerArgs = {
 };
 
 const PROVIDER_SCRIPT_BASE: Record<SyncProviderId, string> = {
-  bambu: "dump-bambu-history",
+  bambu: "sync-bambu-history",
   moonraker: "sync-moonraker-history",
   configured: "sync-configured-providers",
 };
@@ -89,7 +89,7 @@ export function buildSyncCommand(
   const isCompiled = filename.endsWith(".js");
   const scriptBase = PROVIDER_SCRIPT_BASE[provider];
   const scriptName = `${scriptBase}.${isCompiled ? "js" : "ts"}`;
-  const scriptUrl = new URL(`./${scriptName}`, appEntryUrl);
+  const scriptUrl = new URL(`./scripts/${scriptName}`, appEntryUrl);
   const scriptArgs = provider === "configured" && providerId ? ["--provider", providerId] : [];
 
   if (isCompiled) {
