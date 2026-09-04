@@ -7,6 +7,7 @@ import {
   catalogPreviewExists,
   catalogPreviewPath,
   extract3mfPreview,
+  MAX_3MF_PREVIEW_BYTES,
   writeCatalogPreview,
 } from "../lib/catalog-preview.js";
 
@@ -119,6 +120,18 @@ describe("catalog preview extraction", () => {
     const dataStart = 30 + Buffer.byteLength("Metadata/thumbnail.png");
     bytes[dataStart] = (bytes[dataStart] ?? 0) ^ 0xff;
     fs.writeFileSync(filePath, bytes);
+
+    expect(extract3mfPreview(filePath)).toBeNull();
+  });
+
+  it("rejects a compressed preview whose declared output is too large", () => {
+    const filePath = write3mf([
+      {
+        name: "Metadata/thumbnail.png",
+        content: Buffer.alloc(MAX_3MF_PREVIEW_BYTES + 1),
+        deflate: true,
+      },
+    ]);
 
     expect(extract3mfPreview(filePath)).toBeNull();
   });

@@ -11,6 +11,9 @@ const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
 const ZIP_STORED = 0;
 const ZIP_DEFLATED = 8;
+export const MAX_3MF_ARCHIVE_BYTES = 128 * 1024 * 1024;
+export const MAX_3MF_PREVIEW_BYTES = 16 * 1024 * 1024;
+const MAX_3MF_PREVIEW_COMPRESSION_RATIO = 100;
 
 interface ZipEntry {
   name: string;
@@ -128,6 +131,15 @@ function readCentralDirectory(buffer: Buffer): ZipEntry[] {
 }
 
 function readEntry(buffer: Buffer, entry: ZipEntry): Buffer | null {
+  if (
+    entry.compressedSize > MAX_3MF_PREVIEW_BYTES ||
+    entry.uncompressedSize > MAX_3MF_PREVIEW_BYTES ||
+    (entry.compressedSize > 0 &&
+      entry.uncompressedSize / entry.compressedSize > MAX_3MF_PREVIEW_COMPRESSION_RATIO)
+  ) {
+    return null;
+  }
+
   const offset = entry.localHeaderOffset;
   if (offset + 30 > buffer.length) return null;
   if (buffer.readUInt32LE(offset) !== LOCAL_FILE_HEADER_SIGNATURE) return null;
@@ -142,7 +154,7 @@ function readEntry(buffer: Buffer, entry: ZipEntry): Buffer | null {
   if (entry.compressionMethod === ZIP_STORED) return Buffer.from(compressed);
   if (entry.compressionMethod === ZIP_DEFLATED) {
     try {
-      const inflated = zlib.inflateRawSync(compressed);
+      const inflated = zlib.inflateRawSync(compressed, { maxOutputLength: MAX_3MF_PREVIEW_BYTES });
       return inflated.length === entry.uncompressedSize ? inflated : null;
     } catch {
       return null;
@@ -169,7 +181,16 @@ export function previewContentType(image: Buffer): CatalogPreviewContentType | n
 }
 
 export function extract3mfPreview(filePath: string): Buffer | null {
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    return null;
+  }
+  if (!stat.isFile() || stat.size > MAX_3MF_ARCHIVE_BYTES) return null;
+
   const buffer = fs.readFileSync(filePath);
+  if (buffer.length > MAX_3MF_ARCHIVE_BYTES) return null;
   const previewEntries = readCentralDirectory(buffer)
     .filter((entry) => previewRank(entry.name) < 99)
     .sort((a, b) => previewRank(a.name) - previewRank(b.name));
